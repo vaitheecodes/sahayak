@@ -26,7 +26,6 @@ RUN groupadd --system --gid 10001 app \
 COPY --from=build /opt/venv /opt/venv
 WORKDIR /app
 COPY backend/ backend/
-COPY data/kb/kb_entries.json data/kb/new_entries.json data/kb/kb_registry.json data/kb/
 COPY migrations/ migrations/
 COPY scripts/db_migrate.py scripts/
 # Readable by the app user whatever the build machine's file modes were

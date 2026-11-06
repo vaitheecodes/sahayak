@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from contextlib import nullcontext
 
-from backend import email_utils
+from backend import email_utils, product, topic_terms
 from backend.ai_service import backends, grounding, provider
 from backend.ai_service._format import GROUNDING_RULES, history_text, kb_guidance_text
 from backend.ai_service.schemas import (
@@ -55,15 +55,13 @@ _CHAT_STYLE = (
 # nobody; these details are what the customer can give and the AI can use.
 _ASKING_RULES = (
     "When you do need more information: you cannot look up the customer's "
-    "account, monitors or settings, so never ask for a monitor name, monitor ID, "
-    "account ID, email address, API key or any other identifier (only someone "
-    "with account access could use it, even if the kb_guidance block lists it as "
-    "a detail to provide). Ask instead for something the customer can tell you "
-    "and you can use: the monitor type (website, server, API, ping, port, DNS, "
-    "SSL, cloud, network device, ...), {detail}, the screen or step "
-    "where it happens, or what they have already tried. Ask which type of "
-    "monitor it is, never which monitor, and never ask the customer to confirm "
-    "something they have already told you."
+    "account, records or settings, so never ask for a user ID, employee ID, "
+    "account ID, record number, email address, API key or any other identifier "
+    "(only someone with account access could use it, even if the kb_guidance "
+    "block lists it as a detail to provide). Ask instead for something the "
+    "customer can tell you and you can use: {subject}{detail}, the screen or "
+    "step where it happens, or what they have already tried. Never ask the "
+    "customer to confirm something they have already told you."
 )
 _ERROR_DETAIL = "the exact error text"
 _NO_ERROR_DETAIL = ("what they see on the screen (the customer hasn't reported an error, so "
@@ -74,15 +72,15 @@ _ANSWER_FIRST = (
     "If the kb_guidance block covers the request, answer it now: don't ask a "
     "question first. "
 )
-# Added only when the monitor type is unknown and there is nothing to
+# Added only when the product area is unknown and there is nothing to
 # answer from yet (always for a clarifying question): with KB guidance
 # that covers the request, the model should answer, not ask.
-_MONITOR_TYPE_FIRST = (
-    " The customer hasn't said what type of monitor it is: ask for the monitor "
-    "type first."
+_SUBJECT_FIRST = (
+    " The customer hasn't said which part of the product this is about: ask "
+    "for that first."
 )
 _ASSUMPTION_RULES = (
-    "Never assume a product, integration, monitor type or feature the customer "
+    "Never assume a module, platform, integration or feature the customer "
     "has not mentioned. The unconfirmed_topics block lists knowledge-base topics "
     "that matched some of the customer's words but are specific to something "
     "they have not mentioned: never answer as if one of them applies. Ask "
@@ -101,28 +99,38 @@ _SIGN_OFF_LINE = re.compile(
     r"^\s*((best|kind|warm|warmest)( regards)?|regards|sincerely|cheers|"
     r"thanks|thank you|many thanks|all the best)\s*[,!.]?\s*$",
     re.IGNORECASE)
-# A signature line on its own: "Site24x7 Support Team", "Customer Support".
+# A signature line on its own: "Customer Support", "<product> Support Team",
+# the configured support team name (signature_line()).
 _SIGNATURE_LINE = re.compile(
-    r"^\s*(the )?(site24x7 )?(customer )?(support|technical support|help ?desk)( team)?\s*$",
+    r"^\s*(the )?(customer )?(support|technical support|help ?desk)( team)?\s*$",
     re.IGNORECASE)
+
+
+def _signature_line(line: str) -> bool:
+    name = product.name().lower()
+    names = {product.support_team().lower(), f"{name} support", f"{name} support team", f"{name} team",
+             f"{name} customer support"}
+    text = re.sub(r"^the\s+", "", line.strip().strip(".,!").lower())
+    return bool(_SIGNATURE_LINE.match(line)) or text in names
 # [Your Name], [Customer's Name], [insert link]: words only, so a UI path
-# like [Admin > Monitors] or a markdown link [docs](url) is kept.
+# like [Settings > Users] or a markdown link [docs](url) is kept.
 _PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z' -]{0,40}\](?!\()")
 _SENTENCE_END = re.compile(r"(?<=[.?!])\s+")
 _LIST_MARKER_ONLY = re.compile(r"^\s*([-*•]|\d+[.)])?\s*$")
-# A request for an identifier: "Can you share the monitor name?",
+# A request for an identifier: "Can you share your employee ID?",
 # "Please confirm the API key ...". Advice that only mentions one ("check
 # the API key in the integration settings") has no asking verb and stays.
 _IDENTIFIER = re.compile(
-    r"\b(monitor|account|customer|device|resource|licen[cs]e|user|integration|api|access)"
-    r"[ -]?(name|id|identifier|number|key|email)s?\b|\bname of (the|your) (monitor|device|account)\b"
+    r"\b(account|customer|employee|user|record|device|resource|licen[cs]e|integration|api|access|order"
+    r"|invoice|tenant|workspace|organi[sz]ation)"
+    r"[ -]?(name|id|identifier|number|key|email)s?\b|\bname of (the|your) (device|account|workspace)\b"
     r"|\bemail address\b"
-    r"|\bwhich (specific |particular )?(service|monitor|server|device|resource|integration)s?\b",
+    r"|\bwhich (specific |particular )?(record|employee|server|device|resource|integration)s?\b",
     re.IGNORECASE)
 _ASKING = re.compile(r"\b(provide|share|send|give|tell|confirm|let (me|us) know)\b|^\s*(what|which)\b",
                      re.IGNORECASE)
-MONITOR_TYPE_QUESTION = ("What type of monitor is it: website, server, API, ping, port, DNS, "
-                         "cloud or network device?")
+SUBJECT_QUESTION = "Which part of {product} is this about: {options}?"
+GENERIC_SUBJECT_QUESTION = "Which part of {product} is this about, and what are you trying to do there?"
 # Only when the customer reported an error (request_kind.error_reported).
 DETAIL_QUESTION = "What is the exact error message, and at which screen or step does it appear?"
 STEP_QUESTION = "At which screen or step are you, and what do you see there?"
@@ -194,16 +202,30 @@ def _first_question_only(lines: list[str]) -> list[str]:
     return out
 
 
-def detail_question(monitor_type_known: bool, error_reported: bool) -> str:
-    """The follow-up question to ask: the monitor type when it isn't
-    known, the exact error only when the customer reported one, else
+def options_text(labels: list[str]) -> str:
+    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} or {labels[-1]}"
+
+
+def subject_question() -> str:
+    """Which part of the product a request is about: its modules and
+    variants (confirmed terms, at most six) when there are any."""
+    labels = topic_terms.subject_labels()
+    if not labels:
+        return GENERIC_SUBJECT_QUESTION.format(product=product.name())
+    shown = labels[:6] + (["something else"] if len(labels) > 6 else [])
+    return SUBJECT_QUESTION.format(product=product.name(), options=options_text(shown))
+
+
+def detail_question(subject_known: bool, error_reported: bool) -> str:
+    """The follow-up question to ask: which part of the product when that
+    isn't known, the exact error only when the customer reported one, else
     where they are and what they see."""
-    if not monitor_type_known:
-        return MONITOR_TYPE_QUESTION
+    if not subject_known:
+        return subject_question()
     return DETAIL_QUESTION if error_reported else STEP_QUESTION
 
 
-def clean_chat_reply(text: str, monitor_type_known: bool = True, error_reported: bool = True,
+def clean_chat_reply(text: str, subject_known: bool = True, error_reported: bool = True,
                      how_to: bool = False) -> str:
     """Strip greeting lines, the sign-off and signature, [Placeholder]
     text, requests for identifiers, error-message requests the customer
@@ -215,7 +237,7 @@ def clean_chat_reply(text: str, monitor_type_known: bool = True, error_reported:
     text = drop_unasked(text, error_reported, how_to)
     lines, dropped = _drop_identifier_requests(_PLACEHOLDER.sub("", text).splitlines())
     if dropped and not any("?" in line for line in lines):
-        lines.append(detail_question(monitor_type_known, error_reported))
+        lines.append(detail_question(subject_known, error_reported))
     lines = _first_question_only(lines)
     while lines and (not lines[0].strip() or _GREETING_LINE.match(lines[0])):
         lines.pop(0)
@@ -223,12 +245,13 @@ def clean_chat_reply(text: str, monitor_type_known: bool = True, error_reported:
         if _SIGN_OFF_LINE.match(line) and i > 0:
             lines = lines[:i]
             break
-    while lines and (not lines[-1].strip() or _SIGNATURE_LINE.match(lines[-1])):
+    while lines and (not lines[-1].strip() or _signature_line(lines[-1])):
         lines.pop()
     cleaned = re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in lines)).strip()
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
-    pleasantries = (_GREETING_LINE, _SIGN_OFF_LINE, _SIGNATURE_LINE)
+    pleasantries = (_GREETING_LINE, _SIGN_OFF_LINE)
     if not any(re.search(r"[A-Za-z0-9]", line) and not any(p.match(line) for p in pleasantries)
+               and not _signature_line(line)
                for line in cleaned.splitlines()):
         raise provider.AIError("AI chat reply was only placeholder text",
                                provider.AIFailure(kind="filter_rejected", operation="chat_filter",
@@ -258,16 +281,19 @@ def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> 
         text = email_utils.format_email_reply(
             data.customer_name, drop_unasked(text, data.error_reported, data.how_to))
     else:
-        text = clean_chat_reply(text, monitor_type_known=data.monitor_type_known,
+        text = clean_chat_reply(text, subject_known=data.subject_known,
                                 error_reported=data.error_reported, how_to=data.how_to)
     return ChatReply(text=text)
 
 
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
-    ask_type_first = not data.monitor_type_known and not (answering and data.kb_candidates)
-    rules = _ASKING_RULES.format(detail=_ERROR_DETAIL if data.error_reported else _NO_ERROR_DETAIL)
+    ask_subject_first = not data.subject_known and not (answering and data.kb_candidates)
+    labels = topic_terms.subject_labels()
+    subject = f"which part of the product it is about ({options_text(labels[:6])}), " if labels else ""
+    rules = _ASKING_RULES.format(subject=subject,
+                                 detail=_ERROR_DETAIL if data.error_reported else _NO_ERROR_DETAIL)
     return ((_ANSWER_FIRST if answering and data.kb_candidates else "") + rules
-            + (_MONITOR_TYPE_FIRST if ask_type_first else ""))
+            + (_SUBJECT_FIRST if ask_subject_first else ""))
 
 
 def _context_blocks(data: AnswerInput | ClarifyInput) -> dict[str, str]:
@@ -311,21 +337,18 @@ def repeats(text: str, previous: list[str]) -> bool:
     return False
 
 
-def open_question(monitor_type: str | None) -> str:
+def open_question(subject: str | None) -> str:
     """For a customer who hasn't described a problem yet ("I have an issue")."""
-    if monitor_type:
-        subject = f"your {monitor_type}" if monitor_type.endswith("monitoring") else f"your {monitor_type} monitor"
-    else:
-        subject = "your monitoring"
-    return (f"What are you seeing, or trying to do, with {subject}? For example: no data, a wrong "
-            "status, alerts, the agent, or setup.")
+    where = subject or product.name()
+    return (f"What are you seeing, or trying to do, in {where}? For example: something missing "
+            "or wrong, an error on the screen, a setting, or a task you want to do.")
 
 
 def _fallback_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
     """A useful question that doesn't repeat a recent reply, else an offer
     of a ticket (chat) or a note that the team will look into it (email)."""
-    options = ([open_question(data.monitor_type)] if data.vague else []) + (
-        [MONITOR_TYPE_QUESTION] if not data.monitor_type_known else []) + [
+    options = ([open_question(data.subject)] if data.vague else []) + (
+        [subject_question()] if not data.subject_known else []) + [
         DETAIL_QUESTION if data.error_reported else STEP_QUESTION, TRIED_QUESTION]
     for question in options:
         reply = ChatReply(text=email_utils.format_email_reply(data.customer_name, question)
@@ -381,15 +404,14 @@ def answer(data: AnswerInput) -> ChatReply:
     )
     if data.reply_format == "email":
         role = (
-            "You are a helpful customer support agent for Site24x7 (an infrastructure "
-            "monitoring product). Write a clear, concise, friendly reply that resolves "
-            f"the customer's request.{continuation_note}{_EMAIL_BODY_NOTE}"
+            f"You are a helpful customer support agent for {product.described()}. Write "
+            "a clear, concise, friendly reply that resolves the customer's request."
+            f"{continuation_note}{_EMAIL_BODY_NOTE}"
         )
     else:
         role = (
-            "You are the Site24x7 support assistant (Site24x7 is an infrastructure "
-            "monitoring product), chatting live with a customer. "
-            f"{_CHAT_STYLE} Give numbered steps only when the customer has to do "
+            f"You are the support assistant for {product.described()}, chatting live "
+            f"with a customer. {_CHAT_STYLE} Give numbered steps only when the customer has to do "
             "something, and keep each step to one line. If the request is too vague "
             "to answer well, ask exactly one short clarifying question instead of "
             f"guessing.{continuation_note}"
@@ -400,7 +422,7 @@ def answer(data: AnswerInput) -> ChatReply:
         "gives and nothing else: no troubleshooting, no request for an error message, and "
         "no closing line such as 'if you encounter issues...'."
         + (" The kb_guidance guide was matched to what the customer asked for: answer with "
-           "its steps now, without first asking which type of monitor or anything else."
+           "its steps now, without first asking which part of the product or anything else."
            if data.kb_candidates else "")
         if data.how_to else "")
     no_match_note = ""
@@ -426,9 +448,8 @@ def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply
         "contains a clear question, answer that question first, even if earlier "
         "messages were about something else.\n\n"
         "Base the answer on the kb_guidance block, personalised to the customer's "
-        "own wording; don't contradict it. Use the order_record block as the only "
-        "source of truth for order facts. If answering would need a specific fact "
-        "you weren't given (an order status, account detail, setting value), say "
+        "own wording; don't contradict it. If answering would need a specific fact "
+        "you weren't given (an account detail, a record, a setting value), say "
         "plainly that you don't have access to it and ask for it, or say a person "
         f"will need to check — never guess. {GROUNDING_RULES} Every step you give must "
         "come from the kb_guidance block: never add a menu path, setting, hostname, port "
@@ -439,7 +460,6 @@ def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply
             "customer_history": history_text(data.history),
             **_context_blocks(data),
             "kb_guidance": kb_guidance_text(data.kb_candidates),
-            "order_record": data.order_context or "(none)",
             "customer_latest_message": data.latest_message or "(see the ticket block)",
             "ticket": data.ticket_text,
         },
@@ -451,19 +471,19 @@ def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply
 def _vague_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
     """No symptom described yet: one open question, no KB grounding and
     no model call, so no scenario can be assumed."""
-    reply = _frame(open_question(data.monitor_type), data)
+    reply = _frame(open_question(data.subject), data)
     return _fallback_reply(data) if repeats(reply.text, data.recent_ai_replies) else reply
 
 
 _HIGH_RISK_CLARIFY = (
-    "A Site24x7 (infrastructure monitoring product) customer reported a problem about "
-    "their account, licensing, billing or data, and it isn't clear yet what they mean. "
-    "A support ticket will be raised after their answer. Ask exactly ONE short question "
-    "that pins down what is still unknown, using their own words: for a sign-in problem, "
-    "which login (the web console or the mobile app) and what appears on the screen; for "
-    "a vague phrase such as 'changing license', what exactly they changed. Do not suggest "
-    "causes or solutions, do not mention knowledge-base topics, and do not answer the "
-    "request.")
+    "A customer of {product} reported a problem about their account, licensing, "
+    "billing or data, and it isn't clear yet what they mean. A support ticket will be "
+    "raised after their answer. Ask exactly ONE short question that pins down what is "
+    "still unknown, using their own words: for a sign-in problem, where they sign in "
+    "(for example the website or a mobile app) and what appears on the screen; for a "
+    "vague phrase such as 'changing the plan', what exactly they changed. Do not "
+    "suggest causes or solutions, do not mention knowledge-base topics, and do not "
+    "answer the request.")
 
 
 def clarify(data: ClarifyInput) -> ChatReply:
@@ -471,7 +491,7 @@ def clarify(data: ClarifyInput) -> ChatReply:
         return _vague_reply(data)
     if data.high_risk:
         return _reply(
-            f"{_HIGH_RISK_CLARIFY}"
+            f"{_HIGH_RISK_CLARIFY.format(product=product.described())}"
             f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}\n\n"
             f"{_asking_rules(data, answering=False)}",
             {"customer_details": data.customer_details or "(none)", "ticket": data.ticket_text},
@@ -484,7 +504,7 @@ def clarify(data: ClarifyInput) -> ChatReply:
             for i, c in enumerate(data.kb_candidates[:3])
         )
         grounding = (
-            "The candidate_topics block lists the closest real Site24x7 support "
+            "The candidate_topics block lists the closest real support "
             "topics this ticket could match, ranked by relevance. Ask exactly ONE "
             "short question that would tell you which of THESE SPECIFIC topics "
             "applies (or that none of them do). Refer to what they're actually "
@@ -492,16 +512,16 @@ def clarify(data: ClarifyInput) -> ChatReply:
             "'plans', 'subscriptions') that aren't reflected in that list."
         )
     else:
-        topics = "No close match was found in the Site24x7 KB for this ticket."
+        topics = "No close match was found in the knowledge base for this ticket."
         grounding = (
-            "No close match was found in the Site24x7 KB for this ticket. Ask "
+            "No close match was found in the knowledge base for this ticket. Ask "
             "exactly ONE short question that would help identify what the customer "
             "actually needs; do not guess at a specific feature or invent a "
             "distinction that may not apply."
         )
     return _reply(
-        "A customer support ticket for Site24x7 (an infrastructure monitoring "
-        f"product) is too ambiguous to classify confidently. {grounding} Do not "
+        f"A customer support ticket for {product.described()} is too ambiguous "
+        f"to classify confidently. {grounding} Do not "
         "answer the ticket, do not ask a generic 'can you tell me more?', and do "
         "not assume details the customer hasn't given you."
         f"{_EMAIL_BODY_NOTE if data.reply_format == 'email' else ' ' + _CHAT_STYLE}\n\n"
@@ -564,8 +584,8 @@ def info_request(data: AnswerInput) -> ChatReply:
     try:
         with backends.model_task("chat") if data.reply_format == "chat" else nullcontext():
             raw = provider.complete_text(
-                "You are the Site24x7 support assistant (Site24x7 is an infrastructure "
-                "monitoring product). Our support team needs some details from the "
+                f"You are the support assistant for {product.described()}. Our "
+                "support team needs some details from the "
                 "customer to investigate, and a ticket is being raised for them now. "
                 "Rewrite the guidance in the kb_guidance block as short numbered steps "
                 "the customer follows (\"1.\", \"2.\", ...), one line each, keeping "

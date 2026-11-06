@@ -23,7 +23,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 class _Human:
     def invoke(self, state):
-        return {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.5,
+        return {"route": "human", "category": "ISSUE", "confidence": 0.5,
                 "clarification_attempts": 0}
 
 
@@ -129,15 +129,15 @@ def test_admin_creates_manager_with_one_department(client):
     depts = _departments(client)
     res = client.post("/api/admin/staff", json={
         "name": "Nia Network", "email": "nia@example.com", "role": "manager",
-        "department_id": depts["Network"]}, headers=_admin(client))
+        "department_id": depts["General"]}, headers=_admin(client))
     assert res.status_code == 200, res.text
-    assert res.json()["department_name"] == "Network"
+    assert res.json()["department_name"] == "General"
     temp = res.json()["temporary_password"]
 
     headers = _bearer(_login(client, "nia@example.com", temp).json()["token"])
     client.post("/api/auth/change-password",
                 json={"current_password": temp, "new_password": "nia-own-pass"}, headers=headers)
-    assert [d["name"] for d in client.get("/api/manager/departments", headers=headers).json()] == ["Network"]
+    assert [d["name"] for d in client.get("/api/manager/departments", headers=headers).json()] == ["General"]
 
 
 def test_admin_assigns_manager_role_and_department(client):
@@ -147,9 +147,9 @@ def test_admin_assigns_manager_role_and_department(client):
     token = _login(client, "tom@example.com", tech["temporary_password"]).json()["token"]
 
     res = client.patch(f"/api/admin/staff/{tech['staff_id']}",
-                       json={"role": "manager", "department_id": _departments(client)["Network"]}, headers=admin)
+                       json={"role": "manager", "department_id": _departments(client)["General"]}, headers=admin)
     assert res.status_code == 200, res.text
-    assert (res.json()["role"], res.json()["department_name"]) == ("manager", "Network")
+    assert (res.json()["role"], res.json()["department_name"]) == ("manager", "General")
     # The old technician token no longer works.
     assert client.get("/api/auth/me", headers=_bearer(token)).status_code == 401
 
@@ -176,13 +176,13 @@ def test_legacy_manager_mapping_keeps_the_first_department(client):
     conn = sqlite3.connect(db.DB_PATH)
     conn.execute("UPDATE staff SET department_id = NULL WHERE staff_id = ?", (manager["staff_id"],))
     conn.executemany("INSERT INTO manager_departments (manager_id, department_id) VALUES (?, ?)",
-                     [(manager["staff_id"], depts["Network"]), (manager["staff_id"], depts["Integrations"])])
+                     [(manager["staff_id"], depts["General"]), (manager["staff_id"], depts["Accounts & Billing"])])
     conn.commit()
     conn.close()
     db.init_db()
     (after,) = [s for s in client.get("/api/admin/staff", headers=_admin(client)).json()
                 if s["staff_id"] == manager["staff_id"]]
-    assert after["department_name"] == "Network"
+    assert after["department_name"] == "General"
 
 
 # ---------------------------------------------------------------------------
@@ -202,13 +202,13 @@ def test_routing_settings_apply_to_the_live_policy(client):
     admin = _admin(client)
     res = client.put("/api/admin/settings/routing", json={
         "confidence_threshold": 0.6, "high_risk_confidence_threshold": 0.95,
-        "high_risk_categories": ["ACCOUNT", "DATA", "ALERTS"],
+        "high_risk_categories": ["ACCOUNT", "DATA", "ISSUE"],
         "escalation_language_tags": ["offensive_language"], "max_clarification_attempts": 1}, headers=admin)
     assert res.status_code == 200, res.text
     policy = client.get("/api/debug/routing-policy").json()
-    assert policy["high_risk_categories"] == ["ACCOUNT", "ALERTS", "DATA"]
+    assert policy["high_risk_categories"] == ["ACCOUNT", "DATA", "ISSUE"]
     assert policy["max_clarification_attempts"] == 1
-    routed = graph.decide_route({"category": "AGENT", "confidence": 0.65, "language_tags": ["negation"],
+    routed = graph.decide_route({"category": "SETUP", "confidence": 0.65, "language_tags": ["negation"],
                                  "clarification_attempts": 0})
     assert routed["route"] == "ai"  # 0.65 clears the new 0.6 bar; negation no longer forces a human
 
@@ -317,7 +317,7 @@ def test_audit_records_incident_reviews(client, monkeypatch):
     client.post(f"/api/incidents/{incident['incident_id']}/review", json={"action": "confirm", "note": "ok"},
                 headers=_demo(client, "manager"))
     client.put(f"/api/incidents/{incident['incident_id']}/departments",
-               json={"department_ids": [_departments(client)["Infrastructure"], _departments(client)["Network"]]},
+               json={"department_ids": [_departments(client)["Product Support"], _departments(client)["General"]]},
                headers=_demo(client, "manager"))
     actions = [e["action"] for e in _audit(client, entity="incident")]
     assert actions[:2] == ["incident.departments_changed", "incident.confirm"]

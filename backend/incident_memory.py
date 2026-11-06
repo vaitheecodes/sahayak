@@ -45,7 +45,7 @@ TOPIC_SIMILARITY = 0.75
 # for the model call.
 _GATE = re.compile(
     r"\b(outages?|incidents?|downtime|known (?:issue|problem)|service (?:issue|problem|disruption)"
-    r"|(?:were|was|is|are) (?:you|site24x7|it|everything|things|the service|monitoring) (?:down|broken)"
+    r"|(?:were|was|is|are) (?:you|it|everything|things|the service|the system|the app) (?:down|broken)"
     r"|(?:was|were) there (?:an?|any) (?:issue|problem|outage|incident|disruption)"
     r"|(?:did|has) (?:something|anything) (?:happen|go wrong|break))\b",
     re.IGNORECASE,

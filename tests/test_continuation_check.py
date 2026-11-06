@@ -21,8 +21,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend import graph, kb_retrieval  # noqa: E402
+from backend import graph  # noqa: E402
 from backend.ai_service import provider  # noqa: E402
+from tests import kb_fixture  # noqa: E402
 
 
 def _invoke_is_continuation(monkeypatch, response_json, message_text, prior_ai_response):
@@ -43,22 +44,22 @@ def test_continuation_true_is_parsed(monkeypatch):
         monkeypatch,
         json.dumps({"is_continuation": True}),
         "what is the differnce",
-        "A Website Monitor checks page load; a Transaction Monitor checks a user flow.",
+        "Casual leave is planned ahead; Sick leave can be applied for afterwards.",
     )
     assert result is True
     # grounding check: both the new message and the prior reply must
     # actually be in the prompt sent to the model
     user_content = call["messages"][1]["content"]
     assert "what is the differnce" in user_content
-    assert "Transaction Monitor" in user_content
+    assert "Sick leave" in user_content
 
 
 def test_continuation_false_is_parsed(monkeypatch):
     result, _ = _invoke_is_continuation(
         monkeypatch,
         json.dumps({"is_continuation": False}),
-        "separately, how do I install the agent on Ubuntu",
-        "A Website Monitor checks page load; a Transaction Monitor checks a user flow.",
+        "separately, how do I install the app on Android",
+        "Casual leave is planned ahead; Sick leave can be applied for afterwards.",
     )
     assert result is False
 
@@ -95,7 +96,7 @@ def test_escalation_language_detected(text):
     "text",
     [
         "what is the differnce",
-        "how do I install the agent on Ubuntu",
+        "how do I install the app on Android",
         "thanks, that worked",
     ],
 )
@@ -106,50 +107,49 @@ def test_no_escalation_language(text):
 # ---------------------------------------------------------------------------
 # retrieve_kb_candidates_for_continuation
 # ---------------------------------------------------------------------------
-@pytest.fixture(scope="module", autouse=True)
-def _require_silver_tables():
-    if kb_retrieval._load_index() is None:
-        pytest.skip("data/silver/*.parquet not found; run the pipeline first")
+@pytest.fixture()
+def kb():
+    kb_fixture.load()
 
 
-def test_continuation_retrieval_uses_the_customers_earlier_messages():
+def test_continuation_retrieval_uses_the_customers_earlier_messages(kb):
     """A short fragment alone ("what is the differnce") has almost no
     topic vocabulary; the customer's earlier messages carry the topic."""
     transcript = (
-        "Customer: I want to set up a website monitor\n"
-        "Agent (AI): A Website Monitor checks that your site loads.\n"
+        "Customer: I want to export the attendance report\n"
+        "Agent (AI): Attendance reports can be exported as CSV or Excel.\n"
         "Customer: what is the differnce"
     )
     candidates = graph.retrieve_kb_candidates_for_continuation(transcript)
     assert candidates
-    assert candidates[0]["category"] == "WEB_MONITORING"
+    assert candidates[0]["kb_entry_id"] == "KB-0006"
 
 
-def test_continuation_retrieval_never_searches_the_ai_reply():
-    """The AI's previous reply talks about installing the agent; the
-    customer only ever talked about website monitors. Retrieval follows
-    the customer, and the AI's wording can't raise any score."""
-    ai_reply = ("To install the Site24x7 agent, download the agent installer, run it "
-                "on the server and the agent starts reporting.")
-    customer_only = "Customer: I want to set up a website monitor\nCustomer: can you say more"
-    with_ai = ("Customer: I want to set up a website monitor\n"
-               f"Agent (AI): {ai_reply}\n1. Download the agent installer.\n2. Install the Site24x7 agent.\n"
+def test_continuation_retrieval_never_searches_the_ai_reply(kb):
+    """The AI's previous reply talks about installing the mobile app; the
+    customer only ever talked about the attendance report. Retrieval
+    follows the customer, and the AI's wording can't raise any score."""
+    ai_reply = ("To install the Brightdesk app on Android, search Google Play, install the "
+                "app and sign in.")
+    customer_only = "Customer: I want to export the attendance report\nCustomer: can you say more"
+    with_ai = ("Customer: I want to export the attendance report\n"
+               f"Agent (AI): {ai_reply}\n1. Open Google Play.\n2. Install the app on Android.\n"
                "Customer: can you say more")
     assert graph.retrieve_kb_candidates_for_continuation(with_ai) == \
         graph.retrieve_kb_candidates_for_continuation(customer_only)
-    assert all(c["intent"] != "agent_installation"
+    assert all(c["kb_entry_id"] != "KB-0002"
                for c in graph.retrieve_kb_candidates_for_continuation(with_ai))
 
 
-def test_continuation_retrieval_with_only_a_vague_fragment_finds_no_match():
-    transcript = ("Customer: hello\nAgent (AI): How do I install the Site24x7 agent? Download it.\n"
+def test_continuation_retrieval_with_only_a_vague_fragment_finds_no_match(kb):
+    transcript = ("Customer: hello\nAgent (AI): How do I install the app on Android? Use Google Play.\n"
                   "Customer: can you say more about that")
     assert graph.retrieve_kb_candidates_for_continuation(transcript) == []
 
 
-def test_continuation_retrieval_returns_dicts_shaped_like_normal_retrieval():
+def test_continuation_retrieval_returns_dicts_shaped_like_normal_retrieval(kb):
     candidates = graph.retrieve_kb_candidates_for_continuation(
-        "Customer: how do I install the Site24x7 agent\nAgent (AI): Download it.\n"
+        "Customer: how do I install the app on android\nAgent (AI): Use Google Play.\n"
         "Customer: can you say more about that")
     assert candidates
     for key in ("kb_entry_id", "category", "intent", "instruction", "response", "score"):

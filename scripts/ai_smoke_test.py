@@ -1,5 +1,7 @@
 """Run the 10 most important AI prompts against the configured provider
-and report invalid JSON / weak answers. Not a unit test: it calls the
+and report invalid JSON / weak answers. KB grounding comes from the
+database's approved entries (empty on a new install: the prompts then run
+without grounding). Not a unit test: it calls the
 real model (AI_PROVIDER and its credentials from .env).
 
     AI_PROVIDER=openai_compatible .ven/bin/python scripts/ai_smoke_test.py
@@ -46,51 +48,51 @@ def kb(text):
     return [KBCandidate(**c) for c in graph.kb_candidates_for(text)]
 
 
-AGENT_DOWN = "My Linux server monitor shows no data since 10:00. The agent service seems stopped."
+CLOCK_IN = "Clock-in on the app shows a location error since 10:00. I allowed location already."
 TRANSCRIPT = (
-    "Customer: My Linux server monitor shows no data since 10:00.\n"
-    "Agent (AI): Please restart the Site24x7 agent with `/etc/init.d/site24x7monagent restart`.\n"
-    "Customer: I restarted it, still no data. I need a human please."
+    "Customer: Clock-in on the app shows a location error since 10:00.\n"
+    "Agent (AI): Please allow location access for the app in your phone settings.\n"
+    "Customer: I allowed it, still the same error. I need a human please."
 )
 TICKETS = [
     CorrelationTicket(ticket_id=f"TCK-{i}", customer_ref=f"C{i}", created_at=f"2026-10-23T10:0{i}:00",
                       category=cat, subject=subj, details=det)
     for i, (cat, subj, det) in enumerate([
-        ("SERVER_MONITORING", "No data from server monitors", "All Linux servers show no data since 10:00 IST."),
-        ("AGENT", "Agent not reporting", "Windows agent stopped reporting around 10:05, restarted, no change."),
-        ("SERVER_MONITORING", "Monitors in unknown state", "Server monitors went grey (unknown) at 10:02."),
+        ("ISSUE", "Clock-in location error", "Nobody in our office can clock in since 10:00 IST."),
+        ("SETUP", "App asks for location again", "The app keeps asking for location around 10:05, allowed, no change."),
+        ("ISSUE", "Clock-in fails on Android", "Clock-in shows 'location not available' at 10:02."),
     ])
 ]
-DEPTS = [DepartmentOption(name="Infrastructure", categories=["SERVER_MONITORING", "AGENT"])]
+DEPTS = [DepartmentOption(name="Product Support", categories=["ISSUE", "SETUP"])]
 
 CASES = [
     ("1 categorize (clear)", lambda: categorize_ticket.categorize_ticket(
-        CategorizeInput(ticket_text=AGENT_DOWN, kb_candidates=kb(AGENT_DOWN)))),
+        CategorizeInput(ticket_text=CLOCK_IN, kb_candidates=kb(CLOCK_IN)))),
     ("2 categorize (billing, high-risk)", lambda: categorize_ticket.categorize_ticket(
         CategorizeInput(ticket_text="Please downgrade my plan and refund last month's invoice."))),
     ("3 chat answer", lambda: chat_response.answer(AnswerInput(
-        ticket_text="How do I set up an alert when CPU goes above 90%?",
-        kb_candidates=kb("alert CPU threshold"), customer_name="Asha"))),
+        ticket_text="How do I apply for leave next Friday?",
+        kb_candidates=kb("apply for leave"), customer_name="Asha"))),
     ("4 clarifying question", lambda: chat_response.clarify(ClarifyInput(
-        ticket_text="it is not working", kb_candidates=kb("monitor not working")))),
+        ticket_text="it is not working", kb_candidates=kb("not working")))),
     ("5 is_continuation", lambda: chat_response.is_continuation(ContinuationInput(
         message="what's the difference between the two?",
-        prior_ai_response="You can use a Website monitor or a REST API monitor for this."))),
+        prior_ai_response="You can apply for casual leave or for sick leave."))),
     ("6 escalation summary", lambda: summarize_conversation.summarize_escalation(
         TRANSCRIPT, "The customer asked for a human agent.")),
     ("7 suggested steps", lambda: suggest_steps.suggest_steps(SuggestStepsInput(
-        summary=summarize_conversation.fallback_handoff(AGENT_DOWN, "customer request"),
-        category="AGENT", kb_candidates=kb(AGENT_DOWN)))),
+        summary=summarize_conversation.fallback_handoff(CLOCK_IN, "customer request"),
+        category="ISSUE", kb_candidates=kb(CLOCK_IN)))),
     ("8 correlate incidents", lambda: correlate_incidents.correlate_incidents(
         CorrelateInput(tickets=TICKETS, departments=DEPTS, window_hours=12))),
     ("9 incident summary", lambda: summarize_incident.summarize_incident(SummarizeIncidentInput(
-        title="Server monitors not collecting data", tickets=TICKETS,
-        observed_facts=["3 customers report no data from 10:00"], hypotheses=["Collector issue"]))),
+        title="Clock-in location errors", tickets=TICKETS,
+        observed_facts=["3 customers report clock-in errors from 10:00"], hypotheses=["Geofence service issue"]))),
     ("10 post-incident draft", lambda: draft_post_incident.draft_post_incident(PostIncidentFacts(
-        title="Server monitors not collecting data", category="SERVER_MONITORING",
+        title="Clock-in location errors", category="ISSUE",
         started_at_ist="23 Oct 2026, 10:00 IST", resolved_at_ist="23 Oct 2026, 11:15 IST",
-        common_symptoms=["No data from server monitors"], affected_services=["Server monitoring"],
-        observed_facts=["3 customers reported no data"], resolution_note="Restarted the stalled collectors.",
+        common_symptoms=["Location error at clock-in"], affected_services=["Attendance"],
+        observed_facts=["3 customers reported clock-in errors"], resolution_note="Restarted the geofence service.",
         root_cause=None, affected_customer_count=3, affected_ticket_count=3))),
     ("11 incident question", lambda: incident_question.parse_incident_question(IncidentQuestionInput(
         message="were you down yesterday around 3pm?", now_ist="2026-10-23T12:00:00+05:30",

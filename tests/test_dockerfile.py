@@ -9,7 +9,7 @@ import fnmatch
 import re
 from pathlib import Path
 
-from backend import db_postgres, kb_new_entries, kb_registry, kb_retrieval
+from backend import db_postgres
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
@@ -44,8 +44,7 @@ def _in_context(path: str) -> bool:
 
 def test_runtime_files_are_copied_and_allowed():
     copied = _copied()
-    for path in (kb_retrieval.KB_PATH, kb_new_entries.NEW_ENTRIES_PATH, kb_registry.REGISTRY_PATH,
-                 db_postgres.MIGRATIONS_DIR):
+    for path in (db_postgres.MIGRATIONS_DIR,):
         rel = path.relative_to(ROOT).as_posix()
         assert any(rel == c.rstrip("/") or rel.startswith(c.rstrip("/") + "/") for c in copied), rel
     for source in copied:
@@ -56,7 +55,7 @@ def test_runtime_files_are_copied_and_allowed():
 
 def test_secrets_and_local_state_stay_out_of_the_context():
     for path in (".env", "backend/.env", "frontend/.env", "backend/ticketapp.db", "backend/uploads/x.png",
-                 "backend/__pycache__/main.cpython-313.pyc", "data/raw/Site24x7.csv", "tests/conftest.py"):
+                 "backend/__pycache__/main.cpython-313.pyc", "data/raw/source.csv", "tests/conftest.py"):
         assert not _in_context(path), path
 
 

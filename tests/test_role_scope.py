@@ -148,7 +148,7 @@ def test_staff_can_try_a_ticket(client, monkeypatch, role):
     class _Graph:
         def invoke(self, state):
             seen.append(state)
-            return {**state, "category": "AGENT", "confidence": 0.9, "route": "ai"}
+            return {**state, "category": "SETUP", "confidence": 0.9, "route": "ai"}
 
     monkeypatch.setattr(runtime, "get_graph", lambda: _Graph())
     res = _call(client, TRY_A_TICKET, _demo(client, role))

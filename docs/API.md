@@ -43,8 +43,8 @@ There is no signup for staff or the admin: the admin is created from
 
 | Method & path | Role | Response |
 |---|---|---|
-| `GET /meta` | public | `{status_labels:{open, in_progress, pending_customer, resolved, closed}, categories:[...], kb_entries}` (`kb_entries`: how many KB entries loaded, a count only) |
-| `GET /categories` | public | `["ACCOUNT", "AGENT", ...]` (the 17 KB categories) |
+| `GET /meta` | public | `{status_labels:{open, in_progress, pending_customer, resolved, closed}, categories:[...], category_labels:{NAME: label}, product:{name, support_team_name}, kb_entries}` (`kb_entries`: how many approved KB entries are searched, a count only; 0 on a new install) |
+| `GET /categories` | public | `["ACCOUNT", "BILLING", ...]` (the confirmed categories, data in `kb_categories`) |
 | `GET /public/routing-policy` | public, read-only | live routing policy: thresholds, high-risk categories, escalation tags, max clarifying rounds, decision order (the `/docs/routing-policy` page). `GET /debug/routing-policy` is the older path, same response. |
 
 ## AI chat (customer)
@@ -151,14 +151,15 @@ and the account must change it at first sign-in.
 | `GET /admin/departments` | — | `{departments:[{department_id, name, categories, manager_ids}], categories}` |
 | `POST /admin/departments` · `PUT /admin/departments/{id}` | `{name, categories}` | a category may belong to one department only |
 | `DELETE /admin/departments/{id}` | — | its managers are left without a department |
-| `GET /admin/settings` | — | `{sections:{routing, incidents, statuses, sla}, defaults, categories, language_tags}` |
-| `PUT /admin/settings/{routing\|incidents\|statuses\|sla}` | the whole section as JSON | validated; 422 with reasons |
+| `GET /admin/settings` | — | `{sections:{product, routing, incidents, statuses, sla}, defaults, categories, language_tags}` |
+| `PUT /admin/settings/{product\|routing\|incidents\|statuses\|sla}` | the whole section as JSON | validated; 422 with reasons |
 | `DELETE /admin/settings/{section}` | — | back to env/default values |
 | `GET /admin/audit?entity=&entity_id=&action=&actor_id=&since=&until=&limit=&offset=` | — | `{total, events:[{id, actor_id, actor_name, action, entity, entity_id, detail, at}]}`; `action` is a prefix match |
 | `GET /admin/chats/{session_id}` | — | Chat state (status, categories, route, clarification count, escalated ticket), `message_counts` by role, and `ai_failures:[{at, kind, code, attempts, latency_ms, operation, outcome}]`. No message text. 404 unknown chat |
 
 Settings sections:
 
+- `product`: `{name (may be empty: prompts then say "the product"), description, support_team_name}`
 - `routing`: `{confidence_threshold, high_risk_confidence_threshold, high_risk_categories:[...], escalation_language_tags:[...], max_clarification_attempts}`
 - `incidents`: `{window_hours, min_tickets, similarity, routing_confidence}`
 - `statuses`: `{open, in_progress, pending_customer, resolved, closed}` (labels)

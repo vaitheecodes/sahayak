@@ -1,121 +1,82 @@
-# ticketapp-ai
+# Sahayak
 
-A small-scale clone of an enterprise AI customer-experience platform
-(inspired by Thunai.ai), built as a portfolio project for AWS Data
-Engineering / AI Engineering roles.
+An AI help desk for any product: ticketing, AI chat, a technician
+workspace, incident correlation and an admin console, plus a generic KB
+ingester (`kb_ingester/`, being built) and a mobile app (`mobile/`,
+untracked, not part of this work). Started as a copy of ticketapp-ai-aws
+@ b77e159; never edit `../ticketapp-ai-aws`.
 
 ## Project goal
 
-Two layers:
+The first client's product (a third-party HRMS) is unknown to us, so the
+core is product-neutral: the product's name, categories, terms and
+knowledge base are data, never code.
 
-1. **Data layer (done)** — a bronze → silver → gold pipeline that turns a
-   public LLM instruction-tuning dataset into data shaped like a real
-   support ticketing platform's operational tables.
-2. **AI help desk (built)** — `backend/` + `frontend/`: a Zoho-Desk-style
-   help desk with an AI support chat, email-style tickets, technician
-   workspace, AI incident correlation for managers, and an admin console
-   (four roles, Azure OpenAI, SQLite). Built to the user's master spec
-   (`HELPDESK_MASTER_SPEC.md`, kept outside the repo) via a staged plan; user-facing docs are in
-   `README.md`, the API in `docs/API.md`.
-   - `src/agent/` — the original stub/eval-oriented LangGraph skeleton,
-     meant for offline deflection-rate evaluation on the gold dataset's
-     held-out split (not wired to a real LLM; separate from the app).
+1. **Neutral core (done, Stage 1)** — no product data, wording or
+   vocabulary in code or prompts; Sahayak starts with an EMPTY KB.
+   - Product profile: app_settings section `product` (name, one-line
+     description, support team name; `backend/product.py`). Prompts say
+     `product.described()` ("Brightdesk HR (an HR management system)"),
+     or "the product" while unnamed. Admin: Settings → Product.
+   - Categories: rows in `kb_categories` (`backend/categories.py`),
+     seeded once with ACCOUNT, BILLING, DATA, SETUP, USAGE, ISSUE,
+     INTEGRATION, OTHER; only `confirmed` ones are used; cached per
+     process (`load()` at startup). The classifier's schema is narrowed to
+     them at call time (`schemas.with_categories`). Default high-risk:
+     whichever of ACCOUNT / BILLING / DATA exist. Default departments:
+     Product Support, Accounts & Billing, General.
+   - KB in the database (`backend/kb_store.py`): see "Knowledge base"
+     below. No order lookup (the e-commerce `orders` mock is gone;
+     `0003_kb.sql` drops it).
+   - Test fixture: `tests/fixtures/kb/brightdesk.json`, a fictional HR
+     product (10 entries, 7 terms). `tests/kb_fixture.load()` puts it in
+     memory (call it after a TestClient has started: startup reloads
+     settings); conftest gives every test an empty KB and no terms.
+     `tests/test_product_neutral.py` fails if product words (Site24x7,
+     monitor, APM, ...) reappear in code, prompts, migrations or frontend.
+2. **Generic KB ingester (next)** — sources (URL, then site crawl,
+   forums, TXT/MD/PDF upload, pasted text; resolved tickets later) ->
+   safe fetch -> clean -> chunk by headings -> model-drafted entries whose
+   every step is backed by a quoted passage (a second model check for
+   how-to steps) -> drafts with near-duplicate and changed-source flags ->
+   review in the web app. Managers manage sources/runs and approve or
+   reject; technicians edit drafts and propose terms; the admin stays
+   minimal. Every run shows its estimated model calls first and stops at a
+   per-run and per-day cap. Adding a source needs a stored confirmation
+   (who, when) that the content is public / allowed. Planned order: a
+   minimal URL -> draft -> review slice first, then crawl, forums and
+   sitemaps.
 
-## Data layer: pipeline architecture
+## Knowledge base (`backend/kb_store.py`)
 
-```
-data/raw/                    Site24x7_*.csv  (source of truth, untouched)
-      |
-      v
-[01_bronze_ingest.py]        add lineage columns only, no business logic
-      |
-      v
-data/bronze/ingest_date=YYYY-MM-DD/   raw.parquet + _manifest.json
-      |
-      v
-[02_silver_transform.py]     the core data engineering work
-      |
-      v
-data/silver/    tickets.parquet, resolutions.parquet (1:1, FK on ticket_id)
-      |
-      v
-[03_gold_load.py]            load + aggregate + re-emit for the lake
-      |
-      v
-data/gold/warehouse.duckdb   tickets, resolutions + 3 CX views
-data/gold/parquet/           Hive-partitioned (ticket_month / category)
-```
+Tables (SQLite in `backend/db.py` SCHEMA, Postgres in
+`migrations/postgres/0003_kb.sql`): `kb_entries` (title, answer, kind,
+handling, collect, category, source_url / document / chunk / chunk_hash,
+stale, supersedes, duplicate_of, status draft|approved|rejected|retired,
+reviewer, version), `kb_entry_questions`, `kb_entry_steps` (text + the
+quote it is backed by + support_check), `kb_terms` (label, kind
+module|variant|platform|integration|edition, aliases, pattern built from
+them, status proposed|confirmed|rejected), `kb_entry_terms`,
+`kb_categories`, and for the ingester `kb_sources` (with
+`public_confirmed_by/_at`), `kb_ingest_runs` (estimated / capped / used
+model calls, stop_reason, counts), `kb_documents` (hash only, never the
+page), `kb_chunks` (text purged after review/retention).
 
-- `src/pipeline/config.py` — shared paths + reference data: flag legend,
-  the 17-category / 27-intent enum (`CATEGORY_INTENTS`), high-risk
-  categories (`HIGH_RISK_CATEGORIES`), AI-friendly vs human-leaning
-  intent sets used to bias synthetic `resolved_by`.
-- `src/pipeline/placeholder_fill.py` — the dataset has exactly one
-  placeholder entity, `{{monitor name}}` / `{{Monitor Name}}` (case
-  varies, same entity), filled from a pool of realistic Site24x7-style
-  monitor names (`Prod-WebServer-01`, `API-Gateway-EU`, ...), reusing
-  the same value per entity within a ticket regardless of case.
-- `src/pipeline/01_bronze_ingest.py` — raw CSV in, lineage columns
-  (`row_id`, `source_file`, `ingested_at`) added, `_manifest.json` emitted.
-- `src/pipeline/02_silver_transform.py` — decodes flags into
-  `language_tags`, fills placeholders, generates synthetic ticket
-  metadata (`created_at`, `channel`, `customer_id`, `priority`) and
-  resolution metadata (`resolved_by`, `resolution_status`,
-  `handle_time_seconds`, `csat_score`), tags every ticket with the
-  canonical KB entry it was drawn from via `kb_entry_id` (see "Dataset"
-  below — this dataset's duplication is a generation artifact, not a
-  repeat-contact signal, so there's no `duplicate_of_ticket_id` here).
-  Seeded (42) for reproducibility.
-- `src/pipeline/03_gold_load.py` — loads silver into DuckDB, builds
-  `v_daily_volume_by_channel`, `v_deflection_rate_by_intent`,
-  `v_handle_time_csat_by_category`, re-emits Hive-partitioned Parquet.
-- `tests/test_data_quality.py` — 33 pytest checks over the pipeline output.
-- `notebooks/databricks_pipeline.py` — optional PySpark port of the
-  silver transform (secondary artifact, not the primary pipeline).
-
-Full design-decision rationale (why synthetic fields are shaped the way
-they are, S3/Athena extension path) lives in `README.md` — this file is
-the short orientation summary, not a replacement for it.
-
-## Schema
-
-`tickets` (`data/gold/warehouse.duckdb`): `ticket_id` (`TCK-1NNNNN`),
-`created_at`, `channel` (email/chat/voice), `customer_id`, `category`,
-`intent`, `instruction_text`, `instruction_entities`, `priority`
-(low/medium/high/urgent), `language_tags` (list, decoded from the
-`flags` column), `kb_entry_id` (`KB-NNNN`, one of the 386 canonical
-source instructions this ticket's text was drawn from).
-
-`resolutions`: `ticket_id` (FK), `response_text`, `response_entities`,
-`resolved_by` (ai/human), `resolution_status`
-(resolved/escalated/pending), `handle_time_seconds`, `csat_score`
-(1–5, null for pending).
-
-17 categories / 27 intents, defined in
-`src/pipeline/config.py:CATEGORY_INTENTS` (ALERTS, MONITORING,
-INTEGRATION, AGENT, WEB_MONITORING, CONTAINERS, SERVER_MONITORING,
-APPLICATION_MONITORING, LOGS, APM, SNMP, NETFLOW, CLOUD, ACCOUNT, DATA,
-REPORTING, SUPPORT) — genuine Site24x7 support topics (monitor
-setup/troubleshooting, alerting, integrations, licensing, data
-retention). High-risk categories (`HIGH_RISK_CATEGORIES`, stricter
-confidence bar before auto-resolving): ACCOUNT and DATA — licensing/
-billing changes and data retention/deletion are the closest equivalent,
-for a monitoring product, to "irreversible or consequential if wrong."
-
-26,872 total ticket rows, but only **386 unique source instructions**
-(each duplicated ~5x under different `flags` values as a
-dataset-generation artifact, not independent tickets) — the real
-knowledge-base size is 386 Q&A pairs, tracked per-ticket via
-`kb_entry_id`. The dataset's only entity placeholder is
-`{{monitor name}}` / `{{Monitor Name}}` (case varies, same entity),
-filled with synthetic Site24x7-style monitor names
-(`src/pipeline/placeholder_fill.py`).
+- Only approved entries are searched; each question is a search
+  document and each entry one topic. Every KB write ends with
+  `kb_store.changed()` (drops the retrieval and term caches; one worker).
+- An entry's `response` for grounding is its answer plus numbered steps
+  (`kb_store.response_text`).
+- Packs (JSON: approved entries + confirmed terms) move a reviewed KB
+  between environments: `scripts/kb_import.py PACK.json` (typed "yes",
+  all-or-nothing) / `--export OUT.json`.
+- Startup prints `KB: <n> entries loaded from the database`; 0 is a
+  warning, not an error, and `scripts/aws_smoke.py` reports it.
 
 ## Ticket Resolution Agent — live app (`backend/`, `frontend/`)
 
-A four-role app (customer / technician / manager / admin) on top of the
-same routing policy as `src/agent/`, with real persistence, auth and LLM
-calls. The bullets below are the detailed design notes per area; the
+A four-role app (customer / technician / manager / admin) with real
+persistence, auth and LLM calls. The bullets below are the detailed design notes per area; the
 end-to-end journey is pinned by `tests/test_e2e_helpdesk.py` (real
 pipeline, scripted model).
 
@@ -139,7 +100,7 @@ FastAPI backend (backend/main.py, :8000)
   /api/public/incidents                       public: visibility=public history
   /api/admin/{tickets,technicians,staff,customers,
               departments,settings,audit}            admin (backend/admin.py)
-  /api/meta                                   public: status labels, categories
+  /api/meta                                   public: status labels, categories + labels, product name
   /api/public/routing-policy                  public, read-only (/docs); /api/debug/... alias
         |
         v
@@ -147,79 +108,50 @@ LangGraph pipeline (backend/graph.py)
   fetch_customer_history -> retrieve_kb_candidates -> classify_ticket
                                                      -> decide_route
                                                               |
-                        {lookup_order -> generate_response |
+                        {generate_response |
                          ask_clarifying_question | human_queue}
         |
         v
 SQLite (backend/ticketapp.db, auto-created, gitignored)
   customers / staff / admins / tickets / ticket_messages / attachments /
-  orders / departments / audit_events / app_settings / chat_* / incident_*
-  (incl. incident_deliveries, incident_memory)
+  departments / audit_events / app_settings / chat_* / incident_*
+  (incl. incident_deliveries, incident_memory) / kb_*
 ```
 
 - **KB grounding — `retrieve_kb_candidates`** (`backend/graph.py`,
   `backend/kb_retrieval.py`): runs before classification, on every
   turn. Scores the ticket text (only the customer-authored lines of a
-  multi-turn transcript — the AI's own prior questions are noise once
-  concatenated in) against the 386 canonical Site24x7 KB entries
-  (`data/silver/{tickets,resolutions}.parquet`, deduped by
-  `kb_entry_id`) via TF-IDF-weighted cosine similarity over word
-  tokens, with a stopword filter tuned for this corpus — the KB's
-  formally-phrased instructions ("how do I...") make generic filler
-  words ("want", "team", "go") anomalously *rare*, and therefore
-  anomalously high-IDF, unless stripped before scoring. The top 2-3
-  candidates ground three things that used to guess independently:
-  `classify_ticket`'s prompt (shown as few-shot category evidence, and
-  near-duplicate entries (same category/intent, answers >= 85% the same)
-  collapse into one topic so the top results are distinct (386 entries ->
-  27 topics), a best match below `KB_MIN_SCORE` (default 0.35) is no match
-  (the answer prompt then asks one question or offers a ticket), and
-  hand-written entries in `data/kb/new_entries.json` are loaded when
-  valid and `status: approved` (`backend/kb_new_entries.py`,
-  `scripts/validate_kb.py`, `docs/KB_ENTRY_TEMPLATE.md`; drafts and
-  `"example": true` entries never are; an entry's optional `kind`,
-  `how-to` / `troubleshooting`, beats the question-wording guess in the
-  how-to rule (`graph.answers_how_to`, `KBEntry.is_fault`); the
-  "Getting started (how-to)" drafts are covered by
-  `tests/test_kb_how_to_drafts.py`); `scripts/kb_review.py` is the
-  interactive approve/edit/reject/skip reviewer (typed "yes" to approve,
-  atomic save per decision; `--retag ID` changes an approved entry's
-  category/terms and `--edit ID` its answer/source_url without
-  re-approving (typed "yes"); new names that repeat an existing
-  one, any case, and empty or match-everything regexes are refused) and records each approved entry's category
-  and specific terms in `data/kb/kb_registry.json` (`backend/kb_registry.py`;
-  KB-only categories never become ticket categories); an approved entry with
-  `handling: escalate_with_info` that grounds a reply gets
-  `chat_response.info_request` (numbered steps from its answer, never a
-  question, then its `collect` list and a fixed safety note) and the chat /
-  ticket goes to the support team in the same turn (`needs_info`,
-  reason `kb_needs_info`);
-  an entry specific to an integration or monitor type the customer
-  hasn't mentioned (`backend/topic_terms.py`, by intent plus integration
-  names in the answer) never grounds a reply and is passed as an
-  "unconfirmed topic" to ask about (`graph.grounding_candidates`), and
-  one naming another variant of its intent than the customer did (the
-  Android guide for an iPad app, `topic_terms.names_another_variant`)
-  is skipped; the
-  category picked at chat/ticket start narrows grounding only, never
-  classification or routing; prompts never ask for identifiers (the AI
-  has no account access) but for monitor type, exact error, screen/step,
-  what was tried, and the chat filter swaps identifier requests for one;
-  a strong match — `kb_retrieval.STRONG_MATCH_SCORE` — raises its
-  returned confidence past a conservative raw LLM score, logged for
-  comparison); `ask_clarifying_question`'s prompt (names the *specific*
-  candidate intents/example questions it's choosing between, instead of
-  a free-floating meta-question about categories that don't exist);
-  and `generate_response`'s prompt (the top candidate's canonical
-  response as grounding, same pattern as order grounding below). No
-  embedding model is wired in (see the eval-track roadmap below) — this
-  is deliberately simple and dependency-free. Startup prints
-  `KB: <n> entries loaded`; production refuses to start with 0;
-  `/api/meta` has `kb_entries` (count only) and `scripts/aws_smoke.py`
-  fails on 0; `tests/test_kb_shipped.py` loads the KB from the image's
-  file set built from `git archive HEAD`. Covered by
-  `tests/test_kb_retrieval.py` and `tests/test_ask_clarifying_question.py`
-  (pure-function/stubbed-client tests, no live LLM calls).
+  multi-turn transcript; the latest message first, `graph.retrieval_query`)
+  against the approved entries' questions via TF-IDF-weighted cosine
+  similarity over word tokens, with a stopword filter (formally phrased
+  KB questions make filler words anomalously high-IDF). A best match
+  below `KB_MIN_SCORE` (default 0.35) is no match. The top 2-3
+  candidates ground `classify_ticket`'s prompt (few-shot category
+  evidence; a strong match, `kb_retrieval.STRONG_MATCH_SCORE`, raises a
+  conservative raw LLM confidence), `ask_clarifying_question`'s prompt
+  (the specific candidate topics), and `generate_response`'s prompt (the
+  top candidate's answer + steps). **Terms** (`backend/topic_terms.py`,
+  confirmed `kb_terms` only, none built in): an entry that applies to a
+  term the customer hasn't mentioned never grounds a reply and is passed
+  as an "unconfirmed topic" to ask about (`graph.grounding_candidates`);
+  one for another term of the same kind than the customer named (the
+  Android guide for an iPad) is skipped (`names_another_variant`).
+  Modules/variants (`topic_terms.SUBJECT_KINDS`) are "which part of the
+  product": `chat_response.subject_question()` lists them, and with none
+  confirmed there is nothing to ask. An entry's `kind` (how-to /
+  troubleshooting) beats the question-wording guess
+  (`request_kind.is_fault`). An approved entry with `handling:
+  escalate_with_info` that grounds a reply gets
+  `chat_response.info_request` (numbered steps, never a question, then
+  its `collect` list and a fixed safety note) and the chat / ticket goes
+  to the support team in the same turn (`needs_info`, reason
+  `kb_needs_info`). The category picked at chat/ticket start narrows
+  grounding only, never classification or routing; prompts never ask for
+  identifiers (the AI has no account access) but for the product area,
+  exact error, screen/step, what was tried, and the chat filter swaps
+  identifier requests for one. No embedding model. Covered by
+  `tests/test_kb_retrieval.py`, `tests/test_topic_terms.py`,
+  `tests/test_needs_info.py`, `tests/test_ask_clarifying_question.py`.
 
 - **decide_route's third branch — "clarify"** (`backend/graph.py`): a
   *non*-high-risk ticket below the base confidence bar doesn't escalate
@@ -235,13 +167,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   After `MAX_CLARIFICATION_ATTEMPTS` (3) rounds still below the bar,
   `decide_route` forces `human` and the chat escalates through the same
   `summarize_case()` path as an abusive-customer mid-chat escalation.
-  **High-risk categories (ACCOUNT/DATA) below their stricter 90% bar
+  **High-risk categories (default ACCOUNT/BILLING/DATA) below their stricter 90% bar
   never get KB-topic clarification or an AI answer**: an
   `escalate_with_info` KB entry gives its steps + collect list + safety
   note and raises the ticket; a vague first report (`clarification_attempts`
   0, not a how-to, no error reported) gets ONE question
-  (`chat_response.clarify` with `high_risk`: which login, what is on the
-  screen, what a vague phrase meant; no KB topics, no causes), and the
+  (`chat_response.clarify` with `high_risk`: where they sign in, what is
+  on the screen, what a vague phrase meant; no KB topics, no causes), and the
   next turn still below the bar goes to a human; anything else goes to a
   human immediately — checked *before* the clarify branch (even
   mid-clarification, discovering a ticket is actually high-risk and still
@@ -249,20 +181,20 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   (`backend/request_kind.py`: add / set up / configure, no fault words)
   is never asked "are you referring to...?". It gets at most ONE fixed
   question (`graph.how_to_question`, no model call, checked right after
-  the escalation-tag override): with no subject at all ("how to add the
-  monitor") which kind of monitor (`HOW_TO_TYPE_QUESTION`), or, when the
-  only guides on its subject are registered as specific to something not
-  named (e.g. `agent_installation` -> Linux / Windows in
-  `kb_registry.json`; `topic_terms.PLATFORMS`), which one. Once asked
-  (`asked_how_to_question`, found in the transcript) it is never asked
-  again, and the answer ("a website", "not sure") is still the how-to.
+  the escalation-tag override): with no subject at all ("how do I add
+  it") what exactly and in which part of the product
+  (`HOW_TO_SUBJECT_QUESTION` with the confirmed modules, or
+  `HOW_TO_GENERIC_QUESTION`), or, when the only guides on its subject
+  apply to terms not named (the Android / iOS app guides), which one.
+  Once asked (`asked_how_to_question`, found in the transcript) it is
+  never asked again, and the answer ("an expense claim", "not sure") is
+  still the how-to.
   Otherwise `generate_response` answers from a how-to KB entry on the
   customer's subject (`graph.on_customer_subject`: half the customer's
   words, or a strong match whose question names their main subject, so
-  extra words don't hide a guide while "an SLA report for my website"
-  isn't the website-check entry; reviewed `kind: how-to` guides rank
-  first; troubleshooting entries never ground it, and filled-in monitor
-  names like "App-Server-04" aren't indexed), or, with none, says "I
+  extra words don't hide a guide while "an overtime report for leave
+  approvals" isn't the apply-for-leave entry; `kind: how-to` guides rank
+  first; troubleshooting entries never ground it), or, with none, says "I
   don't have a guide for that yet" and raises the ticket
   (`NO_KB_REPLY_*`, no model call, `needs_info.reason = "kb_no_match"`,
   `graph.handoff_reason`). Flows: `tests/test_how_to_flow.py`. Steps in an answer that the top KB entry
@@ -274,28 +206,6 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   round has status `pending_customer` (distinct from `open`, which means
   waiting on the support team). Covered by `tests/test_decide_route.py` (pure-function
   tests, no LLM calls).
-
-- **Order grounding — `lookup_order`** (`backend/graph.py`): before
-  `generate_response` runs (ai branch only), `lookup_order` checks the
-  ticket text for an explicit `ORD-XXXXX` pattern and queries the mock
-  `orders` table (`backend/seed_data.py`, ~80 Faker-seeded rows,
-  auto-seeded once by `db.init_db()`; a few fixed demo emails —
-  `demo@example.com`/`customer@example.com`/`test@example.com` — get
-  extra orders so a tester has real matches without hunting through
-  seeded data). **`_ORDER_RELATED_CATEGORIES` is intentionally empty**
-  — none of Site24x7's 17 categories are order/e-commerce related, so
-  unlike the old Bitext-era version (which inferred "probably about an
-  order" from category alone and asked every such ticket to verify
-  identity), this only fires on a literal order number in the text; it
-  never leaks an order-lookup/identity-verification prompt into an
-  unrelated MONITORING/AGENT/ALERTS/INTEGRATION request. The result (a
-  real record, a "not found", or "no order number given") is passed
-  into `generate_response`'s prompt as the only source of truth for
-  order facts — the prompt explicitly forbids inventing a tracking
-  number, delivery date, or status not present in that context, and
-  instructs an honest "I can't verify that" instead of a
-  plausible-sounding guess on a miss. Covered by
-  `tests/test_kb_retrieval.py`.
 
 - **AI chat = chat sessions, separate from tickets** (`backend/chats.py`,
   `frontend/src/components/ChatSession.jsx`; reconcile sub-stage A).
@@ -354,7 +264,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   makes answerable. A cheap, targeted LLM call (`prior AI reply` +
   `new message` -> `{"is_continuation": bool}`) decides this; a true
   result skips classify_ticket/decide_route entirely for that turn and
-  calls `lookup_order` + `generate_response` directly, grounded via
+  calls `generate_response` directly, grounded via
   `retrieve_kb_candidates_for_continuation` (searches on the prior
   reply's own content, not just the uninformative new fragment — the
   same signal-to-noise problem `retrieve_kb_candidates`'s stopword
@@ -391,7 +301,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `generate_response`/`ask_clarifying_question` get
   `reply_format='email'`: the LLM writes only the body and
   `email_utils.format_email_reply` adds "Hi <first name>," + closing +
-  "Regards, Site24x7 Support Team"; AI replies are also emailed via
+  "Regards, Support Team"; AI replies are also emailed via
   `email_utils.send_email` when SMTP is configured (silent no-op
   otherwise, sent as a BackgroundTask). A pipeline failure on a new ticket
   still creates it, queued for a human. **Attachments**
@@ -472,18 +382,15 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   the old stylesheets, imported into a lower cascade layer
   (`src/styles/legacy/`) until they are converted.
 
-- **Routing policy** (`backend/graph.py`) starts from the same
-  thresholds as `src/agent/state.py` + `src/agent/nodes/decide_route.py`
-  (base confidence 75%, high-risk categories ACCOUNT/DATA need ≥90%),
-  but where the original always escalated below that bar, the
-  live app's `decide_route` now tries `clarify` first for non-high-risk
-  categories (see above) — high-risk categories below their bar still
+- **Routing policy** (`backend/graph.py`): base confidence 75%,
+  high-risk categories (default ACCOUNT/BILLING/DATA) need ≥90%;
+  `decide_route` tries `clarify` first for non-high-risk categories
+  (see above) — high-risk categories below their bar still
   escalate immediately, and `offensive_language`/`negation`/
   `coordinated_syntax` language tags force immediate escalation
-  regardless of confidence, category, or clarification state. Since real
-  tickets arrive with no pre-decoded flags (unlike the gold dataset),
+  regardless of confidence, category, or clarification state.
   `classify_ticket` runs a small regex heuristic to populate
-  `language_tags` itself. `/api/public/routing-policy`'s `decision_order`
+  `language_tags`. `/api/public/routing-policy`'s `decision_order`
   (shown live at `/docs/routing-policy`, public; `/debug` redirects there)
   is the source of truth for the exact precedence — read from
   `graph.py`'s constants, not hardcoded in the frontend.
@@ -553,7 +460,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   (`POST /api/incidents/run`): tickets from the last
   `INCIDENT_WINDOW_HOURS` (not in a dismissed cluster) are grouped by
   component area — the department owning their category (the classifier
-  often splits one outage across AGENT/SERVER_MONITORING), else the
+  often splits one outage across SETUP/ISSUE), else the
   category — optionally split by embedding similarity
   (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, `INCIDENT_SIMILARITY`). Groups
   with `INCIDENT_MIN_TICKETS`+ tickets from 2+ customers go to
@@ -589,7 +496,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   echo the saved text; each linked ticket is delivered in its own
   transaction with an `incident_deliveries` row (sent tickets skipped,
   failures recorded, re-send retries failures only), posted as a public
-  `staff` message with no author (shown as "Site24x7 Support Team",
+  `staff` message with no author (shown as "Support Team",
   `incident_update` flag in the customer thread); real email only via
   `Outbox` when `EMAIL_ENABLED`. Optional mark-Resolved via
   `ticket_lifecycle`; never close/merge. `incident_memory.remember()`
@@ -727,37 +634,16 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 
 ## Status
 
-**Done:** full bronze/silver/gold pipeline, DuckDB warehouse + CX views,
-data-quality test suite, exploratory notebook. The AI help desk
-(`backend/` + `frontend/`): roles and auth, AI chat sessions with
-resolution/escalation, email-style tickets with attachments, technician
-workspace (claim, public replies, internal notes, history), modular
-validated AI service, AI incident correlation with manager review, admin
-console (accounts, departments, settings, audit log). Covered by the
-pytest suite including an end-to-end journey test; each portal was also
-checked in a browser against the live Azure OpenAI deployment. Known
-limitations are listed in `README.md`.
+**Done:** the AI help desk (`backend/` + `frontend/`): roles and auth, AI
+chat sessions with resolution/escalation, email-style tickets with
+attachments, technician workspace, modular validated AI service, AI
+incident correlation with manager review, admin console. **Stage 1 of
+Sahayak:** product-neutral core, categories and product profile as data,
+KB and terms in the database (empty by default), neutral test fixture;
+the suite is green on SQLite and on Postgres (`DB_BACKEND=postgres
+TEST_DATABASE_URL=...`; locally `PG_LOCAL_PORT=5434 scripts/pg_local.sh
+start`, as 5433 may be ticketapp-ai-aws's server).
 
-**Next — `src/agent/` eval track** (separate from the live app above,
-still open):
-
-1. ✅ LangGraph skeleton with stub nodes (`src/agent/`) — routing logic
-   on dummy data, no Bedrock calls yet.
-2. ⬜ KB/held-out split — split the **386 unique `kb_entry_id` values**
-   80/20 first, then map tickets back to a `split` column, so
-   retrieval never sees a test ticket's own gold response. Must split
-   on `kb_entry_id`, not raw ticket rows: since ~98% of rows are one of
-   386 canonical instructions duplicated ~5x under different `flags`
-   values, splitting on rows would put near-duplicate flag-variants of
-   the same question on both sides of the split and make the eval
-   meaningless.
-3. ⬜ Wire in real Bedrock Claude calls for classification and
-   generation (RAG grounded in retrieved KB entries) — or retire this
-   track in favor of the live app's Azure OpenAI pipeline above.
-4. ⬜ `notebooks/eval.ipynb` — run the held-out set through the agent,
-   report deflection rate, simulated handle time, and an LLM-judge
-   quality score (logged, not gating).
-
-Graph shape (`src/agent/`): `ingest_ticket → classify_intent →
-retrieve_knowledge → decide_route → {generate_response | escalate} →
-log_outcome`. Same routing policy as the live app's `decide_route`.
+**Next:** the KB ingester vertical slice (one URL -> safe fetch -> clean
+-> chunk -> draft entries -> review list with approve/reject), shown to
+the user before crawl, forum detection and sitemaps.

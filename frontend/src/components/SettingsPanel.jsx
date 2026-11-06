@@ -90,6 +90,7 @@ function Section({ title, description, section, data, onSaved, children }) {
 
 export default function SettingsPanel() {
   const [payload, setPayload] = useState(null);
+  const [product, setProduct] = useState(null);
   const [routing, setRouting] = useState(null);
   const [incidents, setIncidents] = useState(null);
   const [statuses, setStatuses] = useState(null);
@@ -97,6 +98,7 @@ export default function SettingsPanel() {
 
   function apply(next) {
     setPayload(next);
+    setProduct(next.sections.product);
     setRouting(next.sections.routing);
     setIncidents(next.sections.incidents);
     setStatuses(next.sections.statuses);
@@ -116,6 +118,23 @@ export default function SettingsPanel() {
 
   return (
     <div className="settings-grid">
+      <Section
+        title="Product"
+        description="The product this help desk supports. The AI names it in its replies and uses the description to understand requests."
+        section="product"
+        data={product}
+        onSaved={apply}
+      >
+        <TextField label="Product name" value={product.name} maxLength={80}
+          hint="Leave empty until it is known: the AI then says “the product”."
+          onChange={(v) => setProduct({ ...product, name: v })} />
+        <TextField label="One-line description" value={product.description} maxLength={200}
+          hint="For example: an HR management system."
+          onChange={(v) => setProduct({ ...product, description: v })} />
+        <TextField label="Support team name" value={product.support_team_name} maxLength={80} required
+          onChange={(v) => setProduct({ ...product, support_team_name: v })} />
+      </Section>
+
       <Section
         title="Escalation conditions"
         description="How the AI decides between answering, asking a clarifying question and handing a request to a person."
@@ -193,6 +212,20 @@ export default function SettingsPanel() {
           ))}
         </div>
       </Section>
+    </div>
+  );
+}
+
+function TextField({ label, hint, value, onChange, maxLength, required = false }) {
+  const id = useId();
+  return (
+    <div className="field-group">
+      <label className="field-label" htmlFor={id}>
+        {label}
+      </label>
+      <input id={id} maxLength={maxLength} value={value} onChange={(e) => onChange(e.target.value)}
+        required={required} />
+      {hint && <p className="hint" style={{ margin: 0 }}>{hint}</p>}
     </div>
   );
 }

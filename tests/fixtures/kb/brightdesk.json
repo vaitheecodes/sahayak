@@ -1,0 +1,194 @@
+{
+  "_readme": "Neutral test fixture: a fictional HR product, 'Brightdesk HR'. Not a real product; every URL is on example.com. Loaded by tests/kb_fixture.py (in memory) or scripts/kb_import.py (into the database). Steps carry the passage they were drafted from, as ingested entries do.",
+  "product": {
+    "name": "Brightdesk HR",
+    "description": "an HR management system",
+    "support_team_name": "Brightdesk Support"
+  },
+  "terms": [
+    {"label": "Leave", "kind": "module", "aliases": ["leave", "time off", "vacation"]},
+    {"label": "Payroll", "kind": "module", "aliases": ["payroll", "payslip", "salary slip"]},
+    {"label": "Attendance", "kind": "module", "aliases": ["attendance", "clock in", "clock-in", "timesheet"]},
+    {"label": "Expenses", "kind": "module", "aliases": ["expense", "expense claim", "reimbursement"]},
+    {"label": "Android", "kind": "platform", "aliases": ["android"]},
+    {"label": "iOS", "kind": "platform", "aliases": ["ios", "iphone", "ipad"]},
+    {"label": "Slack", "kind": "integration", "aliases": ["slack"]}
+  ],
+  "entries": [
+    {
+      "kb_entry_id": "KB-0001",
+      "title": "Apply for leave",
+      "category": "USAGE",
+      "kind": "how-to",
+      "applies_to": ["Leave"],
+      "questions": [
+        "How do I apply for leave?",
+        "how to request time off in brightdesk",
+        "I want to apply for a vacation day, what are the steps?"
+      ],
+      "answer": "You apply for leave from the Leave page; your manager then approves or declines the request.",
+      "steps": [
+        {"text": "Open Leave from the left menu and click Apply Leave.", "quote": "open Leave from the left menu and click Apply Leave"},
+        {"text": "Pick the leave type and the dates, then click Submit.", "quote": "choose the leave type and the dates, then click Submit"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/leave/apply"
+    },
+    {
+      "kb_entry_id": "KB-0002",
+      "title": "Install the mobile app on Android",
+      "category": "SETUP",
+      "kind": "how-to",
+      "applies_to": ["Android"],
+      "questions": [
+        "How do I install the Brightdesk app on my Android phone?",
+        "set up the mobile app on android",
+        "where can I download the app for android"
+      ],
+      "answer": "The Android app is on Google Play; sign in with the same email you use on the web.",
+      "steps": [
+        {"text": "Open Google Play and search for Brightdesk HR.", "quote": "search for Brightdesk HR on Google Play"},
+        {"text": "Install the app and sign in with your work email.", "quote": "install the app and sign in with your work email"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/mobile/android"
+    },
+    {
+      "kb_entry_id": "KB-0003",
+      "title": "Install the mobile app on iOS",
+      "category": "SETUP",
+      "kind": "how-to",
+      "applies_to": ["iOS"],
+      "questions": [
+        "How do I install the Brightdesk app on my iPhone?",
+        "set up the mobile app on ios",
+        "where can I download the app for ipad"
+      ],
+      "answer": "The iOS app is on the App Store; sign in with the same email you use on the web.",
+      "steps": [
+        {"text": "Open the App Store and search for Brightdesk HR.", "quote": "search for Brightdesk HR on the App Store"},
+        {"text": "Install the app and sign in with your work email.", "quote": "install the app and sign in with your work email"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/mobile/ios"
+    },
+    {
+      "kb_entry_id": "KB-0004",
+      "title": "Payslip not visible",
+      "category": "ISSUE",
+      "kind": "troubleshooting",
+      "applies_to": ["Payroll"],
+      "questions": [
+        "My payslip is not showing for this month",
+        "can't see my salary slip",
+        "payslip missing in payroll"
+      ],
+      "answer": "Payslips appear only after payroll for the month is published by your HR team. If the month is published and the payslip is still missing, check the year filter on the Payslips page.",
+      "steps": [
+        {"text": "Open Payroll, then Payslips.", "quote": "go to Payroll and open Payslips"},
+        {"text": "Set the year filter to the current year.", "quote": "set the year filter to the current year"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/payroll/payslips"
+    },
+    {
+      "kb_entry_id": "KB-0005",
+      "title": "Unable to sign in",
+      "category": "ACCOUNT",
+      "kind": "troubleshooting",
+      "handling": "escalate_with_info",
+      "collect": ["the email address you sign in with", "a screenshot of the sign-in error"],
+      "questions": [
+        "I am unable to sign in to brightdesk",
+        "login fails with invalid credentials",
+        "cannot log in to my account"
+      ],
+      "answer": "Try the Forgot password link on the sign-in page first.\nIf that fails, take a screenshot of the error shown on the sign-in page.",
+      "steps": [],
+      "source_url": "https://help.example.com/brightdesk/account/sign-in"
+    },
+    {
+      "kb_entry_id": "KB-0006",
+      "title": "Export the attendance report",
+      "category": "USAGE",
+      "kind": "how-to",
+      "applies_to": ["Attendance"],
+      "questions": [
+        "How do I export the attendance report?",
+        "download timesheet report as excel",
+        "generate an attendance report for last month"
+      ],
+      "answer": "Attendance reports can be exported as CSV or Excel from the Reports page.",
+      "steps": [
+        {"text": "Open Attendance, then Reports.", "quote": "open Attendance and select Reports"},
+        {"text": "Pick the date range and click Export.", "quote": "pick the date range and click Export"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/attendance/reports"
+    },
+    {
+      "kb_entry_id": "KB-0007",
+      "title": "Connect Slack",
+      "category": "INTEGRATION",
+      "kind": "how-to",
+      "applies_to": ["Slack"],
+      "questions": [
+        "How do I connect Brightdesk to Slack?",
+        "set up the slack integration",
+        "send leave approvals to slack"
+      ],
+      "answer": "An admin connects Slack from the Integrations page; approvals are then posted to the chosen channel.",
+      "steps": [
+        {"text": "Open Settings, then Integrations, and click Connect next to Slack.", "quote": "go to Settings > Integrations and click Connect next to Slack"},
+        {"text": "Choose the channel for approvals and click Save.", "quote": "choose the channel for approvals and click Save"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/integrations/slack"
+    },
+    {
+      "kb_entry_id": "KB-0008",
+      "title": "Submit an expense claim",
+      "category": "USAGE",
+      "kind": "how-to",
+      "applies_to": ["Expenses"],
+      "questions": [
+        "How do I submit an expense claim?",
+        "claim a reimbursement for travel",
+        "add an expense with a receipt"
+      ],
+      "answer": "Expense claims are submitted from the Expenses page with the receipt attached.",
+      "steps": [
+        {"text": "Open Expenses and click New Claim.", "quote": "open Expenses and click New Claim"},
+        {"text": "Attach the receipt, enter the amount and click Submit.", "quote": "attach the receipt, enter the amount and click Submit"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/expenses/claim"
+    },
+    {
+      "kb_entry_id": "KB-0009",
+      "title": "Clock-in fails: location not available",
+      "category": "ISSUE",
+      "kind": "troubleshooting",
+      "applies_to": ["Attendance"],
+      "questions": [
+        "clock in fails with location not available",
+        "I cannot clock in, it says location error",
+        "attendance clock-in not working on the app"
+      ],
+      "answer": "Clock-in needs location access when your company uses geofencing. Allow location for the app in your phone settings and try again.",
+      "steps": [
+        {"text": "Allow location access for Brightdesk HR in your phone settings.", "quote": "allow location access for Brightdesk HR in your phone settings"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/attendance/location"
+    },
+    {
+      "kb_entry_id": "KB-0010",
+      "title": "Change the subscription plan",
+      "category": "BILLING",
+      "kind": "how-to",
+      "questions": [
+        "How do I change our subscription plan?",
+        "upgrade to the premium plan",
+        "downgrade the number of employee licences"
+      ],
+      "answer": "Only the account owner can change the plan, from Billing in Settings.",
+      "steps": [
+        {"text": "Open Settings, then Billing, and click Change Plan.", "quote": "open Settings > Billing and click Change Plan"}
+      ],
+      "source_url": "https://help.example.com/brightdesk/billing/plan"
+    }
+  ]
+}

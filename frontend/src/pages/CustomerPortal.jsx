@@ -135,7 +135,7 @@ function PreChatForm({ defaultName, categories, onStarted }) {
         <input
           id={issueId}
           maxLength={200}
-          placeholder="e.g. My Linux server monitor stopped reporting data"
+          placeholder="e.g. My payslip for this month is missing"
           value={issue}
           onChange={(e) => setIssue(e.target.value)}
           required
@@ -240,7 +240,7 @@ function RaiseTicketForm({ categories, onCreated }) {
         <textarea
           id={descriptionId}
           rows={6}
-          placeholder="What happened, which monitor or server, and what you've tried so far."
+          placeholder="What happened, where in the product, and what you've tried so far."
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           required

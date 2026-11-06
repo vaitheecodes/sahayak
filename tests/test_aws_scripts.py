@@ -16,8 +16,8 @@
 - every script stops at step 1 when the AWS profile is missing, and
   every `aws` call in them uses only options the real subcommand accepts
   (tests/fake_aws_options.json; the fake rejects anything else);
-- the smoke test's checks pass and fail on the right responses (incl.
-  an empty or unreported KB on /api/meta).
+- the smoke test's checks pass and fail on the right responses (an
+  empty KB is reported, an unreported one fails).
 """
 
 from __future__ import annotations
@@ -516,7 +516,7 @@ def _responses(overrides=None):
     good = {
         ("GET", FRONTEND + "/"): (200, {}, b'<html><div id="root"></div></html>'),
         ("GET", "https://api/health"): (200, {}, b'{"ok": true}'),
-        ("GET", "https://api/api/meta"): (200, {}, b'{"categories": ["ALERTS"], "kb_entries": 404}'),
+        ("GET", "https://api/api/meta"): (200, {}, b'{"categories": ["ISSUE"], "kb_entries": 404}'),
         ("OPTIONS", "https://api/api/auth/login"): (200, {"Access-Control-Allow-Origin": FRONTEND}, b""),
         ("POST", "https://api/api/auth/login"): (401, {}, b'{"detail": "Invalid"}'),
     }
@@ -534,12 +534,18 @@ def test_smoke_passes_on_good_responses(monkeypatch, capsys):
     (("OPTIONS", "https://api/api/auth/login"), (200, {"Access-Control-Allow-Origin": "https://other"}, b"")),
     (("POST", "https://api/api/auth/login"), (503, {}, b"")),
     (("GET", "https://api/health"), (502, {}, b"")),
-    (("GET", "https://api/api/meta"), (200, {}, b'{"categories": ["ALERTS"], "kb_entries": 0}')),
-    (("GET", "https://api/api/meta"), (200, {}, b'{"categories": ["ALERTS"]}')),  # an older image
+    (("GET", "https://api/api/meta"), (200, {}, b'{"categories": ["ISSUE"]}')),  # an older image
 ])
 def test_smoke_fails_on_bad_responses(monkeypatch, key, response):
     monkeypatch.setattr(aws_smoke, "_request", _responses({key: response}))
     assert aws_smoke.main(["--frontend", FRONTEND, "--api", "https://api"]) == 1
+
+
+def test_smoke_reports_an_empty_kb_without_failing(monkeypatch, capsys):
+    monkeypatch.setattr(aws_smoke, "_request", _responses({
+        ("GET", "https://api/api/meta"): (200, {}, b'{"categories": ["ISSUE"], "kb_entries": 0}')}))
+    assert aws_smoke.main(["--frontend", FRONTEND, "--api", "https://api/api"]) == 0
+    assert "the knowledge base is empty" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("given, origin", [

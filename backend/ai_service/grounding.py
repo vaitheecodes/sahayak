@@ -3,10 +3,10 @@
 A step the model writes (a numbered or bulleted line in a chat answer, a
 technician's suggested next step) is kept only when the KB text it was
 given supports it:
-- every menu path in it ("Admin > Applications > APM") appears in the KB
+- every menu path in it ("Settings > Leave > Policies") appears in the KB
   text;
 - every hostname, port or number in it appears in the KB text (no
-  invented "plus.site24x7.com on 443" or "500 a day");
+  invented "app.example.com on 443" or "500 a day");
 - most of its content words (STEP_SUPPORT) appear in the KB text.
 
 Deterministic and conservative: a step the KB doesn't back is dropped,
@@ -30,7 +30,7 @@ _COMMON = frozenset("""
     it its this that these those you your yours we our they their them there here can could
     should would will may might must do does did done make sure check go open click select choose
     use using want need please also any all each every some more most other such only just
-    site24x7 step steps first next then finally again sure
+    step steps first next then finally again sure
 """.split())
 
 
@@ -57,7 +57,7 @@ def _normal(text: str) -> str:
 
 def _path_in(path: str, kb_norm: str) -> bool:
     """The menu path appears in the KB text. The first and last parts may
-    carry surrounding words ("Go to Admin", "APM and click Add"), so any
+    carry surrounding words ("Go to Settings", "Policies and click Add"), so any
     tail of the first part and any head of the last part will do."""
     parts = [p.strip().lower() for p in re.split(r"\s*(?:>|→)\s*", path) if p.strip()]
     first, last, middle = parts[0].split(), parts[-1].split(), parts[1:-1]

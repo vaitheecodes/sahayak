@@ -9,6 +9,7 @@ import './index.css'
 import App from './App.jsx'
 import { api } from './api'
 import { setStatusLabels } from './utils/statusLabels'
+import { setCategoryLabels } from './utils/categories'
 
 function render() {
   createRoot(document.getElementById('root')).render(
@@ -18,10 +19,13 @@ function render() {
   )
 }
 
-// Admin-configured status labels; fall back to the defaults if the
-// backend can't be reached rather than blocking the page.
+// Admin-configured status labels and the category labels; fall back to
+// the defaults if the backend can't be reached rather than blocking the page.
 api
   .meta()
-  .then((meta) => setStatusLabels(meta.status_labels))
+  .then((meta) => {
+    setStatusLabels(meta.status_labels)
+    setCategoryLabels(meta.category_labels)
+  })
   .catch(() => {})
   .finally(render)

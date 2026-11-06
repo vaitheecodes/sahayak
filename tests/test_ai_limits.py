@@ -37,7 +37,7 @@ class _AnsweringGraph:
 
     def invoke(self, state):
         self.calls += 1
-        return {"route": "ai", "category": "MONITORING", "confidence": 0.9, "clarification_attempts": 0,
+        return {"route": "ai", "category": "ISSUE", "confidence": 0.9, "clarification_attempts": 0,
                 "ai_response": f"Here is answer {self.calls}.", "needs_info": None, "language_tags": []}
 
 

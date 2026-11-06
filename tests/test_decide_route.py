@@ -32,7 +32,7 @@ CLEAR_CONFIDENCE = min(CONFIDENCE_THRESHOLD + 0.20, 1.0)
 
 def _state(**overrides) -> dict:
     base = {
-        "category": "MONITORING",
+        "category": "ISSUE",
         "confidence": VAGUE_CONFIDENCE,
         "language_tags": [],
         "clarification_attempts": 0,
@@ -116,13 +116,13 @@ def test_high_risk_ticket_with_nothing_to_clarify_escalates_on_first_call():
         _state(category="DATA", confidence=0.5, clarification_attempts=0)
     )
     assert result["route"] == "human"
-    assert "no further clarification for licensing/data risk" in result["route_reason"]
+    assert "no further clarification for account/billing/data risk" in result["route_reason"]
     assert result["clarification_attempts"] == 0
 
 
 def test_high_risk_category_stays_immediate_human_even_mid_clarification():
     """If a non-high-risk clarify loop reveals the ticket is actually
-    high-risk (e.g. a vague MONITORING ticket turns out to be about a
+    high-risk (e.g. a vague ISSUE ticket turns out to be about a
     DATA retention request) with confidence still below the high-risk
     bar, it must escalate immediately rather than continuing to clarify
     just because clarification_attempts hasn't hit the max yet."""
@@ -145,15 +145,15 @@ def test_clear_confidence_routes_to_ai_without_clarifying():
 
 
 def test_admin_routing_settings_change_the_decision(monkeypatch):
-    """A saved policy applies to the next decision: with ALERTS marked
-    high-risk, a 0.85 ALERTS ticket escalates instead of auto-resolving;
+    """A saved policy applies to the next decision: with ISSUE marked
+    high-risk, a 0.85 ISSUE ticket escalates instead of auto-resolving;
     with negation no longer an escalation tag, it doesn't force a human."""
-    state = {"category": "ALERTS", "confidence": 0.85, "language_tags": ["negation"],
+    state = {"category": "ISSUE", "confidence": 0.85, "language_tags": ["negation"],
              "clarification_attempts": 0}
     assert decide_route(state)["route"] == "human"  # default: negation forces a human
 
     monkeypatch.setitem(app_settings._overrides, "routing", {
-        "escalation_language_tags": ["offensive_language"], "high_risk_categories": ["ALERTS"]})
+        "escalation_language_tags": ["offensive_language"], "high_risk_categories": ["ISSUE"]})
     assert decide_route(state)["route"] == "human"  # now: high-risk below its 0.90 bar
     assert decide_route({**state, "confidence": 0.95})["route"] == "ai"
 

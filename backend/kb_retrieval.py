@@ -1,38 +1,30 @@
 """Lightweight KB-candidate retrieval for the live app.
 
-Loads the 386 canonical Site24x7 KB entries once per process from
-data/kb/kb_entries.json — exported from the silver Parquet tables
-(tickets + resolutions, deduped by `kb_entry_id`) by scripts/export_kb.py,
-so the deployed backend needs no pandas/pyarrow — and scores them
-against incoming ticket text with TF-IDF-weighted cosine similarity over
-word tokens. No embedding model is wired in yet (see CLAUDE.md's
-src/agent/ eval-track roadmap); this is deliberately simple and
-dependency-free, but it's enough to ground classify_ticket's confidence
-and ask_clarifying_question's prompt in the real intent taxonomy instead
-of asking an LLM to classify blind against a bare list of category
-names it has never seen an example of.
+Searches the approved entries of the knowledge base (kb_entries in the
+database, backend/kb_store.py), loaded once per process and reloaded after
+every KB change, and scores them against incoming ticket text with
+TF-IDF-weighted cosine similarity over word tokens. No embedding model is
+wired in; this is deliberately simple and dependency-free, but it's enough
+to ground classify_ticket's confidence and ask_clarifying_question's
+prompt in the product's real support topics instead of asking an LLM to
+classify blind against a bare list of category names.
 
-Near-duplicates are collapsed into one topic: most of the 386 entries
-are the same answer with a different question phrasing, capitalisation,
-politeness preamble or filled-in monitor name (27 distinct topics). A
-search scores every phrasing and returns each topic once, as its
-best-matching entry, so the top results are distinct topics.
+Each question of an entry is one search document, and an entry is one
+topic: a search scores every question and returns each entry once, as its
+best-matching question, so the top results are distinct topics.
+(Near-duplicate entries are flagged when they are drafted, kb_ingester/.)
 
 A best score below KB_MIN_SCORE (default 0.35) is not a match: nothing
-is returned, and callers treat that as "no close KB match".
+is returned, and callers treat that as "no close KB match". A how-to
+search (skip_faults) leaves out troubleshooting entries, so "how do I
+export the report" isn't answered from "the report export fails".
 
-Monitor names the data pipeline filled into KB questions
-("App-Server-04", "API-Gateway-EU") are not topic words: "I need to add
-IOS app" matched three unrelated entries on "app" alone. They are left
-out of the index. A how-to search (skip_faults) leaves out entries whose
-question reports a fault, so "add an APM monitor" isn't answered from
-"APM monitor is showing down".
+Sahayak starts with an empty KB: every search returns [] until entries
+are approved.
 """
 
 from __future__ import annotations
 
-import difflib
-import json
 import logging
 import math
 import os
@@ -40,14 +32,10 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 
 from backend import request_kind
 
 logger = logging.getLogger(__name__)
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-KB_PATH = _PROJECT_ROOT / "data" / "kb" / "kb_entries.json"
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -57,15 +45,9 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # raw LLM confidence for a short/common phrasing it under-scored.
 STRONG_MATCH_SCORE = 0.40
 
-# Below this a candidate is not a match at all (KB_MIN_SCORE overrides).
-# "I see unable to connect to device error" scored 0.316 against "why was
-# my device not discovered" on the word "device" alone.
+# Below this a candidate is not a match at all (KB_MIN_SCORE overrides):
+# a lone shared word such as "device" or "error" scores around 0.3.
 DEFAULT_MIN_SCORE = 0.35
-
-# Two entries of one category/intent whose answers are at least this
-# similar (word-level) are one topic. Measured on the KB: variants differ
-# by a politeness preamble or a filled-in monitor name (0.85-0.99).
-DUPLICATE_ANSWER_SIMILARITY = 0.85
 
 
 def kb_min_score() -> float:
@@ -79,16 +61,15 @@ def kb_min_score() -> float:
         return DEFAULT_MIN_SCORE
     return min(max(value, 0.0), 1.0)
 
-# The 386 KB instructions are formally phrased ("how do I...", "why is
-# X..."); real customer messages are casual ("I want...", "can you
-# help..."). Against this small, stylistically narrow corpus, generic
-# filler words end up RARE in the KB text and so get an anomalously
-# high document-frequency-based IDF (e.g. "want" appears in only 4 of
-# 386 KB instructions), which lets filler-word overlap outweigh real
-# topic words. Stripped before scoring rather than left to IDF, since
+# KB questions are formally phrased ("how do I...", "why is X...");
+# real customer messages are casual ("I want...", "can you help...").
+# Against a small, stylistically narrow corpus, generic filler words end
+# up RARE in the KB text and so get an anomalously high
+# document-frequency-based IDF, which lets filler-word overlap outweigh
+# real topic words. Stripped before scoring rather than left to IDF, since
 # IDF alone isn't reliable at this corpus size. Task verbs ("add", "set"
-# up) likewise: one approved "set up ..." question made "set" outweigh
-# the topic of every "how do I set up X".
+# up) likewise: one "set up ..." question made "set" outweigh the topic of
+# every "how do I set up X".
 _STOPWORDS = frozenset(
     """
     i me my myself we our ours ourselves you your yours yourself
@@ -110,16 +91,6 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS]
 
 
-# A filled-in monitor name: two or more hyphenated parts, each starting
-# with a capital letter or a digit ("App-Server-04", "K8s-Cluster-Prod").
-# Lower-case words such as "third-party" are kept.
-_MONITOR_NAME = re.compile(r"\b[A-Z0-9][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+\b")
-
-
-def _index_tokens(instruction: str) -> list[str]:
-    return _tokenize(_MONITOR_NAME.sub(" ", instruction))
-
-
 tokenize = _tokenize  # public: also used for incident lexical similarity
 
 
@@ -127,17 +98,20 @@ tokenize = _tokenize  # public: also used for incident lexical similarity
 class KBEntry:
     kb_entry_id: str
     category: str
-    intent: str
-    instruction: str
-    response: str
-    # data/kb/new_entries.json only: "escalate_with_info" entries tell the
-    # customer what to collect and hand the case to support (graph.
-    # generate_response); `collect` lists those details.
+    intent: str          # the entry's title
+    instruction: str     # one of its questions
+    response: str        # its answer and numbered steps (kb_store.response_text)
+    # "escalate_with_info" entries tell the customer what to collect and
+    # hand the case to support (graph.generate_response); `collect` lists
+    # those details.
     handling: str = "answer"
     collect: tuple[str, ...] = ()
-    # data/kb/new_entries.json only: "how-to" or "troubleshooting" (None:
-    # guessed from the question's wording, request_kind.is_fault).
+    # "how-to" or "troubleshooting" (None: guessed from the question's
+    # wording, request_kind.is_fault).
     kind: str | None = None
+    # The confirmed product terms the entry applies to (topic_terms).
+    applies_to: tuple[str, ...] = ()
+    source_url: str | None = None
 
     @property
     def is_fault(self) -> bool:
@@ -152,33 +126,11 @@ class KBCandidate:
     score: float
 
 
-def _answer_words(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text.lower())
-
-
-def topic_ids(entries: list[KBEntry]) -> list[int]:
-    """One topic number per entry: entries of the same category/intent
-    whose answers are near-identical share a topic."""
-    reps: list[tuple[tuple[str, str], list[str], int]] = []
-    out = []
-    for e in entries:
-        words, key = _answer_words(e.response), (e.category, e.intent)
-        for rep_key, rep_words, topic in reps:
-            if rep_key == key and difflib.SequenceMatcher(
-                    None, rep_words, words, autojunk=False).ratio() >= DUPLICATE_ANSWER_SIMILARITY:
-                out.append(topic)
-                break
-        else:
-            reps.append((key, words, len(reps)))
-            out.append(len(reps) - 1)
-    return out
-
-
 class _KBIndex:
     def __init__(self, entries: list[KBEntry]):
         self.entries = entries
-        self.topics = topic_ids(entries)
-        self._doc_tokens = [_index_tokens(e.instruction) for e in entries]
+        self.topics = [e.kb_entry_id for e in entries]
+        self._doc_tokens = [_tokenize(e.instruction) for e in entries]
         self._faults = [e.is_fault for e in entries]
 
         doc_freq: Counter = Counter()
@@ -210,7 +162,7 @@ class _KBIndex:
         if query_norm == 0:
             return []
 
-        best: dict[int, KBCandidate] = {}
+        best: dict[str, KBCandidate] = {}
         for entry, topic, doc_vec, doc_norm, fault in zip(
             self.entries, self.topics, self._doc_vectors, self._doc_norms, self._faults
         ):
@@ -224,55 +176,66 @@ class _KBIndex:
         return sorted(best.values(), key=lambda c: c.score, reverse=True)[:top_k]
 
 
-def build_index(entries: list[dict]) -> "_KBIndex":
+def build_index(docs: list[dict]) -> "_KBIndex":
+    """An index over search documents (kb_store.retrieval_docs)."""
     return _KBIndex([
         KBEntry(kb_entry_id=e["kb_entry_id"], category=e["category"], intent=e["intent"],
                 instruction=e["instruction"], response=e["response"] or "",
                 handling=e.get("handling") or "answer", collect=tuple(e.get("collect") or ()),
-                kind=e.get("kind"))
-        for e in entries
+                kind=e.get("kind"), applies_to=tuple(e.get("applies_to") or ()),
+                source_url=e.get("source_url"))
+        for e in docs
     ])
 
 
-@lru_cache(maxsize=1)
-def _load_index() -> "_KBIndex | None":
-    """kb_entries.json plus the valid, non-example entries of
-    data/kb/new_entries.json (see backend/kb_new_entries.py)."""
-    if not KB_PATH.exists():
-        return None
-    from backend import kb_new_entries
+_override: list[dict] | None = None
 
-    entries = json.loads(KB_PATH.read_text(encoding="utf-8"))["entries"]
-    new = kb_new_entries.load(entries)
-    if new.errors:
-        logger.warning("data/kb/new_entries.json: %d problem(s), those entries are not used; "
-                       "run scripts/validate_kb.py", len(new.errors))
-    return build_index(entries + new.entries)
+
+def use(entries: list[dict] | None) -> None:
+    """Search these entries (pack format, kb_store) instead of the
+    database's approved ones: tests. None goes back to the database."""
+    global _override
+    _override = [dict(e) for e in entries] if entries is not None else None
+    reload()
+
+
+@lru_cache(maxsize=1)
+def _load_index() -> "_KBIndex":
+    from backend import db, kb_store
+
+    if _override is not None:
+        return build_index(kb_store.retrieval_docs(_override))
+    conn = db.get_connection()
+    try:
+        return build_index(kb_store.retrieval_docs(kb_store.approved_entries(conn)))
+    finally:
+        conn.close()
+
+
+def reload() -> None:
+    _load_index.cache_clear()
 
 
 def entry_count() -> int:
-    """KB entries the search uses (canonical + approved new); 0 when
-    data/kb/kb_entries.json is missing or unreadable. Checked at startup
-    (production refuses to start on 0) and shown on /api/meta."""
+    """Approved KB entries the search uses; 0 for an empty or unreadable
+    KB. Logged at startup and shown on /api/meta."""
     try:
         index = _load_index()
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception as exc:  # e.g. the database isn't initialised yet
+        logger.warning("KB not loaded (%s)", type(exc).__name__)
         return 0
-    return len(index.entries) if index else 0
+    return len({e.kb_entry_id for e in index.entries})
 
 
 def retrieve_candidates(ticket_text: str, top_k: int = 3, min_score: float | None = None,
                         category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
     """Top-k distinct KB topics (by TF-IDF cosine similarity) for
     `ticket_text`, none scoring below `min_score` (default KB_MIN_SCORE).
-    Returns [] if data/kb/kb_entries.json hasn't been exported yet or
-    nothing matches closely enough — callers must treat an empty list as
-    "no close KB match": no grounding, not an error. `category` limits the
-    search to that category's entries; `skip_faults` (a how-to request)
-    leaves out entries whose question reports a fault."""
-    index = _load_index()
-    if index is None:
-        return []
+    Returns [] for an empty KB or when nothing matches closely enough —
+    callers must treat an empty list as "no close KB match": no
+    grounding, not an error. `category` limits the search to that
+    category's entries; `skip_faults` (a how-to request) leaves out
+    troubleshooting entries."""
     floor = kb_min_score() if min_score is None else min_score
-    return index.search(ticket_text, top_k=top_k, min_score=floor, category=category,
-                        skip_faults=skip_faults)
+    return _load_index().search(ticket_text, top_k=top_k, min_score=floor, category=category,
+                                skip_faults=skip_faults)

@@ -36,7 +36,7 @@ _LIMITATION_ANSWER = (
     "plan specifics, please contact our Sales or Billing team. I can guide you "
     "on how to reach them, or connect you with support if you prefer."
 )
-_NORMAL_ANSWER = "To install the Site24x7 agent, download the installer for your OS..."
+_NORMAL_ANSWER = "To install the Brightdesk app, download it from the app store for your phone..."
 _BRIEF = HandoffSummary(
     issue="Customer asked about invoice/plan details; AI could not access billing.",
 )
@@ -143,7 +143,7 @@ def test_escalated_chat_reaches_the_human_queue_with_a_summary(client):
 def test_normal_answer_keeps_chat_active(client):
     headers = _signup(client)
     chat, _ = _start_chat(
-        client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
+        client, headers, [_ai_result(_NORMAL_ANSWER, category="SETUP")],
         issue="how do I install the agent",
     )
     assert chat["status"] == "active"
@@ -156,7 +156,7 @@ def test_normal_answer_keeps_chat_active(client):
 def test_limitation_answer_mid_chat_escalates(client, monkeypatch):
     headers = _signup(client)
     chat, stub = _start_chat(
-        client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
+        client, headers, [_ai_result(_NORMAL_ANSWER, category="SETUP")],
         issue="how do I install the agent",
     )
     monkeypatch.setattr(graph, "is_continuation_of_prior_response", lambda *a, **k: False)
@@ -203,7 +203,7 @@ def test_thanks_after_handoff_offer_resolves_rather_than_escalating(client):
 def test_affirmative_without_a_handoff_offer_is_not_an_escalation(client):
     headers = _signup(client)
     chat, _ = _start_chat(
-        client, headers, [_ai_result(_NORMAL_ANSWER, category="AGENT")],
+        client, headers, [_ai_result(_NORMAL_ANSWER, category="SETUP")],
         issue="how do I install the agent",
     )
     after = _send(client, headers, chat["session_id"], "ok")

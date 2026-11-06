@@ -44,8 +44,8 @@ class _StubGraph:
         return result
 
 
-def _ai(answer="Hi Dana,\n\nInstall the agent...\n\nRegards,\nSite24x7 Support Team"):
-    return {"route": "ai", "category": "AGENT", "confidence": 0.95,
+def _ai(answer="Hi Dana,\n\nInstall the app...\n\nRegards,\nBrightdesk Support Team"):
+    return {"route": "ai", "category": "SETUP", "confidence": 0.95,
             "ai_response": answer, "clarification_attempts": 0}
 
 
@@ -83,7 +83,7 @@ def _customer(client, name="Dana Smith"):
 def _raise(client, headers, result, **overrides):
     runtime.set_graph(_StubGraph([result]))
     body = {"subject": "Agent not reporting", "description": "Installed the Linux agent, no data.",
-            "priority": "high", "category": "AGENT"}
+            "priority": "high", "category": "SETUP"}
     body.update(overrides)
     res = client.post("/api/tickets", json=body, headers=headers)
     assert res.status_code == 200, res.text
@@ -92,7 +92,7 @@ def _raise(client, headers, result, **overrides):
 
 def _start_chat(client, headers, result, text="how do I install the agent"):
     runtime.set_graph(_StubGraph([result]))
-    res = client.post("/api/chats", json={"issue": text, "category": "AGENT"}, headers=headers)
+    res = client.post("/api/chats", json={"issue": text, "category": "SETUP"}, headers=headers)
     assert res.status_code == 200, res.text
     return res.json()
 
@@ -127,7 +127,7 @@ def test_raise_ticket_creates_ticket_type_with_form_fields(client):
     assert row["ticket_type"] == "ticket"
     assert row["subject"] == "Agent not reporting"
     assert row["priority"] == "high"
-    assert row["requested_category"] == "AGENT"
+    assert row["requested_category"] == "SETUP"
     # Technicians only see ticket_text, so it carries subject + description.
     assert row["ticket_text"] == "Agent not reporting\n\nInstalled the Linux agent, no data."
 
@@ -167,7 +167,7 @@ def test_invalid_category_and_priority_are_rejected(client):
 # ---------------------------------------------------------------------------
 def test_status_for_each_route(client):
     headers, _ = _customer(client)
-    clarify = {"route": "clarify", "category": "ALERTS", "confidence": 0.5,
+    clarify = {"route": "clarify", "category": "ISSUE", "confidence": 0.5,
                "ai_response": "Which alert?", "clarification_attempts": 1}
     assert _raise(client, headers, _ai())["status"] == "resolved"
     assert _raise(client, headers, clarify)["status"] == "pending_customer"
@@ -256,7 +256,7 @@ def test_generate_response_wraps_email_replies(monkeypatch):
         return "Restart the agent service and check the proxy settings."
 
     monkeypatch.setattr(provider, "complete", _fake_complete)
-    state = {"ticket_text": "agent not reporting", "category": "AGENT", "kb_candidates": [],
+    state = {"ticket_text": "agent not reporting", "category": "SETUP", "kb_candidates": [],
              "order_lookup": None, "reply_format": "email", "customer_name": "Dana Smith"}
     reply = graph.generate_response(state)["ai_response"]
     assert reply.startswith("Hi Dana,\n\nRestart the agent service")
@@ -302,7 +302,7 @@ def test_thread_detail_has_sender_roles_and_to_lines(client):
     ticket_id = _raise(client, headers, _ai())["ticket_id"]
     detail = client.get(f"/api/tickets/{ticket_id}", headers=headers).json()
     assert detail["ticket"]["subject"] == "Agent not reporting"
-    assert detail["ticket"]["category"] == "AGENT"
+    assert detail["ticket"]["category"] == "SETUP"
     customer_msg, ai_msg = detail["messages"]
     assert (customer_msg["sender_name"], customer_msg["sender_role"], customer_msg["to"]) == (
         "Dana Smith", "Customer", "Support")
@@ -332,10 +332,10 @@ def test_reply_on_human_ticket_is_appended_without_rerunning_pipeline(client):
 
 def test_reply_on_pending_customer_ticket_reruns_pipeline_with_email_format(client):
     headers, _ = _customer(client)
-    clarify = {"route": "clarify", "category": "ALERTS", "confidence": 0.5,
+    clarify = {"route": "clarify", "category": "ISSUE", "confidence": 0.5,
                "ai_response": "Which alert?", "clarification_attempts": 1}
     ticket_id = _raise(client, headers, clarify)["ticket_id"]
-    runtime.set_graph(_StubGraph([_ai("Hi Dana,\n\nDo X.\n\nRegards,\nSite24x7 Support Team")]))
+    runtime.set_graph(_StubGraph([_ai("Hi Dana,\n\nDo X.\n\nRegards,\nBrightdesk Support Team")]))
     res = client.post(f"/api/tickets/{ticket_id}/reply", json={"message": "The email alert"},
                       headers=headers)
     assert res.json()["status"] == "resolved"

@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from backend import db, email_utils, graph, main, runtime, seed_data
 
 _counter = itertools.count()
-_HUMAN = {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.4, "clarification_attempts": 0}
+_HUMAN = {"route": "human", "category": "ISSUE", "confidence": 0.4, "clarification_attempts": 0}
 NOTE = "Internal: customer is on the legacy plan, check with billing first."
 
 
@@ -83,7 +83,7 @@ def _new_technician(client):
     return headers, res.json()["staff_id"]
 
 
-def _raise(client, customer, subject="Website monitor shows down", category="SERVER_MONITORING",
+def _raise(client, customer, subject="Website monitor shows down", category="ISSUE",
            expected_status="open"):
     res = client.post("/api/tickets", json={
         "subject": subject, "description": "Our site monitor says down but the site is up.",
@@ -323,7 +323,7 @@ def test_views_search_and_filters(client):
 def test_ai_handled_tickets_are_not_in_the_technician_workspace(client):
     customer = _customer(client)
     runtime.set_graph(type("G", (), {"invoke": lambda self, s: {
-        "route": "ai", "category": "AGENT", "confidence": 0.95, "ai_response": "Do X.",
+        "route": "ai", "category": "SETUP", "confidence": 0.95, "ai_response": "Do X.",
         "clarification_attempts": 0}})())
     ticket_id = _raise(client, customer, expected_status="resolved")
     tech = _demo(client, "technician")
@@ -339,7 +339,7 @@ def test_escalated_chat_shows_ai_panel_and_transcript_to_technician(client, monk
     monkeypatch.setattr(summarize_conversation, "summarize_escalation", lambda t, r: brief)
     # Suggested steps come only from a matching KB entry (one is given here).
     monkeypatch.setattr(graph, "handoff_kb_candidates", lambda text: [{
-        "kb_entry_id": "KB-T1", "category": "MONITORING", "intent": "monitor_down",
+        "kb_entry_id": "KB-T1", "category": "ISSUE", "intent": "monitor_down",
         "instruction": "my monitor is down", "response": "Check probe locations for the monitor.",
         "score": 0.9, "handling": "answer", "collect": []}])
     monkeypatch.setattr(suggest_steps, "suggest_steps",
@@ -354,10 +354,10 @@ def test_escalated_chat_shows_ai_panel_and_transcript_to_technician(client, monk
 
 def test_manager_oversees_own_departments_read_only(client):
     customer = _customer(client)
-    # Demo manager's department is Infrastructure; NETFLOW is Network.
-    in_scope = _raise(client, customer, category="SERVER_MONITORING")
-    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "NETFLOW"}})())
-    out_of_scope = _raise(client, customer, category="NETFLOW")
+    # Demo manager's department is Infrastructure; OTHER is Network.
+    in_scope = _raise(client, customer, category="ISSUE")
+    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "OTHER"}})())
+    out_of_scope = _raise(client, customer, category="OTHER")
     tech = _demo(client, "technician")
     _claim(client, tech, in_scope)
     manager = _demo(client, "manager")
@@ -398,15 +398,15 @@ def _attach(client, customer, ticket_id):
 
 def test_attachment_downloads_follow_the_staff_ticket_rules(client):
     customer = _customer(client)
-    in_scope = _attach(client, customer, _raise(client, customer, category="SERVER_MONITORING"))
-    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "NETFLOW"}})())
-    out_of_scope = _attach(client, customer, _raise(client, customer, category="NETFLOW"))
+    in_scope = _attach(client, customer, _raise(client, customer, category="ISSUE"))
+    runtime.set_graph(type("G", (), {"invoke": lambda self, s: {**_HUMAN, "category": "OTHER"}})())
+    out_of_scope = _attach(client, customer, _raise(client, customer, category="OTHER"))
     runtime.set_graph(type("G", (), {"invoke": lambda self, s: {
         **_HUMAN, "route": "ai", "confidence": 0.95, "ai_response": "Here is how.", "needs_info": None}})())
     ai_handled = _attach(client, customer, _raise(client, customer, expected_status="resolved"))
     manager, tech, admin = _demo(client, "manager"), _demo(client, "technician"), _admin(client)
 
-    # Demo manager's department is Infrastructure; NETFLOW is Network.
+    # Demo manager's department is Infrastructure; OTHER is Network.
     assert client.get(out_of_scope, headers=manager).status_code == 403
     assert client.get(in_scope, headers=manager).status_code == 200
     # AI-handled tickets aren't in the workspace.

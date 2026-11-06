@@ -1,4 +1,4 @@
-"""KB entries with handling "escalate_with_info" (data/kb/new_entries.json).
+"""KB entries with handling "escalate_with_info".
 
 - handling and collect reach the retrieval index and the candidates.
 - The reply gives numbered steps from the approved answer (the model's
@@ -7,8 +7,10 @@
   it never asks a question.
 - The ticket is raised in the same turn: chat (escalated session +
   unassigned ticket), and a new email-style ticket (routed to a human).
-- KB-N0140 (the HAR entry) grounds "invalid data provided for api" and
-  stays unconfirmed when the customer hasn't mentioned an API.
+- On the neutral test KB (tests/kb_fixture.py): the sign-in entry
+  (KB-0005) takes a high-risk ACCOUNT request to its steps and a ticket,
+  and an entry for one integration (Slack, KB-0007) stays unconfirmed
+  until the customer mentions it.
 
 Real temporary SQLite DB via FastAPI's TestClient; the pipeline is a stub
 and the provider is disabled by tests/conftest.py unless a test stubs it.
@@ -21,17 +23,18 @@ import itertools
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, kb_new_entries, kb_retrieval, main, runtime, topic_terms
+from backend import db, graph, kb_retrieval, kb_store, main, runtime, topic_terms
 from backend.ai_service import chat_response, provider, summarize_ticket
 from backend.ai_service.schemas import AnswerInput, HandoffSummary, KBCandidate
+from tests import kb_fixture
 
 _counter = itertools.count()
 
 ANSWER = ("Support may ask for a HAR file. Right-click the page and choose Inspect.\n"
           "Chrome or Edge: turn on \"Preserve log\", then choose \"Save all as HAR with content\".\n"
           "A HAR file can contain cookies and tokens, so attach it only to your ticket.")
-ENTRY = KBCandidate(kb_entry_id="KB-N0901", category="WEB_MONITORING", intent="add_api_monitor_error_har",
-                    instruction="invalid data provided error for an API monitor", response=ANSWER,
+ENTRY = KBCandidate(kb_entry_id="KB-0901", category="ISSUE", intent="Report a page error with a HAR file",
+                    instruction="invalid data provided error when saving a form", response=ANSWER,
                     score=0.9, handling="escalate_with_info",
                     collect=["Exact error text", "A HAR file of the failing attempt"])
 STEPS = ("A HAR file helps our team see what failed.\n"
@@ -41,8 +44,8 @@ STEPS = ("A HAR file helps our team see what failed.\n"
 
 
 def _data(**kwargs):
-    return AnswerInput(ticket_text="Customer: invalid data provided for api", kb_candidates=[ENTRY],
-                       latest_message="invalid data provided for api", **kwargs)
+    return AnswerInput(ticket_text="Customer: invalid data provided when saving the form", kb_candidates=[ENTRY],
+                       latest_message="invalid data provided when saving the form", **kwargs)
 
 
 def _model(monkeypatch, *replies):
@@ -63,22 +66,17 @@ def _model(monkeypatch, *replies):
 # Data
 # ---------------------------------------------------------------------------
 def test_handling_and_collect_reach_the_index():
-    data = {"entries": [{
-        "kb_entry_id": "KB-N0901", "status": "approved", "reviewed_at": "2026-11-03T00:00:00+00:00",
-        "area": "Add-monitor errors", "category": "WEB_MONITORING", "intent": "zebra_errors",
-        "handling": "escalate_with_info", "collect": ["Exact error text"],
-        "questions": ["zebra add error one", "zebra add error two", "zebra add error three"],
-        "answer": ANSWER, "source_url": "https://www.site24x7.com/help/zebra.html"}]}
-    report = kb_new_entries.validate(data, [])
-    assert report.errors == []
-    assert {(e["handling"], tuple(e["collect"])) for e in report.entries} == {
-        ("escalate_with_info", ("Exact error text",))}
-    (hit,) = graph._kb_candidates_to_dicts(kb_retrieval.build_index(report.entries).search("zebra add error one"))
+    entry = {"kb_entry_id": "KB-0901", "title": "Zebra form errors", "category": "ISSUE",
+             "handling": "escalate_with_info", "collect": ["Exact error text"],
+             "questions": ["zebra add error one", "zebra add error two"], "answer": ANSWER, "steps": []}
+    index = kb_retrieval.build_index(kb_store.retrieval_docs([entry]))
+    (hit,) = graph._kb_candidates_to_dicts(index.search("zebra add error one"))
     assert hit["handling"] == "escalate_with_info" and hit["collect"] == ["Exact error text"]
 
 
-def test_base_kb_entries_default_to_answer():
-    (hit, *_) = kb_retrieval.retrieve_candidates("how do I install the agent")
+def test_entries_default_to_answer():
+    kb_fixture.load()
+    (hit, *_) = kb_retrieval.retrieve_candidates("how do I apply for leave")
     assert hit.entry.handling == "answer" and hit.entry.collect == ()
 
 
@@ -137,10 +135,10 @@ def test_info_request_email_format(monkeypatch):
 def test_generate_response_flags_needs_info_only_for_escalate_with_info(monkeypatch):
     _model(monkeypatch, STEPS)
     monkeypatch.setattr(chat_response, "answer", lambda data: chat_response.ChatReply(text="An answer."))
-    state = {"ticket_text": "Customer: invalid data provided for api",
+    state = {"ticket_text": "Customer: invalid data provided when saving the form",
              "kb_candidates": [ENTRY.model_dump()]}
     result = graph.generate_response(state)
-    assert result["needs_info"] == {"kb_entry_id": "KB-N0901", "collect": ENTRY.collect}
+    assert result["needs_info"] == {"kb_entry_id": "KB-0901", "collect": ENTRY.collect}
     assert "1. Right-click" in result["ai_response"]
     state["kb_candidates"] = [{**ENTRY.model_dump(), "handling": "answer"}]
     assert graph.generate_response(state) == {"ai_response": "An answer.", "needs_info": None}
@@ -157,11 +155,11 @@ class _StubGraph:
         return self._results.pop(0)
 
 
-_CLARIFY = {"route": "clarify", "category": "WEB_MONITORING", "confidence": 0.5,
-            "ai_response": "What type of monitor is it?", "clarification_attempts": 1}
-_NEEDS_INFO = {"route": "ai", "category": "WEB_MONITORING", "confidence": 0.9, "clarification_attempts": 1,
+_CLARIFY = {"route": "clarify", "category": "USAGE", "confidence": 0.5,
+            "ai_response": "Which part of the product is it?", "clarification_attempts": 1}
+_NEEDS_INFO = {"route": "ai", "category": "USAGE", "confidence": 0.9, "clarification_attempts": 1,
                "ai_response": STEPS + "\n\n" + chat_response.INFO_SAFETY_NOTE,
-               "needs_info": {"kb_entry_id": "KB-N0140", "collect": ["Exact error text"]}}
+               "needs_info": {"kb_entry_id": "KB-0901", "collect": ["Exact error text"]}}
 
 
 @pytest.fixture()
@@ -191,10 +189,10 @@ def _query(sql, params=()):
 def test_chat_gives_the_steps_and_raises_the_ticket_in_the_same_turn(client):
     headers = _customer(client)
     runtime.set_graph(_StubGraph([_CLARIFY, _NEEDS_INFO]))
-    chat = client.post("/api/chats", json={"issue": "i am facing issue in adding monitor"}, headers=headers).json()
+    chat = client.post("/api/chats", json={"issue": "i am facing issue in saving a form"}, headers=headers).json()
     assert chat["status"] == "active"
     res = client.post(f"/api/chats/{chat['session_id']}/messages",
-                      json={"message": "invalid data provided for api"}, headers=headers).json()
+                      json={"message": "invalid data provided when saving the form"}, headers=headers).json()
     assert res["status"] == "escalated" and res["ticket_id"]
     steps_msg, ticket_msg = res["messages"][-2:]
     assert steps_msg["role"] == "ai" and "1. Right-click" in steps_msg["content"]
@@ -208,8 +206,9 @@ def test_chat_gives_the_steps_and_raises_the_ticket_in_the_same_turn(client):
 def test_new_ticket_with_needs_info_goes_to_the_team(client):
     headers = _customer(client)
     runtime.set_graph(_StubGraph([{**_NEEDS_INFO, "clarification_attempts": 0}]))
-    res = client.post("/api/tickets", json={"subject": "API monitor error", "priority": "high",
-                                            "description": "invalid data provided for api"}, headers=headers)
+    res = client.post("/api/tickets", json={"subject": "Form error", "priority": "high",
+                                            "description": "invalid data provided when saving the form"},
+                      headers=headers)
     assert res.status_code == 200, res.text
     body = res.json()
     assert (body["route"], body["status"]) == ("human", "open")
@@ -218,29 +217,33 @@ def test_new_ticket_with_needs_info_goes_to_the_team(client):
 
 
 # ---------------------------------------------------------------------------
-# KB-N0140 on the real KB
+# On the neutral test KB
 # ---------------------------------------------------------------------------
+def test_a_high_risk_sign_in_problem_gets_the_entrys_steps_and_a_ticket():
+    kb_fixture.load()
+    text = "I am unable to sign in to brightdesk"
+    state = {"ticket_text": f"Customer: {text}", "category": "ACCOUNT", "confidence": 0.5, "language_tags": [],
+             "kb_candidates": graph.kb_candidates_for(text)}
+    assert graph.decide_route(state)["route"] == "ai"
+    assert "escalate_with_info" in graph.decide_route(state)["route_reason"]
+
+
 @pytest.mark.parametrize("text, usable", [
-    ("invalid data provided for api", True),
-    ("my REST API monitor says invalid data provided", True),
-    ("monitor will not save", False),
-    ("error when adding a monitor", False),
+    ("leave approvals are not posted to slack", True),
+    ("approvals channel stopped getting posts", False),
 ])
-def test_the_har_entry_grounds_only_once_an_api_is_mentioned(text, usable):
-    kb_retrieval._load_index.cache_clear()
-    topic_terms.reload()
-    try:
-        state = {"ticket_text": f"Customer: {text}", "kb_candidates": graph.kb_candidates_for(text)}
-        ok, unconfirmed = graph.grounding_candidates(state)
-        ids = [c["kb_entry_id"] for c in ok] if usable else [c["kb_entry_id"] for c, _ in unconfirmed]
-        assert "KB-N0140" in ids
-        if usable:
-            assert ok[0]["kb_entry_id"] == "KB-N0140" and ok[0]["handling"] == "escalate_with_info"
-    finally:
-        kb_retrieval._load_index.cache_clear()
-        topic_terms.reload()
+def test_an_integration_entry_grounds_only_once_it_is_mentioned(text, usable):
+    kb_fixture.load()
+    state = {"ticket_text": f"Customer: {text}", "kb_candidates": graph.kb_candidates_for(text)}
+    ok, unconfirmed = graph.grounding_candidates(state)
+    ids = [c["kb_entry_id"] for c in ok] if usable else [c["kb_entry_id"] for c, _ in unconfirmed]
+    assert "KB-0007" in ids
+    if not usable:
+        assert dict((c["kb_entry_id"], m) for c, m in unconfirmed)["KB-0007"] == {"Slack"}
 
 
-def test_for_api_counts_as_an_api_mention_but_an_api_key_does_not():
-    assert "API" in topic_terms.mentioned("invalid data provided for api")
-    assert "API" not in topic_terms.mentioned("I lost my API key")
+def test_terms_match_their_aliases_as_whole_words():
+    kb_fixture.load()
+    assert topic_terms.mentioned("I need time off next week") == {"Leave"}
+    assert topic_terms.mentioned("clock-in fails") == topic_terms.mentioned("clock in fails") == {"Attendance"}
+    assert "iOS" in topic_terms.mentioned("the app on my iPad") and "iOS" not in topic_terms.mentioned("my bios")

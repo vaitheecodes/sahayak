@@ -1,8 +1,11 @@
 """Admin-editable application settings.
 
-Four sections, each a validated pydantic model stored as JSON in
+Five sections, each a validated pydantic model stored as JSON in
 app_settings (one row per section):
 
+  product    the product this help desk supports: name, one-line
+             description, support team name (backend/product.py; no
+             product is named in code)
   routing    decide_route's escalation conditions: confidence bars,
              high-risk categories, which language tags force a human,
              max clarifying rounds
@@ -32,25 +35,34 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from backend.ai_service.schemas import CATEGORIES
-from backend.conversation import now
+from backend import categories
+from backend.timeutil import utcnow
 
 logger = logging.getLogger(__name__)
 
 LANGUAGE_TAGS = ("offensive_language", "coordinated_syntax", "negation")
+DEFAULT_HIGH_RISK = ("ACCOUNT", "BILLING", "DATA")
+
+
+class ProductSettings(BaseModel):
+    name: str = Field(default="", max_length=80)
+    description: str = Field(default="", max_length=200)
+    support_team_name: str = Field(default="Support Team", min_length=1, max_length=80)
 
 
 class RoutingSettings(BaseModel):
     confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     high_risk_confidence_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
-    high_risk_categories: list[str] = ["ACCOUNT", "DATA"]
+    # Default: those of ACCOUNT / BILLING / DATA that exist (categories are data).
+    high_risk_categories: list[str] = Field(default_factory=lambda: [
+        c for c in DEFAULT_HIGH_RISK if c in categories.names()])
     escalation_language_tags: list[str] = list(LANGUAGE_TAGS)
     max_clarification_attempts: int = Field(default=3, ge=0, le=10)
 
     @field_validator("high_risk_categories")
     @classmethod
     def _known_categories(cls, value):
-        unknown = sorted(set(value) - set(CATEGORIES))
+        unknown = sorted(set(value) - set(categories.names()))
         if unknown:
             raise ValueError(f"Unknown categories: {', '.join(unknown)}")
         return sorted(set(value))
@@ -119,6 +131,7 @@ class SLASettings(BaseModel):
 
 
 SECTIONS: dict[str, type[BaseModel]] = {
+    "product": ProductSettings,
     "routing": RoutingSettings,
     "incidents": IncidentSettings,
     "statuses": StatusLabels,
@@ -182,7 +195,7 @@ def save(conn, section: str, values: dict, actor_id: str) -> BaseModel:
         "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, "
         "updated_at = excluded.updated_at",
-        (section, validated.model_dump_json(), actor_id, now()),
+        (section, validated.model_dump_json(), actor_id, utcnow().isoformat()),
     )
     _overrides[section] = validated.model_dump()
     return validated

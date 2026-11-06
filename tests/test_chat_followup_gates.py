@@ -63,7 +63,7 @@ def _signup(client) -> dict:
     return {"Authorization": f"Bearer {res.json()['token']}"}
 
 
-def _start_chat(client, headers, first_result, issue="how do I install the Site24x7 agent"):
+def _start_chat(client, headers, first_result, issue="how do I install the Brightdesk app"):
     stub = _StubGraph([first_result])
     runtime.set_graph(stub)
     res = client.post("/api/chats", json={"issue": issue}, headers=headers)
@@ -79,14 +79,14 @@ def _send(client, headers, session_id, message):
 
 _ANSWERED = {
     "route": "ai",
-    "category": "AGENT",
+    "category": "SETUP",
     "confidence": 0.95,
-    "ai_response": "Here's how to install the Site24x7 agent...",
+    "ai_response": "Here's how to install the Brightdesk app...",
     "clarification_attempts": 0,
 }
 _ESCALATE = {
     "route": "human",
-    "category": "AGENT",
+    "category": "SETUP",
     "confidence": 0.3,
     "ai_response": None,
     "clarification_attempts": 0,

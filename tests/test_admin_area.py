@@ -35,7 +35,7 @@ NOW = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
 
 class _Human:
     def invoke(self, state):
-        return {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.5,
+        return {"route": "human", "category": "ISSUE", "confidence": 0.5,
                 "clarification_attempts": 0}
 
 

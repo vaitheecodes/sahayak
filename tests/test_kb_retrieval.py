@@ -1,255 +1,156 @@
-"""Tests for backend/kb_retrieval.py's KB-candidate retrieval and for
-backend/graph.py's use of it to fix two bugs surfaced by manual testing
-of the Site24x7 KB swap:
+"""backend/kb_retrieval.py: KB-candidate retrieval, and graph.py's use of it.
 
-  1. ask_clarifying_question asked vague, ungrounded questions instead
-     of resolving a straightforward request in one turn, because
-     classify_ticket had no grounding in the real KB/intent taxonomy.
-  2. The order-lookup identity-verification prompt leaked into unrelated
-     (monitoring) requests because _ORDER_RELATED_CATEGORIES still
-     referenced the old Bitext-era category names.
+- Short, casual phrasings ground on a real KB match; filler words don't
+  dominate; a weak best match (below KB_MIN_SCORE) is no match.
+- Only the customer's own words feed retrieval, never the AI's.
+- Each entry is one topic: its questions are phrasings of it, so the top
+  results are distinct entries.
+- The KB starts empty, and the app searches the database's approved
+  entries (kb_store), reloaded after a change.
 
-Requires the pipeline to have been run first (data/silver/*.parquet).
-No LLM/network calls — kb_retrieval is pure Python + pandas, and
-lookup_order's early-return path needs no DB connection.
+On the neutral test KB (tests/kb_fixture.py, the fictional Brightdesk HR).
+No LLM/network calls.
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from backend import db, kb_retrieval  # noqa: E402
-from backend.graph import (  # noqa: E402
-    _ORDER_RELATED_CATEGORIES,
-    _customer_authored_text,
-    lookup_order,
-    retrieve_kb_candidates,
-)
+from backend import db, kb_retrieval, kb_store
+from backend.graph import _customer_authored_text, retrieve_kb_candidates
+from tests import kb_fixture
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _require_silver_tables():
-    if kb_retrieval._load_index() is None:
-        pytest.skip("data/silver/*.parquet not found; run the pipeline first")
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _init_sqlite_db():
-    # lookup_order's explicit-order-number path queries the `orders`
-    # table; init_db() is idempotent (seed_orders skips if already
-    # seeded), so this is safe even if backend/ticketapp.db already
-    # exists from running the app locally.
-    db.init_db()
+@pytest.fixture()
+def kb():
+    kb_fixture.load()
 
 
 # ---------------------------------------------------------------------------
-# Bug 1: retrieval must ground short/casual phrasings in a real KB match
+# Grounding short or casual phrasings
 # ---------------------------------------------------------------------------
-def test_short_casual_phrasing_matches_confidently():
-    """The exact phrasing from the bug report: should resolve to a
-    WEB_MONITORING/website_monitoring KB entry with a score clearing
-    STRONG_MATCH_SCORE, not fall through to a vague clarify loop."""
-    candidates = kb_retrieval.retrieve_candidates(
-        "I want you to help on the website monitor", top_k=3
-    )
-    assert candidates, "expected at least one KB candidate"
+def test_short_casual_phrasing_matches_confidently(kb):
+    candidates = kb_retrieval.retrieve_candidates("help me with leave", top_k=3)
+    assert candidates
     top = candidates[0]
-    assert top.entry.category == "WEB_MONITORING"
-    assert top.entry.intent == "website_monitoring"
+    assert (top.entry.kb_entry_id, top.entry.category, top.entry.intent) == ("KB-0001", "USAGE", "Apply for leave")
     assert top.score >= kb_retrieval.STRONG_MATCH_SCORE
 
 
-def test_exact_phrasing_scores_near_one():
-    candidates = kb_retrieval.retrieve_candidates(
-        "how do I install the Site24x7 agent", top_k=1
-    )
-    assert candidates
-    assert candidates[0].entry.category == "AGENT"
-    assert candidates[0].score > 0.9
+def test_exact_phrasing_scores_near_one(kb):
+    candidates = kb_retrieval.retrieve_candidates("How do I apply for leave?", top_k=1)
+    assert candidates and candidates[0].score > 0.9
 
 
-def test_out_of_domain_query_returns_no_strong_match():
-    """Bitext-era e-commerce phrasing has no lexical overlap with the
-    Site24x7 KB and shouldn't be forced into a false match."""
+def test_out_of_domain_query_returns_no_strong_match(kb):
     candidates = kb_retrieval.retrieve_candidates("refund my order please", top_k=3)
     assert not any(c.score >= kb_retrieval.STRONG_MATCH_SCORE for c in candidates)
 
 
-def test_filler_words_do_not_dominate_scoring():
-    """Regression guard for the specific failure mode found in this bug:
-    generic filler words ("want", "team", "go") are rare in the KB's
-    formally-phrased instructions and so get an anomalously high
-    document-frequency IDF, letting filler-word overlap outrank the
-    real topic match unless stopwords are filtered."""
-    candidates = kb_retrieval.retrieve_candidates(
-        "I want you to help on the website monitor\ni want to configure it",
-        top_k=1,
-    )
-    assert candidates
-    assert candidates[0].entry.category == "WEB_MONITORING"
+def test_filler_words_do_not_dominate_scoring(kb):
+    """Generic filler words ("want", "help") are rare in formally phrased
+    KB questions, so their IDF is anomalously high unless stripped."""
+    candidates = kb_retrieval.retrieve_candidates("I want you to help me with my leave\ni want to apply", top_k=1)
+    assert candidates and candidates[0].entry.kb_entry_id == "KB-0001"
 
 
-def test_empty_query_returns_no_candidates():
+def test_empty_query_returns_no_candidates(kb):
     assert kb_retrieval.retrieve_candidates("", top_k=3) == []
 
 
+def test_results_carry_what_grounding_needs(kb):
+    (top,) = kb_retrieval.retrieve_candidates("can't see my salary slip", top_k=1)
+    assert top.entry.kind == "troubleshooting" and top.entry.applies_to == ("Payroll",)
+    assert top.entry.source_url == "https://help.example.com/brightdesk/payroll/payslips"
+    # The answer and its numbered steps, as the reply is grounded on them.
+    assert top.entry.response.splitlines()[-2:] == [
+        "1. Open Payroll, then Payslips.", "2. Set the year filter to the current year."]
+
+
 # ---------------------------------------------------------------------------
-# Bug 1 (continued): only customer-authored transcript lines feed retrieval
+# Only customer-authored transcript lines feed retrieval
 # ---------------------------------------------------------------------------
 def test_customer_authored_text_extracts_only_customer_lines():
     transcript = (
-        "Customer: I want you to help on the website monitor\n"
+        "Customer: I want you to help me with leave\n"
         "Agent (AI): Are you asking about contacting support or using the feature?\n"
-        "Customer: i want to configure it"
+        "Customer: i want to apply"
     )
     extracted = _customer_authored_text(transcript)
     assert "Agent (AI)" not in extracted
-    assert "website monitor" in extracted
-    assert "configure it" in extracted
+    assert "help me with leave" in extracted and "i want to apply" in extracted
 
 
 def test_customer_authored_text_passes_through_plain_ticket_text():
-    # /api/tickets/new sends raw ticket_text with no speaker prefixes.
-    plain = "I want you to help on the website monitor"
+    plain = "I want you to help me with leave"
     assert _customer_authored_text(plain) == plain
 
 
-def test_full_transcript_retrieval_beats_ai_noise():
-    """The full (Customer + Agent) transcript, once speaker-filtered,
-    should still retrieve the right KB entry even after two rounds of
-    the AI's own (generic) clarifying questions were appended."""
+def test_full_transcript_retrieval_beats_ai_noise(kb):
+    """Two rounds of the AI's own (generic) clarifying questions don't pull
+    retrieval away from what the customer asked."""
     transcript = (
-        "Customer: I want you to help on the website monitor\n"
-        "Agent (AI): Are you asking about contacting support or using the feature?\n"
-        "Customer: i want to configure it\n"
-        "Agent (AI): Do you mean configuring it or setting up a new subscription?\n"
-        "Customer: yes adding to my account"
+        "Customer: I want you to help me with leave\n"
+        "Agent (AI): Do you want to connect Slack or change your plan?\n"
+        "Customer: i want to apply\n"
+        "Agent (AI): Do you mean the subscription plan?\n"
+        "Customer: no, a vacation day"
     )
-    candidates = kb_retrieval.retrieve_candidates(
-        _customer_authored_text(transcript), top_k=3
+    candidates = kb_retrieval.retrieve_candidates(_customer_authored_text(transcript), top_k=3)
+    assert candidates[0].entry.kb_entry_id == "KB-0001"
+    assert not {c.entry.kb_entry_id for c in candidates} & {"KB-0010"}
+
+
+def test_customer_text_keeps_multi_line_messages_and_drops_ai_steps():
+    transcript = (
+        "Customer: my payslip is missing\n"
+        "but payroll was published\n"
+        "Agent (AI): Try these steps:\n"
+        "1. Check the year filter.\n"
+        "Customer: still missing\n"
+        "staff: Looking into it.\n"
     )
-    # The approved "add a user to my account" guide (KB-N0146) matches the
-    # customer's own last words; nothing comes from the AI's questions
-    # (contacting support, a subscription).
-    assert "WEB_MONITORING" in [c.entry.category for c in candidates]
-    assert not {c.entry.intent for c in candidates} & {"contact_support", "licensing"}
+    assert _customer_authored_text(transcript) == (
+        "my payslip is missing\nbut payroll was published\nstill missing")
 
 
 # ---------------------------------------------------------------------------
-# Bug 2: order-lookup must not leak into non-order categories
+# One topic per entry
 # ---------------------------------------------------------------------------
-def test_no_site24x7_category_is_order_related():
-    assert _ORDER_RELATED_CATEGORIES == set()
-
-
-def test_lookup_order_does_not_fire_for_monitoring_category():
-    result = lookup_order(
-        {
-            "ticket_text": "I want you to help on the website monitor",
-            "category": "WEB_MONITORING",
-        }
-    )
-    assert result == {"order_lookup": None}
-
-
-@pytest.mark.parametrize("category", ["MONITORING", "AGENT", "ALERTS", "INTEGRATION"])
-def test_lookup_order_never_fires_for_monitoring_domain_categories(category):
-    result = lookup_order(
-        {"ticket_text": "some ticket text with no order number", "category": category}
-    )
-    assert result == {"order_lookup": None}
-
-
-def test_lookup_order_still_fires_on_explicit_order_number_regardless_of_category():
-    # Defensive path: a literal ORD-XXXXX in the text still triggers a
-    # lookup even though no category is order-related anymore. Since the
-    # order isn't in the mock table, this should resolve to not_found
-    # without needing any DB setup beyond the default connection.
-    result = lookup_order(
-        {
-            "ticket_text": "my order ORD-999999 status please",
-            "category": "MONITORING",
-        }
-    )
-    assert result["order_lookup"]["not_found"] is True
-    assert result["order_lookup"]["order_id"] == "ORD-999999"
-
-
-# ---------------------------------------------------------------------------
-# Near-duplicate KB entries collapse into one topic
-# ---------------------------------------------------------------------------
-def _entry(kb_id, question, answer, category="AGENT", intent="agent_installation"):
-    return {"kb_entry_id": kb_id, "category": category, "intent": intent,
-            "instruction": question, "response": answer}
-
-
-_INSTALL = ("Download the agent installer from the Admin page, copy it to the server, run it with "
-            "administrator rights and enter the device key when asked. When the installation finishes "
-            "the agent registers itself, and the server appears under Server Monitors within a few "
-            "minutes. If it does not, check that outbound port 443 is open.")
-
-
-def test_variants_of_one_answer_are_one_topic():
-    index = kb_retrieval.build_index([
-        _entry("KB-1", "how do I install the agent", _INSTALL),
-        _entry("KB-2", "How Do I Install The Agent please", "I understand you're looking for help. " + _INSTALL),
-        _entry("KB-3", "install agent on Prod-WebServer-01", _INSTALL.replace("the server", "Prod-WebServer-01")),
-        _entry("KB-4", "how do I uninstall the agent", "Stop the agent service, then remove the package.",
-               intent="agent_uninstall"),
-        _entry("KB-5", "my agent is not reporting", "Restart the agent service and check outbound port 443.",
-               intent="agent_not_reporting"),
-    ])
-    assert len(set(index.topics)) == 3
-    hits = index.search("how do I install the agent", top_k=3)
-    assert [h.entry.intent for h in hits][0] == "agent_installation"
-    assert len({h.entry.intent for h in hits}) == len(hits)
-    assert hits[0].entry.kb_entry_id == "KB-1"  # the best-matching phrasing
-
-
-def test_same_answer_in_another_intent_is_not_merged():
-    index = kb_retrieval.build_index([
-        _entry("KB-1", "install the agent", _INSTALL),
-        _entry("KB-2", "install the agent", _INSTALL, category="SERVER_MONITORING", intent="server_setup"),
-    ])
-    assert len(set(index.topics)) == 2
-
-
-def test_real_kb_top_results_are_distinct_topics():
-    """The real KB: 386 entries, one answer per intent in many phrasings."""
+def test_each_entry_is_one_topic_and_results_are_distinct_entries(kb):
     index = kb_retrieval._load_index()
-    assert len(set(index.topics)) < len(index.entries) / 5
-    for query in ("why was my device not discovered", "how do I install the Site24x7 agent",
-                  "I want you to help on the website monitor", "monitor down alert"):
+    assert len(index.entries) == sum(len(e["questions"]) for e in kb_fixture.pack()["entries"])
+    assert len(set(index.topics)) == len(kb_fixture.pack()["entries"])
+    for query in ("install the app", "my payslip is missing", "export a report", "clock in error"):
         hits = kb_retrieval.retrieve_candidates(query, top_k=3, min_score=0)
-        topics = [index.topics[index.entries.index(h.entry)] for h in hits]
-        assert len(topics) == len(set(topics)), query
+        ids = [h.entry.kb_entry_id for h in hits]
+        assert len(ids) == len(set(ids)), query
+
+
+def test_the_best_matching_question_represents_its_entry(kb):
+    (top,) = kb_retrieval.retrieve_candidates("where can I download the app for ipad", top_k=1)
+    assert top.entry.kb_entry_id == "KB-0003" and top.entry.instruction == "where can I download the app for ipad"
 
 
 # ---------------------------------------------------------------------------
 # KB_MIN_SCORE: a weak best match is "no close match"
 # ---------------------------------------------------------------------------
-def test_weak_match_is_no_match_by_default(monkeypatch):
+WEAK = "I see unable to connect to device error"
+
+
+def test_weak_match_is_no_match_by_default(kb, monkeypatch):
     monkeypatch.delenv("KB_MIN_SCORE", raising=False)
-    query = "I see unable to connect to device error"
-    weak = kb_retrieval.retrieve_candidates(query, min_score=0)
+    weak = kb_retrieval.retrieve_candidates(WEAK, min_score=0)
     assert weak and weak[0].score < kb_retrieval.DEFAULT_MIN_SCORE == 0.35
-    assert kb_retrieval.retrieve_candidates(query) == []
+    assert kb_retrieval.retrieve_candidates(WEAK) == []
 
 
-def test_min_score_is_configurable(monkeypatch):
-    query = "I see unable to connect to device error"
+def test_min_score_is_configurable(kb, monkeypatch):
     monkeypatch.setenv("KB_MIN_SCORE", "0.2")
-    assert kb_retrieval.retrieve_candidates(query)
+    assert kb_retrieval.retrieve_candidates(WEAK)
     monkeypatch.setenv("KB_MIN_SCORE", "0.99")
-    assert kb_retrieval.retrieve_candidates("how do I install the Site24x7 agent") != []  # exact: 1.0
-    # A good match that isn't exact (0.8; "website monitor" alone is now
-    # an exact match for the approved KB-N0143).
-    assert kb_retrieval.retrieve_candidates("my website monitor alerts too often") == []
+    assert kb_retrieval.retrieve_candidates("How do I apply for leave?") != []  # exact: 1.0
+    assert kb_retrieval.retrieve_candidates("my leave application shows wrong dates") == []
 
 
 @pytest.mark.parametrize("raw, expected", [("", 0.35), ("abc", 0.35), ("0.5", 0.5), ("-1", 0.0), ("7", 1.0)])
@@ -258,23 +159,34 @@ def test_min_score_setting_is_parsed_safely(monkeypatch, raw, expected):
     assert kb_retrieval.kb_min_score() == expected
 
 
-def test_no_close_match_reaches_the_pipeline_as_no_candidates(monkeypatch):
+def test_no_close_match_reaches_the_pipeline_as_no_candidates(kb, monkeypatch):
     monkeypatch.delenv("KB_MIN_SCORE", raising=False)
-    state = {"ticket_text": "Customer: I see unable to connect to device error"}
-    assert retrieve_kb_candidates(state) == {"kb_candidates": []}
+    assert retrieve_kb_candidates({"ticket_text": f"Customer: {WEAK}"}) == {"kb_candidates": []}
 
 
 # ---------------------------------------------------------------------------
-# Only the customer's own words feed retrieval, every line of them
+# Empty KB, and the database path
 # ---------------------------------------------------------------------------
-def test_customer_text_keeps_multi_line_messages_and_drops_ai_steps():
-    transcript = (
-        "Customer: my website monitor shows down\n"
-        "but the site loads fine in my browser\n"
-        "Agent (AI): Try these steps:\n"
-        "1. Check the monitor's location settings.\n"
-        "Customer: still down\n"
-        "staff: Looking into it.\n"
-    )
-    assert _customer_authored_text(transcript) == (
-        "my website monitor shows down\nbut the site loads fine in my browser\nstill down")
+def test_an_empty_kb_matches_nothing():
+    assert kb_retrieval.entry_count() == 0
+    assert kb_retrieval.retrieve_candidates("How do I apply for leave?", min_score=0) == []
+
+
+def test_the_app_searches_the_databases_approved_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "kb.db")
+    db.init_db()
+    kb_retrieval.use(None)  # the database, as the app runs
+    assert kb_retrieval.entry_count() == 0
+    conn = db.get_connection()
+    try:
+        kb_store.import_pack(conn, kb_fixture.pack(), "test")
+        draft = {**kb_fixture.entry("KB-0001"), "kb_entry_id": None, "title": "Cancel a leave request",
+                 "questions": ["how do I cancel my leave request"]}
+        kb_store.save_entry(conn, draft, status="draft", actor="test")
+        conn.commit()
+    finally:
+        conn.close()
+    kb_store.changed()
+    assert kb_retrieval.entry_count() == 10  # approved only: the draft is never searched
+    (top,) = kb_retrieval.retrieve_candidates("how do I cancel my leave request", top_k=1)
+    assert top.entry.kb_entry_id == "KB-0001"

@@ -3,6 +3,7 @@ States only what the linked tickets show; no root-cause claims."""
 
 from __future__ import annotations
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service._format import GROUNDING_RULES
 from backend.ai_service.schemas import IncidentSummary, SummarizeIncidentInput
@@ -15,7 +16,7 @@ def summarize_incident(data: SummarizeIncidentInput) -> IncidentSummary:
         for t in data.tickets
     )
     return provider.complete_json(
-        "Write a concise summary of a possible Site24x7 incident for the support "
+        f"Write a concise summary of a possible incident affecting {product.described()} for the support "
         "manager reviewing it: a short neutral title, a 2-4 sentence summary of "
         "what customers are reporting, the common symptoms, the affected services "
         "or components, and investigative next steps. Do not state a root cause "

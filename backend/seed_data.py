@@ -1,87 +1,29 @@
 """Seed data, all idempotent so repeated `init_db()` calls (every app
 startup) never duplicate or reset data a tester may have relied on.
 
-- Mock `orders` — so generate_response's order-lookup grounding
-  (backend/graph.py:lookup_order) has real records to answer from,
-  instead of inventing plausible-sounding order details. Standard-library
-  random with a fixed seed (no Faker at runtime), same convention as
-  src/pipeline/02_silver_transform.py (SEED = 42) for reproducibility. Skipped if `orders` already has rows.
 - Default `departments` — skipped if any department exists, so an
   admin's edits survive restarts.
 - One demo manager + one demo technician — dev only (APP_ENV !=
   production), skipped per email if it already exists.
+
+The default categories are seeded by backend/categories.py.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import random
 import uuid
-from datetime import date, timedelta
 
 import bcrypt
 
-SEED = 42
-NUM_ORDERS = 80
 
-_STATUSES = ["processing", "shipped", "delivered", "cancelled"]
-_STATUS_WEIGHTS = [0.25, 0.25, 0.40, 0.10]
-
-_ITEM_CATALOG = [
-    "Wireless Headphones", "USB-C Cable", "Laptop Stand", "Mechanical Keyboard",
-    "Desk Lamp", "Water Bottle", "Yoga Mat", "Bluetooth Speaker", "Phone Case",
-    "Backpack", "Running Shoes", "Coffee Mug", "Notebook Set", "Webcam",
-    "Wireless Mouse", "Monitor Arm", "Office Chair", "Standing Desk",
-]
-
-_FIRST = ["asha", "ben", "chen", "dina", "eli", "farah", "gopal", "hana", "ivan", "jia", "kofi", "lena"]
-_LAST = ["rao", "ortiz", "wei", "kumar", "smith", "haddad", "silva", "tanaka", "novak", "mensah"]
-_DOMAINS = ["example.com", "example.net", "example.org"]
-
-# A few fixed, memorable emails (not just random generated ones) so a
-# tester can sign up as one of these and immediately have real order
-# matches to test against, without hunting through seeded data first.
-DEMO_EMAILS = ["demo@example.com", "customer@example.com", "test@example.com"]
-
-
-def seed_orders(conn) -> None:
-    already_seeded = conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
-    if already_seeded:
-        return
-
-    rng = random.Random(SEED)
-    names = random.Random(SEED + 1)  # separate stream: emails don't shift the order draws
-
-    rows = []
-    for i in range(NUM_ORDERS):
-        order_id = f"ORD-{100000 + i}"
-        # first few orders per demo email so they're easy to find/test with
-        email = DEMO_EMAILS[i % len(DEMO_EMAILS)] if i < len(DEMO_EMAILS) * 4 else (
-            f"{names.choice(_FIRST)}.{names.choice(_LAST)}{names.randint(1, 99)}@{names.choice(_DOMAINS)}")
-        status = rng.choices(_STATUSES, weights=_STATUS_WEIGHTS)[0]
-        items = ", ".join(rng.sample(_ITEM_CATALOG, k=rng.randint(1, 3)))
-        order_date = (date.today() - timedelta(days=rng.randint(1, 60))).isoformat()
-        rows.append((order_id, email, status, items, order_date))
-
-    conn.executemany(
-        "INSERT INTO orders (order_id, customer_email, status, items, order_date) "
-        "VALUES (?, ?, ?, ?, ?)",
-        rows,
-    )
-    conn.commit()
-
-
-# Every one of the 17 KB categories (graph.CATEGORIES) is owned by exactly
-# one default department, so no category starts out unroutable.
+# Every default category (backend/categories.py) is owned by exactly one
+# default department, so no category starts out unroutable.
 DEFAULT_DEPARTMENTS = [
-    ("Monitoring & Alerts", ["MONITORING", "WEB_MONITORING", "ALERTS"]),
-    ("Infrastructure", ["SERVER_MONITORING", "AGENT", "CONTAINERS", "CLOUD"]),
-    ("Network", ["SNMP", "NETFLOW"]),
-    ("Applications & Logs", ["APPLICATION_MONITORING", "APM", "LOGS"]),
-    ("Integrations", ["INTEGRATION"]),
-    ("Account & Data", ["ACCOUNT", "DATA"]),
-    ("Customer Success", ["REPORTING", "SUPPORT"]),
+    ("Product Support", ["SETUP", "USAGE", "ISSUE", "INTEGRATION"]),
+    ("Accounts & Billing", ["ACCOUNT", "BILLING", "DATA"]),
+    ("General", ["OTHER"]),
 ]
 
 
@@ -106,7 +48,7 @@ DEMO_STAFF = [
         "email": "manager@example.com",
         "password": "manager-demo-pass",
         "role": "manager",
-        "department": "Infrastructure",
+        "department": "Product Support",
     },
     {
         "name": "Demo Technician",

@@ -6,6 +6,7 @@ entry doesn't support are dropped there (ai_service/grounding.py)."""
 
 from __future__ import annotations
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service._format import GROUNDING_RULES, kb_guidance_text
 from backend.ai_service.schemas import SuggestedSteps, SuggestStepsInput
@@ -13,7 +14,7 @@ from backend.ai_service.schemas import SuggestedSteps, SuggestStepsInput
 
 def suggest_steps(data: SuggestStepsInput) -> SuggestedSteps:
     return provider.complete_json(
-        "Suggest 2-5 concrete next steps for a Site24x7 support technician "
+        f"Suggest 2-5 concrete next steps for a support technician for {product.described()}, "
         "picking up this case, in the order they should do them. Phrase each as "
         "something to check, ask, or try, never as a finding. Skip anything the "
         "brief says was already tried. Every step must come from the kb_guidance "

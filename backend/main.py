@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, admin_reports, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
 from backend import handoff_signals
-from backend import incidents, kb_retrieval
+from backend import categories as kb_categories
+from backend import incidents, kb_retrieval, product
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
 from backend import try_ticket
 from backend.ai_service import backends as ai_backends
@@ -173,20 +174,19 @@ def on_shutdown() -> None:
 
 
 def check_kb() -> None:
-    """Print how many KB entries loaded (one plain line, so it reaches the
-    container log whatever the logging setup). Without a KB every chat
-    gets the no-KB hand-off, so production refuses to start on 0."""
+    """Print how many approved KB entries loaded (one plain line, so it
+    reaches the container log whatever the logging setup). Sahayak starts
+    with an empty KB: until entries are approved, every question gets the
+    "no guide yet" hand-off to a ticket, so 0 is a warning, not an error."""
     count = kb_retrieval.entry_count()
-    print(f"KB: {count} entries loaded from {kb_retrieval.KB_PATH.parent}", flush=True)
-    if count == 0 and auth.is_production():
-        raise auth.config_error(str(kb_retrieval.KB_PATH),
-                                "has no KB entries (missing from the image, or unreadable)")
+    print(f"KB: {count} entries loaded from the database", flush=True)
+    if count == 0:
+        logger.warning("The knowledge base is empty: every question will be handed to the support team")
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     auth.check_production_config()
-    check_kb()
     try:
         storage.check_config()
     except storage.StorageConfigError as exc:
@@ -196,8 +196,10 @@ def on_startup() -> None:
     conn = db.get_connection()
     try:
         app_settings.load(conn)
+        kb_categories.load(conn)
     finally:
         conn.close()
+    check_kb()
     runtime.set_graph(graph.build_graph())
 
 
@@ -218,7 +220,7 @@ class LoginRequest(BaseModel):
 def _validate_category(value: str | None) -> str | None:
     if value in (None, ""):
         return None
-    if value not in graph.CATEGORIES:
+    if value not in kb_categories.names():
         raise ValueError("Unknown category")
     return value
 
@@ -451,7 +453,6 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
             recent_ai_replies=f.recent_ai,
         )
         state.update(graph.fetch_customer_history(state))
-        state.update(graph.lookup_order(state))
         reply = graph.generate_response(state)
         ai_response = reply["ai_response"]
         # Steps to collect what support needs: the ticket goes to the team now.
@@ -573,8 +574,8 @@ def change_password(body: ChangePasswordRequest, user: dict = Depends(auth.get_c
 # ---------------------------------------------------------------------------
 @app.get("/api/categories")
 def categories():
-    """The 17 KB categories, for the customer's category pickers."""
-    return graph.CATEGORIES
+    """The confirmed categories, for the customer's category pickers."""
+    return kb_categories.names()
 
 
 @app.get("/api/tickets/mine")
@@ -1164,7 +1165,9 @@ def meta():
     KB categories, and how many KB entries loaded (a count, no content)."""
     return {
         "status_labels": app_settings.get("statuses").model_dump(),
-        "categories": graph.CATEGORIES,
+        "categories": kb_categories.names(),
+        "category_labels": kb_categories.labels(),
+        "product": {"name": product.profile().name, "support_team_name": product.support_team()},
         "kb_entries": kb_retrieval.entry_count(),
     }
 
@@ -1183,12 +1186,12 @@ def routing_policy():
         "high_risk_confidence_threshold": policy.high_risk_confidence_threshold,
         "high_risk_categories": policy.high_risk_categories,
         "escalation_language_tags": policy.escalation_language_tags,
-        "categories": graph.CATEGORIES,
+        "categories": kb_categories.names(),
         "max_clarification_attempts": policy.max_clarification_attempts,
         "decision_order": [
             "escalation language tags (hard override -> human, always)",
-            "a how-to that names no kind of monitor, or whose only KB guides are for "
-            "something not named yet (e.g. Linux / Windows) -> ONE fixed question, no "
+            "a how-to that names nothing to do, or whose only KB guides are for "
+            "something not named yet (e.g. the Android / iOS app) -> ONE fixed question, no "
             "ticket; never asked twice",
             f"high-risk category ({'/'.join(policy.high_risk_categories) or 'none'}) "
             "below its stricter confidence bar -> an escalate_with_info KB entry "

@@ -175,7 +175,7 @@ class _SlowGraph:
     def invoke(self, state):
         graph.fetch_customer_history(state)
         time.sleep(self.seconds)
-        return {"route": "ai", "category": "AGENT", "confidence": 0.95,
+        return {"route": "ai", "category": "SETUP", "confidence": 0.95,
                 "ai_response": "Restart the agent service.", "clarification_attempts": 0}
 
 

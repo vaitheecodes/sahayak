@@ -1,15 +1,13 @@
 """LangGraph pipeline: fetch_customer_history -> retrieve_kb_candidates ->
-classify_ticket -> decide_route -> {lookup_order -> generate_response |
+classify_ticket -> decide_route -> {generate_response |
 ask_clarifying_question | human_queue}.
 
-Routing policy (thresholds, high-risk categories, escalation language
-tags) is ported verbatim from src/agent/state.py + src/agent/nodes/
-decide_route.py — same policy, wired to a live LLM call and real ticket
-persistence instead of a keyword-stub classifier.
+Routing policy: thresholds, high-risk categories, escalation language
+tags and clarifying rounds (app_settings "routing"), applied to a live LLM
+classification grounded in KB retrieval.
 
 retrieve_kb_candidates (backend/kb_retrieval.py) scores the ticket text
-against the 386 canonical Site24x7 KB entries (src/pipeline's silver
-tables) before classification even runs, so classify_ticket,
+against the approved KB entries before classification even runs, so classify_ticket,
 ask_clarifying_question, and generate_response are all grounded in the
 same retrieved evidence instead of each guessing independently — a
 strong direct KB match raises classify_ticket's confidence past a
@@ -26,7 +24,7 @@ see backend/closing_ack.py) and then is_continuation_of_prior_response
 fragment has almost no standalone content for classify_ticket to judge
 confidently, which used to collapse decide_route's confidence and
 escalate an on-topic question the conversation already answers. A
-continuation calls lookup_order + generate_response directly (with
+continuation calls generate_response directly (with
 retrieve_kb_candidates_for_continuation grounding on the customer's own
 messages in the conversation, never the AI's replies), skipping classify_ticket/decide_route for
 that turn entirely. Only a genuinely new/different message falls
@@ -47,10 +45,9 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from typing_extensions import NotRequired
 
-from backend import app_settings, db, email_utils, kb_retrieval, request_kind, topic_terms
+from backend import app_settings, categories, db, email_utils, kb_retrieval, product, request_kind, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
 from backend.ai_service import chat_response
-from backend.ai_service.schemas import CATEGORIES as _CATEGORIES
 from backend.ai_service.schemas import (
     AnswerInput,
     CategorizeInput,
@@ -61,32 +58,19 @@ from backend.ai_service.schemas import (
 )
 
 # ---------------------------------------------------------------------------
-# Routing config — ported from src/agent/state.py
+# Routing config
 # ---------------------------------------------------------------------------
 # Thresholds, high-risk categories, escalation language tags and the
 # clarification limit are admin-editable: app_settings.get("routing")
-# (defaults: 75% base bar, 90% for ACCOUNT/DATA, all three language tags,
-# 3 clarifying rounds). Read on every decision, so a saved change applies
-# to the next message.
-
-# 17-category enum, ported from src/pipeline/config.py:CATEGORY_INTENTS
-CATEGORIES = list(_CATEGORIES)
+# (defaults: 75% base bar, 90% for ACCOUNT/BILLING/DATA, all three language
+# tags, 3 clarifying rounds). Read on every decision, so a saved change
+# applies to the next message. The categories themselves are data
+# (backend/categories.py).
 
 HISTORY_LOOKBACK = 5
 
-# None of the 17 Site24x7 categories are order/e-commerce related — the
-# `orders` mock table (backend/seed_data.py) and lookup_order below exist
-# only for the literal case where the ticket text names an explicit
-# ORD-XXXXX order number (kept as a defensive, harmless no-op for this
-# product rather than ripped out). This must stay empty: a category-based
-# trigger like the old Bitext-era {"ORDER","REFUND","DELIVERY","SHIPPING",
-# "CANCEL"} would wrongly ask every MONITORING/AGENT/ALERTS/... ticket to
-# verify an order — that leak is exactly what the Site24x7 swap surfaced.
-_ORDER_RELATED_CATEGORIES: set[str] = set()
-_ORDER_ID_RE = re.compile(r"\bORD-\d+\b", re.IGNORECASE)
-
 # classify_ticket's raw LLM-reported confidence is often too conservative
-# for short, common phrasings ("help on the website monitor") against
+# for short, common phrasings ("help with leave requests") against
 # this taxonomy the model has never seen examples of. When KB retrieval
 # (backend/kb_retrieval.py) finds a strong direct match, that grounded
 # evidence is used to raise confidence instead of trusting the bare LLM
@@ -121,7 +105,6 @@ class TicketState(TypedDict):
     confidence: NotRequired[float]
     language_tags: NotRequired[list[str]]
     clarification_attempts: NotRequired[int]
-    order_lookup: NotRequired[dict | None]
 
     # True when this generate_response call is answering a follow-up
     # continuation of an already-resolved ticket (see
@@ -261,22 +244,24 @@ customer_authored_text = _customer_authored_text  # public: the hand-off brief u
 # Words that say there is a problem without saying what it is. A customer
 # whose messages hold nothing else ("I have an issue", "help", "it's not
 # working") hasn't described a symptom yet.
+# The product's own name is vague too ("an issue with <product>").
 VAGUE_WORDS = frozenset("""
     issue issues problem problems facing face faced having trouble troubles query question
-    questions support site24x7 monitor monitors monitoring something anything everything
+    questions support something anything everything app application product software tool
     wrong working work works worked hi hello hey regarding concern concerns assistance assist
     kindly urgent asap team
 """.split())
 # A latest message with fewer informative words than this is short: earlier
 # customer messages are added to the KB search for context.
 SHORT_MESSAGE_WORDS = 4
-# KB stopwords that still state a task ("adding a monitor").
+# KB stopwords that still state a task ("adding a user").
 TASK_WORDS = frozenset({"add", "adding"})
 
 
 def informative_words(text: str) -> list[str]:
     words = re.findall(r"[a-z0-9]+", text.lower())
-    return [w for w in words if (w in TASK_WORDS or w not in kb_retrieval._STOPWORDS) and w not in VAGUE_WORDS]
+    vague = VAGUE_WORDS | product.name_words()
+    return [w for w in words if (w in TASK_WORDS or w not in kb_retrieval._STOPWORDS) and w not in vague]
 
 
 def is_vague(ticket_text: str) -> bool:
@@ -311,6 +296,7 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
             "handling": c.entry.handling,
             "collect": list(c.entry.collect),
             "kind": c.entry.kind,
+            "applies_to": list(c.entry.applies_to),
         }
         for c in candidates
     ]
@@ -359,8 +345,7 @@ def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None,
 # A KB entry grounds a how-to answer or a technician's suggested steps
 # only if it shares at least half of the customer's informative words, and
 # at least this many when there are three or more: "unable to login after changing
-# license" shares only "license" with the license-usage entry, and "set up
-# APM" only "apm" with the APM trace retention entry: no evidence.
+# the plan" shares only "plan" with the change-plan entry: no evidence.
 MIN_SHARED_WORDS = 2
 
 
@@ -378,15 +363,14 @@ def shares_customer_words(candidate: dict, customer_text: str) -> bool:
     aside."""
     customer = _object_words(customer_text)
     needed = min(MIN_SHARED_WORDS, (len(customer) + 1) // 2)
-    entry = _object_words(kb_retrieval._MONITOR_NAME.sub(
-        " ", f"{candidate['instruction']} {candidate['response']}"))
+    entry = _object_words(f"{candidate['instruction']} {candidate['response']}")
     return bool(needed) and len(customer & entry) >= needed
 
 
 def _main_subject(customer_text: str) -> str | None:
     """What a how-to is about: the first word, task verbs and filler aside,
     of the customer's latest line that has one ("generate a REPORT for
-    uptime of last month", "add a WEBSITE to monitor my company homepage").
+    attendance of last month", "submit an EXPENSE claim for my trip").
     "Not sure" lines are skipped."""
     for line in reversed(customer_text.splitlines()):
         if request_kind.is_unsure(line):
@@ -402,22 +386,22 @@ def on_customer_subject(candidate: dict, customer_text: str) -> bool:
     """A how-to entry is on the customer's subject when it shares half of
     their words (shares_customer_words), or when it is a strong match
     (kb_retrieval.STRONG_MATCH_SCORE) whose question names the customer's
-    main subject (_main_subject). Natural extra words ("for uptime of last
-    month") then don't hide an entry about the same task, while "an SLA
-    report for my website" isn't answered by the website-check entry on
-    "website" alone."""
+    main subject (_main_subject). Natural extra words ("for attendance of
+    last month") then don't hide an entry about the same task, while "a
+    leave report for my team" isn't answered by the apply-for-leave entry
+    on "leave" alone."""
     if shares_customer_words(candidate, customer_text):
         return True
-    question = _object_words(kb_retrieval._MONITOR_NAME.sub(" ", candidate["instruction"]))
+    question = _object_words(candidate["instruction"])
     return (candidate.get("score", 0.0) >= kb_retrieval.STRONG_MATCH_SCORE
             and _main_subject(customer_text) in question)
 
 
 def answers_how_to(candidate: dict, customer_text: str) -> bool:
     """A KB entry that can answer a how-to: about doing something (not a
-    fault, not e.g. "how long are APM traces kept"), on the customer's
-    subject. An entry's own `kind` ("how-to" / "troubleshooting", new
-    entries only) beats the guess from its question's wording."""
+    fault, not e.g. "how long are records kept"), on the customer's
+    subject. An entry's own `kind` ("how-to" / "troubleshooting") beats
+    the guess from its question's wording."""
     instruction = candidate["instruction"]
     kind = candidate.get("kind")
     about_a_task = (kind == "how-to" if kind else
@@ -428,13 +412,12 @@ def answers_how_to(candidate: dict, customer_text: str) -> bool:
 # The AI's own how-to questions (fixed text, no model call). Asked at most
 # once per conversation (asked_how_to_question); after the customer's
 # answer the how-to is answered from the KB or handed off.
-HOW_TO_TYPE_QUESTION = ("Which kind of monitor do you want to {verb}: a website, a server (with the "
-                        "monitoring agent), an application (APM), a mobile app, a database, a cloud "
-                        "service, or a network device?")
+HOW_TO_SUBJECT_QUESTION = "What exactly do you want to {verb}, and in which part of {product}: {options}?"
+HOW_TO_GENERIC_QUESTION = "What exactly do you want to {verb} in {product}?"
 HOW_TO_VARIANT_QUESTION = "I have a guide for each of these: {options}. Which one is it?"
 HOW_TO_ONE_VARIANT_QUESTION = "I have a guide for {option}. Is that the one you're using?"
-_HOW_TO_QUESTION_STARTS = ("Which kind of monitor do you want to ", "I have a guide for ")
-# Words that don't say what a how-to is about ("add a new monitor").
+_HOW_TO_QUESTION_STARTS = ("What exactly do you want to ", "I have a guide for ")
+# Words that don't say what a how-to is about ("add a new one").
 GENERIC_HOW_TO_WORDS = frozenset("new another one first more extra thing things".split())
 _SET_UP = re.compile(r"\bset (?:\w+ )?up\b|\bsetup\b|\bsetting up\b|\bconfigur\w*|\binstall\w*", re.IGNORECASE)
 
@@ -461,30 +444,33 @@ def asked_how_to_question(ticket_text: str) -> bool:
 
 
 def how_to_subject(state: TicketState) -> set[str]:
-    """What the how-to is about: the customer's own words (task verbs and
-    "monitor" aside), or the monitor type of the category they picked."""
+    """What the how-to is about: the customer's own words (task verbs
+    aside), or the product areas (topic_terms) they named."""
     ticket_text = state["ticket_text"]
     words = _object_words(retrieval_query(ticket_text)) - GENERIC_HOW_TO_WORDS
-    types = topic_terms.monitor_types(_customer_authored_text(ticket_text), state.get("requested_category"))
-    return words | set(types)
+    return words | set(topic_terms.subjects_mentioned(_customer_authored_text(ticket_text)))
 
 
-def _options(labels: list[str]) -> str:
-    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} or {labels[-1]}"
+_options = chat_response.options_text
 
 
 def how_to_question(state: TicketState) -> str | None:
     """The one question a how-to needs before the KB can answer it, or
-    None. No subject at all ("how do I add the monitor"): which kind of
-    monitor. KB guides that apply only to something the customer hasn't
-    named (e.g. Linux / Windows agent entries): which one. Never asked
-    twice, never about a monitor name or an account."""
+    None. No subject at all ("how do I set it up"): what exactly, and in
+    which part of the product (its confirmed modules / variants). KB guides
+    that apply only to something the customer hasn't named (e.g. the
+    Android / iOS app guides): which one. Never asked twice, never about a
+    record or an account."""
     ticket_text = state.get("ticket_text", "")
     if not ticket_text or not is_how_to(ticket_text) or asked_how_to_question(ticket_text):
         return None
     if not how_to_subject(state):
-        verb = "set up" if _SET_UP.search(retrieval_query(ticket_text)) else "add"
-        return HOW_TO_TYPE_QUESTION.format(verb=verb)
+        verb = "set up" if _SET_UP.search(retrieval_query(ticket_text)) else "do"
+        labels = topic_terms.subject_labels()
+        if labels:
+            return HOW_TO_SUBJECT_QUESTION.format(verb=verb, product=product.name(),
+                                                  options=_options(labels[:6]))
+        return HOW_TO_GENERIC_QUESTION.format(verb=verb, product=product.name())
     usable, unconfirmed = grounding_candidates(state)
     if usable or not unconfirmed:
         return None
@@ -558,7 +544,7 @@ def classify_ticket(state: TicketState) -> dict:
     category, confidence = llm_category, llm_confidence
     top = candidates[0] if candidates else None
     # A match specific to something the customer never mentioned (e.g. a
-    # PagerDuty entry for "api error") is no evidence for its category.
+    # Slack entry for "approvals error") is no evidence for its category.
     if top and topic_terms.missing_terms(top, _customer_authored_text(state["ticket_text"])):
         top = None
     if top and top["score"] >= kb_retrieval.STRONG_MATCH_SCORE:
@@ -568,11 +554,11 @@ def classify_ticket(state: TicketState) -> dict:
             # direct match — trust it over a conservative raw confidence
             # number for a short/common phrasing.
             confidence = max(confidence, grounded_confidence)
-        elif llm_confidence < app_settings.get("routing").confidence_threshold and top["category"] in CATEGORIES:
+        elif llm_confidence < app_settings.get("routing").confidence_threshold \
+                and top["category"] in categories.names():
             # LLM was unsure AND retrieval strongly points elsewhere —
             # trust the grounded KB match over an ungrounded guess. Only
-            # to one of the classifier's categories: a KB-only category
-            # (data/kb/kb_registry.json) never becomes a ticket category.
+            # to a confirmed category.
             category, confidence = top["category"], grounded_confidence
 
     print(
@@ -626,13 +612,13 @@ def decide_route(state: TicketState) -> dict:
         )
         clarification_attempts_out = clarification_attempts
     elif how_to and how_to_question(state):
-        # "How do I add the monitor?" names no kind of monitor, or the KB's
-        # guides apply only to something not named yet (Linux / Windows):
+        # "How do I set it up?" names nothing, or the KB's guides apply only
+        # to something not named yet (the Android / iOS app):
         # ONE fixed question, no ticket yet. The answer is then answered
         # from the KB or handed off (never asked again).
         route, reason = "clarify", (
             "how-to that needs one detail before the KB can answer it "
-            "(which kind of monitor, or which of the KB's guides): one question, then the KB or a ticket"
+            "(what exactly, or which of the KB's guides): one question, then the KB or a ticket"
         )
         clarification_attempts_out = clarification_attempts + 1
     elif high_risk_below_bar and _info_entry(state):
@@ -646,10 +632,10 @@ def decide_route(state: TicketState) -> dict:
         clarification_attempts_out = clarification_attempts
     elif high_risk_below_bar and clarification_attempts == 0 and not how_to \
             and not error_reported(ticket_text) and ticket_text and not is_vague(ticket_text):
-        # A vague first report ("unable to login after changing license"):
+        # A vague first report ("unable to login after changing the plan"):
         # ONE question to pin down what the customer means (which login,
         # what they see), then the ticket. The AI never answers or
-        # suggests causes on licensing/data (ask_clarifying_question with
+        # suggests causes on account/billing/data (ask_clarifying_question with
         # high_risk); the next turn still below the bar goes to a human.
         route, reason = "clarify", (
             f"high-risk category {category!r} requires confidence >= "
@@ -658,13 +644,13 @@ def decide_route(state: TicketState) -> dict:
         )
         clarification_attempts_out = clarification_attempts + 1
     elif high_risk_below_bar:
-        # Licensing/billing and data-retention ambiguity goes to a human:
+        # Account, billing and data ambiguity goes to a human:
         # a clear request, a reported error, or the answer to the one
         # clarifying question. The AI never keeps guessing here.
         route, reason = "human", (
             f"high-risk category {category!r} requires confidence >= "
             f"{policy.high_risk_confidence_threshold}, got {confidence:.2f} — "
-            "escalating, no further clarification for licensing/data risk"
+            "escalating, no further clarification for account/billing/data risk"
         )
         clarification_attempts_out = clarification_attempts
     elif below_base_bar and how_to:
@@ -705,69 +691,9 @@ def decide_route(state: TicketState) -> dict:
 
 def route_after_decide(state: TicketState) -> str:
     return {
-        "ai": "lookup_order",
+        "ai": "generate_response",
         "clarify": "ask_clarifying_question",
     }.get(state["route"], "human_queue")
-
-
-def lookup_order(state: TicketState) -> dict:
-    """Runs before generate_response, ai branch only. Grounds a ticket
-    that names a specific order in a real (mock) order record instead of
-    letting generate_response invent one. Site24x7 has no order/shipping
-    category (_ORDER_RELATED_CATEGORIES is intentionally empty — see its
-    definition above), so in practice this only fires on a literal
-    ORD-XXXXX match in the text; it does not infer "this is order-related"
-    from category the way it did for the old Bitext-era taxonomy.
-    """
-    match = _ORDER_ID_RE.search(state["ticket_text"])
-    if not match and state.get("category") not in _ORDER_RELATED_CATEGORIES:
-        return {"order_lookup": None}
-
-    if not match:
-        return {"order_lookup": {"not_found": True, "no_order_number_given": True}}
-
-    order_id = match.group(0).upper()
-    conn = db.get_connection()
-    try:
-        row = conn.execute(
-            "SELECT * FROM orders WHERE order_id = ?", (order_id,)
-        ).fetchone()
-    finally:
-        conn.close()
-
-    if row is None:
-        return {"order_lookup": {"not_found": True, "order_id": order_id}}
-    return {"order_lookup": dict(row)}
-
-
-def _format_order_context(order_lookup: dict | None) -> str:
-    if order_lookup is None:
-        return (
-            "Order data: not applicable — this ticket doesn't appear to "
-            "reference a specific order."
-        )
-    if order_lookup.get("no_order_number_given"):
-        return (
-            "Order data: this looks order-related but the customer gave no "
-            "order number. Ask them for it — do not guess or assume any "
-            "order status, items, or dates."
-        )
-    if order_lookup.get("not_found"):
-        return (
-            f"Order data: no record found for order {order_lookup['order_id']} "
-            "in the order system. Tell the customer plainly that you can't "
-            "verify that order number and ask them to double-check it — do "
-            "NOT state or imply a status for it."
-        )
-    return (
-        "Order data (verified, from the order system — use ONLY these "
-        "facts; do not add a tracking number, delivery date, or any other "
-        "detail not listed here):\n"
-        f"  order_id: {order_lookup['order_id']}\n"
-        f"  status: {order_lookup['status']}\n"
-        f"  items: {order_lookup['items']}\n"
-        f"  order_date: {order_lookup['order_date']}"
-    )
 
 
 def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dict, set[str]]]]:
@@ -782,7 +708,7 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
     how_to = is_how_to(state["ticket_text"])
-    if requested in CATEGORIES:
+    if requested in categories.names():
         narrowed = kb_candidates_for(retrieval_query(state["ticket_text"]), category=requested,
                                      skip_faults=how_to)
         if narrowed:
@@ -813,14 +739,16 @@ def _reply_context(state: TicketState) -> dict:
     customer_text = _customer_authored_text(state["ticket_text"])
     messages = _customer_messages(state["ticket_text"])
     requested = state.get("requested_category")
-    types = topic_terms.monitor_types(customer_text, requested)
+    subjects = topic_terms.subjects_mentioned(customer_text)
     how_to = is_how_to(state["ticket_text"])
     # A how-to matched to a KB guide on the customer's subject (graph.
-    # answers_how_to) needs no monitor type: the guide is the answer.
+    # answers_how_to) needs no product area: the guide is the answer. A
+    # product with no confirmed modules/variants has nothing to ask about.
     guided = how_to and bool(usable)
-    details = [f"Monitor type: {', '.join(types)} (stated by the customer)" if types
-               else "Monitor type: covered by the kb_guidance guide for this request" if guided
-               else "Monitor type: not stated yet"]
+    nothing_to_ask = not topic_terms.subject_labels()
+    details = [f"Product area: {', '.join(subjects)} (stated by the customer)" if subjects
+               else "Product area: covered by the kb_guidance guide for this request" if guided
+               else "Product area: not stated yet"]
     if requested:
         details.append(f"Category the customer picked: {requested}")
     return {
@@ -831,8 +759,8 @@ def _reply_context(state: TicketState) -> dict:
             for c, missing in unconfirmed
         ],
         "customer_details": "\n".join(details),
-        "monitor_type_known": bool(types) or guided,
-        "monitor_type": types[0] if len(types) == 1 else None,
+        "subject_known": bool(subjects) or guided or nothing_to_ask,
+        "subject": subjects[0] if len(subjects) == 1 else None,
         "vague": vague,
         "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
         "latest_message": messages[-1] if messages else "",
@@ -862,7 +790,6 @@ def generate_response(state: TicketState) -> dict:
         ticket_text=state["ticket_text"],
         category=state.get("category"),
         history=_history(state),
-        order_context=_format_order_context(state.get("order_lookup")),
         continuation=bool(state.get("continuation")),
         reply_format=state.get("reply_format", "chat"),
         customer_name=state.get("customer_name"),
@@ -884,12 +811,12 @@ def generate_response(state: TicketState) -> dict:
 def ask_clarifying_question(state: TicketState) -> dict:
     """clarify branch — the ticket/transcript is too ambiguous to classify
     confidently. Asks one targeted question grounded in the actual
-    candidate KB entries (e.g. which of two *real* Site24x7 topics
+    candidate KB entries (e.g. which of two *real* KB topics
     applies) rather than a free-floating meta-question about categories
     that don't exist in this taxonomy. Stored via `ai_response` so it
     flows through the same message path as generate_response's output."""
     question = how_to_question(state)
-    if question:  # fixed text: no model call, no monitor name or account asked for
+    if question:  # fixed text: no model call, no record or account asked for
         if state.get("reply_format") == "email":
             question = email_utils.format_email_reply(state.get("customer_name"), question)
         return {"ai_response": question}
@@ -898,9 +825,9 @@ def ask_clarifying_question(state: TicketState) -> dict:
                  and state.get("confidence", 0.0) < policy.high_risk_confidence_threshold)
     context = _reply_context(state)
     if high_risk:
-        # Licensing/data: no KB topics to choose between and no monitor
-        # type to ask about; one question about what the customer means.
-        context.update(kb_candidates=[], unconfirmed_topics=[], monitor_type_known=True)
+        # Account/billing/data: no KB topics to choose between and no
+        # product area to ask about; one question about what the customer means.
+        context.update(kb_candidates=[], unconfirmed_topics=[], subject_known=True)
     reply = chat_response.clarify(
         ClarifyInput(
             ticket_text=state["ticket_text"],
@@ -931,7 +858,6 @@ def build_graph():
     graph.add_node("retrieve_kb_candidates", retrieve_kb_candidates)
     graph.add_node("classify_ticket", classify_ticket)
     graph.add_node("decide_route", decide_route)
-    graph.add_node("lookup_order", lookup_order)
     graph.add_node("generate_response", generate_response)
     graph.add_node("ask_clarifying_question", ask_clarifying_question)
     graph.add_node("human_queue", human_queue)
@@ -944,12 +870,11 @@ def build_graph():
         "decide_route",
         route_after_decide,
         {
-            "lookup_order": "lookup_order",
+            "generate_response": "generate_response",
             "ask_clarifying_question": "ask_clarifying_question",
             "human_queue": "human_queue",
         },
     )
-    graph.add_edge("lookup_order", "generate_response")
     graph.add_edge("generate_response", END)
     graph.add_edge("ask_clarifying_question", END)
     graph.add_edge("human_queue", END)

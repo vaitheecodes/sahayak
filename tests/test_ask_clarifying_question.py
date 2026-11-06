@@ -33,7 +33,7 @@ def _invoke_ask_clarifying_question(monkeypatch, kb_candidates):
     graph.ask_clarifying_question(
         {
             "ticket_text": "some ambiguous ticket text",
-            "category": "SUPPORT",
+            "category": "OTHER",
             "confidence": 0.5,
             "kb_candidates": kb_candidates,
         }
@@ -46,17 +46,17 @@ def test_grounded_prompt_names_specific_candidates(monkeypatch):
     candidates = [
         {
             "kb_entry_id": "KB-0001",
-            "category": "ALERTS",
+            "category": "ISSUE",
             "intent": "alert_configuration",
-            "instruction": "how do I configure an alert profile in Site24x7",
+            "instruction": "how do I configure a leave policy in Brightdesk",
             "response": "...",
             "score": 0.455,
         },
         {
             "kb_entry_id": "KB-0002",
-            "category": "ALERTS",
+            "category": "ISSUE",
             "intent": "alert_not_triggered",
-            "instruction": "Site24x7 alert notification was not triggered",
+            "instruction": "Brightdesk leave notification was not sent",
             "response": "...",
             "score": 0.375,
         },
@@ -66,7 +66,7 @@ def test_grounded_prompt_names_specific_candidates(monkeypatch):
     # Must reference the actual retrieved intents/example questions...
     assert "alert_configuration" in prompt
     assert "alert_not_triggered" in prompt
-    assert "how do I configure an alert profile in Site24x7" in prompt
+    assert "how do I configure a leave policy in Brightdesk" in prompt
     # ...and must not fall back to the old free-floating "which category"
     # framing that lists the stale Bitext-era categories as live options.
     assert "SUBSCRIPTION" not in prompt

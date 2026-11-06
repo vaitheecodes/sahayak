@@ -80,7 +80,7 @@ export default function TryATicket() {
                   <Textarea
                     id={ids.text}
                     rows={6}
-                    placeholder="e.g. Our Linux server monitor stopped reporting data at 10:00 UTC"
+                    placeholder="e.g. Clock-in shows a location error since 10:00 today"
                     value={ticketText}
                     onChange={(e) => setTicketText(e.target.value)}
                     required

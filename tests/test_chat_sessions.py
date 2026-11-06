@@ -30,7 +30,7 @@ from backend.ai_service.schemas import ChatResolutionSummary, HandoffSummary, Su
 
 _counter = itertools.count()
 
-_ANSWER = {"route": "ai", "category": "AGENT", "confidence": 0.95,
+_ANSWER = {"route": "ai", "category": "SETUP", "confidence": 0.95,
            "ai_response": "Restart the agent service.", "clarification_attempts": 0}
 _HUMAN = {"route": "human", "category": "ACCOUNT", "confidence": 0.4, "clarification_attempts": 0}
 _BRIEF = HandoffSummary(

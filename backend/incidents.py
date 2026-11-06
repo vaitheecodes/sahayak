@@ -2,7 +2,7 @@
 
 1. Candidates: tickets created in the last INCIDENT_WINDOW_HOURS (not in a
    dismissed cluster), grouped by component area — the department that
-   owns the ticket's category (so e.g. AGENT and SERVER_MONITORING reports
+   owns the ticket's category (so e.g. SETUP and ISSUE reports
    of one outage land together; the classifier often splits them), or the
    category itself if no department owns it — then split by text
    similarity (INCIDENT_SIMILARITY): lexical TF-IDF by default, or

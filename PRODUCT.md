@@ -7,8 +7,8 @@
 web
 
 ## Users
-Four roles share one help desk for a monitoring product (support topics:
-monitors, alerts, agents, integrations, licensing, data retention):
+Four roles share one help desk for any product (configured per client:
+its name, categories and knowledge base are data):
 
 - **Customers** ask the AI support chat first, raise email-style tickets,
   and follow their tickets.
@@ -30,9 +30,9 @@ and resolution within SLA. Success: fewer tickets reach a human, and the
 ones that do are resolved within their SLA.
 
 ## Positioning
-The AI is grounded only in 386 canonical KB answers and a routing policy
-with stricter bars for high-risk categories (licensing/billing, data
-retention); it asks one clarifying question or hands off with a brief
+The AI is grounded only in the approved KB answers and a routing policy
+with stricter bars for high-risk categories (account, billing and data);
+it asks one clarifying question or hands off with a brief
 rather than guessing. Incidents are correlated across customers by AI and
 confirmed by a manager.
 
@@ -56,7 +56,8 @@ FastAPI backend, SQLite locally and Postgres on AWS. Routes per role:
 - Not a copy of any brand's look.
 
 ## Evidence on Hand
-Real KB content from the gold dataset (data/silver). No real customers,
+KB content comes from the client's own public material (the ingester);
+the tests use a fictional product, Brightdesk HR. No real customers,
 testimonials or usage numbers: demo data only, never presented as real.
 
 ## Product Principles

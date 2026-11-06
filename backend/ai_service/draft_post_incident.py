@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service._format import GROUNDING_RULES
 from backend.ai_service.schemas import PostIncidentDraft, PostIncidentFacts
@@ -76,13 +77,13 @@ def draft_post_incident(facts: PostIncidentFacts) -> tuple[str, str]:
         "scale": f"{facts.affected_customer_count} customers, {facts.affected_ticket_count} tickets",
     }
     draft = provider.complete_json(
-        "You write a short post-incident summary for Site24x7 customers who were "
+        f"You write a short post-incident summary for customers of {product.described()} who were "
         "affected by an incident that is now resolved. Use ONLY the facts in the "
         "data blocks: the incident's symptoms, affected services, observed facts and "
         "the staff resolution note. Fields: what_happened (one or two plain sentences "
         "on what customers experienced), what_was_fixed (what the team did, from the "
         "resolution note only), what_customers_should_do (concrete next steps, or "
-        "'Nothing — your monitoring is back to normal.' if none apply), "
+        "'Nothing — everything is back to normal.' if none apply), "
         "internal_summary (two or three sentences for the support team). Do NOT "
         "mention any time, date, weekday or 'yesterday'/'today' (the times are added "
         "separately), and do NOT state or guess any cause (the cause line is added "

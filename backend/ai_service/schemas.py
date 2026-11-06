@@ -10,19 +10,22 @@ code.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 from pydantic.json_schema import SkipJsonSchema
 
-# The 17 KB categories (src/pipeline/config.py:CATEGORY_INTENTS); kept
-# here so the AI layer has no dependency on the routing graph.
-CATEGORIES = (
-    "ACCOUNT", "AGENT", "ALERTS", "APM", "APPLICATION_MONITORING", "CLOUD",
-    "CONTAINERS", "DATA", "INTEGRATION", "LOGS", "MONITORING", "NETFLOW",
-    "REPORTING", "SERVER_MONITORING", "SNMP", "SUPPORT", "WEB_MONITORING",
-)
-Category = Literal[CATEGORIES]  # type: ignore[valid-type]
+# A category name. Which names exist is data (backend/categories.py):
+# operations that return one narrow it to the current names with
+# with_categories(), so the schema the model sees lists them.
+Category = Annotated[str, Field(min_length=1, max_length=41)]
+
+
+def with_categories(schema: type[BaseModel], names: list[str], *, optional: bool = False) -> type[BaseModel]:
+    """`schema` with its `category` field limited to `names`."""
+    allowed = Literal[tuple(names)]  # type: ignore[valid-type]
+    field = (allowed | None, None) if optional else (allowed, ...)
+    return create_model(schema.__name__, __base__=schema, category=field)
 
 
 def _text(max_length: int = 2000):
@@ -79,18 +82,17 @@ class AnswerInput(BaseModel):
     category: str | None = None
     history: list[HistoryItem] = []
     kb_candidates: list[KBCandidate] = []
-    order_context: str = ""
     continuation: bool = False
     reply_format: Literal["chat", "email"] = "chat"
     customer_name: str | None = None
     # Set by graph._reply_context: KB topics that matched words but are
     # specific to something the customer hasn't mentioned (never grounding),
-    # what the customer has told us (monitor type, picked category), and
-    # whether the monitor type is known (chat filter's fallback question).
+    # what the customer has told us (product area, picked category), and
+    # whether the product area is known (chat filter's fallback question).
     unconfirmed_topics: list[str] = []
     customer_details: str = ""
-    monitor_type_known: bool = True
-    monitor_type: str | None = None
+    subject_known: bool = True
+    subject: str | None = None
     # No symptom described yet ("I have an issue"): one open question,
     # no grounding (chat_response.open_question).
     vague: bool = False
@@ -114,12 +116,12 @@ class ClarifyInput(BaseModel):
     customer_name: str | None = None
     # Set by graph._reply_context: KB topics that matched words but are
     # specific to something the customer hasn't mentioned (never grounding),
-    # what the customer has told us (monitor type, picked category), and
-    # whether the monitor type is known (chat filter's fallback question).
+    # what the customer has told us (product area, picked category), and
+    # whether the product area is known (chat filter's fallback question).
     unconfirmed_topics: list[str] = []
     customer_details: str = ""
-    monitor_type_known: bool = True
-    monitor_type: str | None = None
+    subject_known: bool = True
+    subject: str | None = None
     # No symptom described yet ("I have an issue"): one open question,
     # no grounding (chat_response.open_question).
     vague: bool = False

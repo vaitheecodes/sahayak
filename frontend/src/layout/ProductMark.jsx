@@ -1,4 +1,4 @@
-/* The product mark: a ring with a heartbeat line through it (a monitor
+/* The product mark: a ring with a heartbeat line through it (a help desk
  * that answers), in the accent. Drawn for this product, not a letter. */
 export default function ProductMark({ className = "size-6" }) {
   return (

@@ -1,11 +1,11 @@
 """What kind of request a message (or a KB entry's question) is.
 
 - how-to: the customer wants to add, set up or configure something
-  ("I need to add an APM monitor, how to do?"). Never a fault: nothing is
+  ("I need to add a new user, how to do?"). Never a fault: nothing is
   broken, so there is no error to ask about and no troubleshooting entry
   can answer it.
-- fault: something is broken or missing ("monitor shows down", "unable
-  to log in", "alerts not received").
+- fault: something is broken or missing ("the page shows an error",
+  "unable to log in", "emails not received").
 - error_reported: the customer mentioned an error (text, code, failure).
   Only then may a reply ask for the exact error message.
 
@@ -30,22 +30,25 @@ _ERROR = re.compile(
     re.IGNORECASE)
 _TASK = re.compile(
     r"\b(add|adding|set ?up|set (?:it|this|that|them) up|setting up|configure|configuring|create|creating|install|installing"
-    r"|enable|enabling|integrate|integrating|connect|connecting|monitor|monitoring|track|tracking"
-    r"|change|changing|update|updating|edit|modify|generate|schedule)\b",
+    r"|enable|enabling|integrate|integrating|connect|connecting|track|tracking"
+    r"|change|changing|update|updating|edit|modify|generate|schedule|apply|submit|request"
+    r"|download|export|import|upload|assign|approve|register|invite)\b",
     re.IGNORECASE)
 # Task verbs as single words (graph.shares_customer_words compares the
 # objects of a request, not its verb).
 TASK_WORDS = frozenset("""
     add adding set setup setting configure configuring create creating install installing enable
-    enabling integrate integrating connect connecting monitor monitoring track tracking change
-    changing update updating edit modify generate schedule
+    enabling integrate integrating connect connecting track tracking change changing update
+    updating edit modify generate schedule apply submit request download export import upload
+    assign approve register invite
 """.split())
 _HOW = re.compile(
     r"\b(how|steps?|guide|way to|want to|wants to|need to|needs to|would like to|like to|trying to"
     r"|wanna|planning to|is it possible to|can i|can we|could i)\b",
     re.IGNORECASE)
 _UNSURE = re.compile(r"\b(not sure|unsure|no idea|don'?t know|dunno|idk|not certain)\b", re.IGNORECASE)
-_STARTS_WITH_TASK = re.compile(r"^\s*(please\s+)?(add|set ?up|configure|create|install|enable|integrate|connect)\b",
+_STARTS_WITH_TASK = re.compile(r"^\s*(please\s+)?(add|set ?up|configure|create|install|enable|integrate|connect"
+                               r"|apply|submit|export|download|import|upload|invite)\b",
                                re.IGNORECASE)
 
 

@@ -7,7 +7,7 @@ from backend.ai_service.schemas import HistoryItem, KBCandidate
 GROUNDING_RULES = (
     "Only state what the provided data supports. Do not invent "
     "troubleshooting results, error messages, account details, or checks, "
-    "and never claim that anyone inspected a monitoring system, server, or "
+    "and never claim that anyone inspected a system, server, record or "
     "account: this application has no access to any of them."
 )
 

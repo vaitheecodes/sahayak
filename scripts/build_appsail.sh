@@ -21,11 +21,10 @@ OUT="$ROOT/build/appsail"
 PY="${PYTHON:-$ROOT/.ven/bin/python}"
 
 rm -rf "$OUT"
-mkdir -p "$OUT/data/kb"
+mkdir -p "$OUT"
 
 rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '*.db' --exclude '*.db-*' \
   --exclude 'uploads/' "$ROOT/backend/" "$OUT/backend/"
-cp "$ROOT/data/kb/kb_entries.json" "$OUT/data/kb/"
 cp "$ROOT/requirements-runtime.txt" "$OUT/"
 
 "$PY" -m pip install -r "$ROOT/requirements-runtime.txt" -t "$OUT" \

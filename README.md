@@ -1,11 +1,12 @@
-# ticketapp-ai
+# Sahayak
 
-An AI-powered help desk for a monitoring product (Site24x7 support
-topics), inspired by Zoho Desk and AI customer-experience platforms such
-as Thunai.ai, Zendesk AI and Intercom Fin — plus the data pipeline that
-builds its knowledge base.
+An AI-powered help desk for any product, inspired by Zoho Desk and AI
+customer-experience platforms such as Thunai.ai, Zendesk AI and Intercom
+Fin. The product is configured, not coded: its name, categories and
+knowledge base are data, and the knowledge base is built from the
+product's own content (`kb_ingester/`, in progress).
 
-- **Customers** chat with an AI assistant grounded in a 386-entry
+- **Customers** chat with an AI assistant grounded in the product's
   knowledge base, or raise email-style tickets with attachments.
 - **The AI** answers what it can, asks one targeted question when unsure,
   and hands everything else to people with a summary and suggested next
@@ -17,8 +18,9 @@ builds its knowledge base.
 - **The admin** manages accounts, departments, AI routing settings and
   reads the audit log.
 
-The original data-engineering layer (bronze → silver → gold) is described
-[further down](#data-layer).
+Sahayak started as a copy of ticketapp-ai-aws (a help desk for one
+monitoring product); the product-specific data, its pipeline and its
+wording were removed so it starts with an empty knowledge base.
 
 ## Contents
 
@@ -32,7 +34,7 @@ The original data-engineering layer (bronze → silver → gold) is described
 - [Testing](#testing)
 - [Features: completed and tested](#features-completed-and-tested)
 - [Known limitations](#known-limitations)
-- [Data layer](#data-layer)
+- [Knowledge base](#knowledge-base)
 
 ## Architecture
 
@@ -90,22 +92,24 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173. Vite proxies `/api` to `:8000`.
 
-On first start the backend creates the database, seeds the default
-departments (covering all 17 categories) and a small mock `orders` table,
-and creates the admin account:
+On first start the backend creates the database, seeds eight neutral
+categories (ACCOUNT, BILLING, DATA, SETUP, USAGE, ISSUE, INTEGRATION,
+OTHER) and three default departments covering them, and creates the admin
+account:
 
 - **Admin**: from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. If they're unset in
   development, a fallback admin is created and a warning with the details
   is logged (`backend/auth.py`). In production (`APP_ENV=production`) the
   server refuses to start without them.
 - **Demo staff** (development only, never in production): a manager
-  (Infrastructure department) and a technician; credentials in
+  (Product Support department) and a technician; credentials in
   `backend/seed_data.py`.
 - **Customers** sign up on the login page (or the admin creates them).
 
-The knowledge base reads `data/silver/{tickets,resolutions}.parquet`
-(committed). Regenerate them with the [data pipeline](#data-layer) if
-needed.
+The knowledge base starts empty: until entries are approved, every
+question gets the "I don't have a guide for that yet" hand-off to a
+ticket. See [Knowledge base](#knowledge-base). Name the product in
+**Settings → Product** (admin); until then the AI says "the product".
 
 **Deployment (Azure).** The backend runs on App Service (`Procfile`,
 `runtime.txt`); set the variables below as Application Settings, with
@@ -117,7 +121,7 @@ origin. The frontend builds to Static Web Apps with
 
 **Continuous deployment.** Two GitHub Actions workflows deploy on push to
 `main`: `.github/workflows/deploy-backend.yml` (changes under `backend/`,
-`data/silver/`, `requirements.txt`, `runtime.txt`; packages committed files
+`requirements.txt`, `runtime.txt`; packages committed files
 with `git archive` and deploys to the `ticketapp-ai-api` App Service) and
 `.github/workflows/deploy-frontend.yml` (changes under `frontend/`; builds
 with Node 22 and deploys `frontend/dist` to the Static Web App). Both can
@@ -284,14 +288,14 @@ incident summary, post-incident summary draft, incident-question parsing):
   latency, tokens and an estimated cost.
 - **Routing policy** (`graph.decide_route`, editable in Admin →
   Settings): escalation language (abuse, negation, long compound
-  messages) → human; high-risk categories (ACCOUNT, DATA) below 90%
+  messages) → human; high-risk categories (ACCOUNT, BILLING, DATA) below 90%
   confidence → an `escalate_with_info` KB entry's steps and collect
   list, then a ticket; a vague first report gets one clarifying
   question, then a human; otherwise human; a how-to ("how do I add X?")
   is answered from the KB, or told there's no guide yet and handed to a
   human, never asked "are you referring to...?" (one fixed question
-  first only when it names no kind of monitor, or when the guides are
-  for Linux / Windows and it names neither); other categories
+  first only when it names nothing to do, or when the guides are for
+  one platform each, e.g. Android / iOS, and it names neither); other categories
   below 75% → up to 3 clarifying questions, then human; otherwise the AI
   answers.
 - **Answers stay grounded** (`backend/request_kind.py`,
@@ -382,7 +386,7 @@ database isn't reachable the tests are skipped with the reason.
 `TEST_DB_POOL_MAX=1` makes a Postgres run fail on any code that holds a
 connection while asking for another.
 
-The pytest suite covers the data pipeline and the help desk; tests never
+The pytest suite covers the help desk; tests never
 call the real AI provider (`tests/conftest.py` disables it; individual
 tests script the model's replies). Highlights:
 
@@ -396,12 +400,12 @@ tests script the model's replies). Highlights:
 | `test_storage_s3.py` | S3 attachments with a fake client: only metadata in the DB, validation before any upload, cleanup on failure, downloads only through the authorised endpoint (no links), S3 errors → 503 without AWS text, bad settings stop startup |
 | `test_postgres_backend.py` | SQL translation, rows, settings never leak the password, 20 concurrent claims with exactly one winner (SQLite and Postgres), more chat turns than pool connections without deadlock, exhausted pool answers 503 |
 | `test_ai_providers.py`, `test_bedrock_provider.py` | each provider's request, response parsing, retry note, error mapping (only throttling/timeouts retried, once; nothing secret logged), AI failure changes nothing; boto3 is always faked |
-| `test_kb_retrieval.py`, `test_kb_new_entries.py` | KB retrieval: near-duplicates collapse to one topic, `KB_MIN_SCORE` floor, only the customer's own words searched; the hand-written entry validator and that example entries are never used |
+| `test_kb_retrieval.py`, `test_kb_store.py`, `test_topic_terms.py` | KB retrieval (one topic per entry, `KB_MIN_SCORE` floor, only the customer's own words searched, drafts never searched); the database KB on SQLite and Postgres: packs, validation, terms |
+| `test_product_neutral.py` | categories as data, the product profile in prompts, and no product-specific words in code, prompts, migrations or frontend |
 | `test_incidents.py` | clustering, time window, pre-filters, dedupe, routing, review, banner |
 | `test_incident_resolution.py` | resolve only when confirmed, facts-only draft (invented times/causes rejected), idempotent fan-out, per-ticket failure isolation, email gate, "was there an outage?" answers (linked / unlinked / public / expired, no cross-customer leakage), AI failure sends nothing |
 | `test_admin_console.py` | account administration, settings, audit log, email gate, attachment access |
 | `test_customer_tickets.py` | ticket model, email-style replies, attachments |
-| `test_data_quality.py` | 33 checks over the pipeline output |
 
 The frontend has no automated tests; it was verified by building, linting
 and clicking through each portal in a browser at desktop and phone widths.
@@ -462,50 +466,36 @@ and clicking through each portal in a browser at desktop and phone widths.
   logins are audited but not rate-limited.
 - **Legacy data:** admin accounts created by the old public admin signup
   are kept (a warning is logged); remove extras manually.
-- **The `src/agent/` evaluation track** (below) is still a stub and
-  separate from the live app.
 
-## Data layer
+## Knowledge base
 
-**Source:** `data/raw/Site24x7_Customer_Support_Training_Dataset_27K.csv`
-— 26,872 rows, 27 intents under 17 categories, all genuine Site24x7
-monitoring-product support topics. It's an instruction-tuning dataset
-(`flags, instruction, category, intent, response`), so the silver stage
-layers realistic synthetic operational metadata on top of the genuine
-support language. **The real knowledge-base size is 386 unique
-instructions** — each is duplicated ~5x under different `flags` values (a
-dataset-generation artifact), so every ticket is tagged with its
-canonical `kb_entry_id`.
+The knowledge base lives in the database (`backend/kb_store.py`,
+tables in `backend/db.py` and `migrations/postgres/0003_kb.sql`):
 
-```
-data/raw/*.csv → [bronze] lineage → [silver] entity fill + synthetic
-metadata → [gold] DuckDB warehouse + CX views + Hive-partitioned Parquet
-```
+- **Entries** (`kb_entries`): a title, an answer, numbered steps (each
+  with the passage of the source it is backed by), several customer-style
+  questions, a kind (how-to / troubleshooting), a category, the product
+  terms it applies to, and the source URL. Status draft / approved /
+  rejected / retired; only approved entries are searched.
+- **Terms** (`kb_terms`): the product's modules, variants, platforms,
+  integrations and editions with their aliases, learned from its content
+  and confirmed by a reviewer. An entry for one of them grounds a reply
+  only when the customer has mentioned it.
+- **Categories** (`kb_categories`): neutral defaults, extended without code.
+- **Sources, runs, documents, chunks**: where content came from and how
+  it was ingested (the ingester, `kb_ingester/`, is being built).
 
-| Stage | Script | What it does |
-|---|---|---|
-| Bronze | `src/pipeline/01_bronze_ingest.py` | Lands the raw CSV as-is, adds lineage columns and a `_manifest.json` (counts, sha256). |
-| Silver | `src/pipeline/02_silver_transform.py` | Decodes `flags` into `language_tags`, fills the `{{monitor name}}` placeholder, generates ticket and resolution metadata, tags `kb_entry_id`. Seeded (42). |
-| Gold | `src/pipeline/03_gold_load.py` | DuckDB warehouse, 3 CX views (volume by channel, deflection by intent, handle time / CSAT by category), Hive-partitioned Parquet ready for S3 + Athena. |
+A reviewed KB moves between environments as a JSON pack (format: the
+neutral test fixture `tests/fixtures/kb/brightdesk.json`, a fictional HR
+product):
 
 ```bash
-python src/pipeline/01_bronze_ingest.py
+.venv/bin/python scripts/kb_import.py PACK.json
 ```
 
 ```bash
-python src/pipeline/02_silver_transform.py
+.venv/bin/python scripts/kb_import.py --export OUT.json
 ```
 
-```bash
-python src/pipeline/03_gold_load.py
-```
-
-The live help desk uses the silver tables as its knowledge base
-(`backend/kb_retrieval.py`).
-
-**Evaluation track (`src/agent/`, not started beyond a skeleton):** a
-LangGraph skeleton with stub nodes for offline evaluation (`python
-src/agent/run_demo.py`). Still open: an 80/20 split on the 386
-`kb_entry_id` values (never on raw rows, which would leak flag-variant
-duplicates across the split) and a deflection / handle-time / quality
-evaluation notebook.
+Import asks for a typed "yes", imports everything as approved, and writes
+nothing if any entry is invalid.

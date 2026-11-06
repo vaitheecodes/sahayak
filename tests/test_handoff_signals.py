@@ -48,7 +48,7 @@ def test_limitation_admissions_detected(ai_response):
     "ai_response",
     [
         # real resolved answers from live runs — must not escalate
-        "To install the Site24x7 agent, download the installer that matches "
+        "To install the Brightdesk app, download the installer that matches "
         "your operating system and run it with administrator rights. If you "
         "hit issues, collect the installer output and agent logs.",
         "For website monitoring, configure the URL, monitoring locations, "

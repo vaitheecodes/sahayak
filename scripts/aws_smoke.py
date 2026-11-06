@@ -71,8 +71,12 @@ def public_checks(c: Checks, frontend: str, api: str) -> None:
     meta = _json(body) or {}
     categories = meta.get("categories") or []
     c.check("API /api/meta", status == 200 and len(categories) > 0, f"HTTP {status}, {len(categories)} categories")
+    # A new deployment starts with an empty KB (entries are approved in the
+    # app), so 0 is reported, not a failure; a missing count is an old image.
     kb = meta.get("kb_entries")
-    c.check("KB loaded", isinstance(kb, int) and kb > 0, f"{kb if kb is not None else 'no'} KB entries")
+    c.check("KB count reported", isinstance(kb, int), f"{kb if kb is not None else 'no'} KB entries")
+    if kb == 0:
+        print("  NOTE  the knowledge base is empty: every question will be handed to the support team")
 
     status, headers, _ = _request("OPTIONS", api + "/api/auth/login", headers={
         "Origin": frontend, "Access-Control-Request-Method": "POST",
@@ -104,7 +108,7 @@ def admin_checks(c: Checks, api: str) -> None:
         return
 
     status, _, body = _request("POST", api + "/api/admin/simulate-ticket", {
-        "ticket_text": "My website monitor shows the site as down but it loads fine in my browser.",
+        "ticket_text": "My payslip for this month is missing, but payroll was published.",
         "channel": "chat"}, headers=auth)
     result = _json(body) or {}
     c.check("AI pipeline (Bedrock) via the admin simulator", status == 200 and bool(result.get("category")),

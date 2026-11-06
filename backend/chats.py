@@ -32,7 +32,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend import ai_failures, audit, auth, db, graph, handoff_signals, incident_memory, incidents, runtime
+from backend import ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, provider, summarize_conversation
 from backend.conversation import (
@@ -72,7 +72,7 @@ class StartChatRequest(BaseModel):
     def _known_category(cls, value):
         if value in (None, ""):
             return None
-        if value not in graph.CATEGORIES:
+        if value not in categories.names():
             raise ValueError("Unknown category")
         return value
 
@@ -341,7 +341,6 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
             recent_ai_replies=turn.recent_ai,
         )
         state.update(graph.fetch_customer_history(state))
-        state.update(graph.lookup_order(state))
         reply = graph.generate_response(state)
         result = {"route": "ai", "ai_response": reply["ai_response"], "needs_info": reply.get("needs_info"),
                   "category": session["category"], "confidence": session["confidence"],

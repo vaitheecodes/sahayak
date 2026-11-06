@@ -9,6 +9,7 @@ notes): see backend/main.py:_transcript_for.
 
 from __future__ import annotations
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service.schemas import HandoffSummary
 from backend.ai_service.summarize_conversation import _GROUNDING, HANDOFF_FIELDS
@@ -16,7 +17,7 @@ from backend.ai_service.summarize_conversation import _GROUNDING, HANDOFF_FIELDS
 
 def summarize_ticket(thread: str, reason: str) -> HandoffSummary:
     summary = provider.complete_json(
-        "You write the hand-off brief for a Site24x7 support technician taking "
+        f"You write the hand-off brief for a support technician for {product.described()}, taking "
         "over a support ticket the AI assistant was handling. "
         f"{HANDOFF_FIELDS} {_GROUNDING}",
         {"handoff_reason": reason, "ticket_thread": thread},

@@ -350,8 +350,8 @@ def test_default_departments_cover_every_category_once(client):
 
 def test_department_crud_and_validation(client):
     headers = _admin_headers(client)
-    # ALERTS is already owned by a default department.
-    clash = client.post("/api/admin/departments", json={"name": "Dupes", "categories": ["ALERTS"]},
+    # ISSUE is already owned by a default department.
+    clash = client.post("/api/admin/departments", json={"name": "Dupes", "categories": ["ISSUE"]},
                         headers=headers)
     assert clash.status_code == 400
     unknown = client.post("/api/admin/departments", json={"name": "Bad", "categories": ["NOPE"]},
@@ -363,16 +363,16 @@ def test_department_crud_and_validation(client):
     assert created.status_code == 200, created.text
     dept_id = created.json()["department_id"]
 
-    # Move SUPPORT out of its default department into the new one.
+    # Move OTHER out of its default department into the new one.
     depts = client.get("/api/admin/departments", headers=headers).json()["departments"]
-    (owner,) = [d for d in depts if "SUPPORT" in d["categories"]]
+    (owner,) = [d for d in depts if "OTHER" in d["categories"]]
     client.put(f"/api/admin/departments/{owner['department_id']}",
-               json={"name": owner["name"], "categories": [c for c in owner["categories"] if c != "SUPPORT"]},
+               json={"name": owner["name"], "categories": [c for c in owner["categories"] if c != "OTHER"]},
                headers=headers)
     moved = client.put(f"/api/admin/departments/{dept_id}",
-                       json={"name": "Escalations", "categories": ["SUPPORT"]}, headers=headers)
+                       json={"name": "Escalations", "categories": ["OTHER"]}, headers=headers)
     assert moved.status_code == 200
-    assert moved.json()["categories"] == ["SUPPORT"]
+    assert moved.json()["categories"] == ["OTHER"]
 
     assert client.delete(f"/api/admin/departments/{dept_id}", headers=headers).status_code == 200
     assert client.delete(f"/api/admin/departments/{dept_id}", headers=headers).status_code == 404
@@ -381,7 +381,7 @@ def test_department_crud_and_validation(client):
 def test_admin_sets_a_managers_single_department(client):
     headers = _admin_headers(client)
     depts = client.get("/api/admin/departments", headers=headers).json()["departments"]
-    network = next(d for d in depts if d["name"] == "Network")
+    network = next(d for d in depts if d["name"] == "General")
     manager = _demo("manager")
     staff = client.get("/api/admin/staff", headers=headers).json()
     (row,) = [s for s in staff if s["email"] == manager["email"]]
@@ -389,11 +389,11 @@ def test_admin_sets_a_managers_single_department(client):
     res = client.patch(f"/api/admin/staff/{row['staff_id']}",
                        json={"department_id": network["department_id"]}, headers=headers)
     assert res.status_code == 200
-    assert res.json()["department_name"] == "Network"
+    assert res.json()["department_name"] == "General"
 
     mine = client.get("/api/manager/departments", headers=_headers_for(client, "manager")).json()
-    assert [d["name"] for d in mine] == ["Network"]
-    assert set(mine[0]["categories"]) == {"SNMP", "NETFLOW"}
+    assert [d["name"] for d in mine] == ["General"]
+    assert set(mine[0]["categories"]) == {"OTHER", "OTHER"}
 
 
 def test_technicians_cannot_own_departments(client):

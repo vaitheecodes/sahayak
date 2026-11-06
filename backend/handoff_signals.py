@@ -29,7 +29,7 @@ import re
 from backend.text_normalize import normalize_apostrophes
 
 # First-person admissions that the AI can't see/do the thing, plus
-# referrals to Site24x7's own human teams. Deliberately scoped: a
+# referrals to the product company's own human teams. Deliberately scoped: a
 # generic "you'll need to contact your network team to open port 443" is
 # a legitimate resolution, not a hand-off signal, so referrals only
 # count when they point at *our* sales/billing/support/accounts team.
@@ -44,7 +44,7 @@ _LIMITATION_PATTERNS = re.compile(
     r"(?:view|see|check|access|retrieve|look up|verify|confirm|"
     r"pull up|modify|change|update|cancel|issue|process)"
     r"|(?:contact|reach out to|get in touch with) "
-    r"(?:our|the|site24x7'?s?) (?:sales|billing|accounts?|support|customer success)"
+    r"(?:our|the) (?:sales|billing|accounts?|support|customer success)"
     r"|only (?:our|the) (?:sales|billing|accounts?|support) team can"
     r"|(?:will|would) need (?:a human|an agent|our team|our support team|"
     r"someone from our)"
@@ -130,7 +130,7 @@ def _normalize(text: str) -> str:
 
 def admits_limitation(ai_response: str) -> bool:
     """True if the AI's own reply concedes it can't do/see the thing, or
-    refers the customer to one of Site24x7's human teams. Such a reply
+    refers the customer to one of the company's human teams. Such a reply
     hasn't resolved the ticket, however confidently it was classified."""
     return bool(ai_response) and bool(
         _LIMITATION_PATTERNS.search(normalize_apostrophes(ai_response))

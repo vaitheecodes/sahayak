@@ -41,9 +41,9 @@ class _Pipeline:
 
     def invoke(self, state):
         if self.route == "ai":
-            return {"route": "ai", "category": "SERVER_MONITORING", "confidence": 0.95,
+            return {"route": "ai", "category": "ISSUE", "confidence": 0.95,
                     "ai_response": "Here is how to set that up.", "clarification_attempts": 0}
-        return {"route": "human", "category": "SERVER_MONITORING", "confidence": 0.5,
+        return {"route": "human", "category": "ISSUE", "confidence": 0.5,
                 "clarification_attempts": 0}
 
 

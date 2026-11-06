@@ -12,8 +12,8 @@ scripts/build_appsail.sh
 cd catalyst && catalyst deploy
 ```
 
-- `scripts/build_appsail.sh` writes `build/appsail/`: `backend/`, the KB JSON
-  (`data/kb/kb_entries.json`), `requirements-runtime.txt`'s packages as
+- `scripts/build_appsail.sh` writes `build/appsail/`: `backend/` (the KB is
+  in the database, nothing to copy), `requirements-runtime.txt`'s packages as
   Linux x86-64 / CPython 3.13 wheels (AppSail installs nothing itself), and
   `app-config.json` (stack `python_3_13`, memory 512 MB, start command
   `sh -c 'python3 -m uvicorn backend.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-9000}'`).

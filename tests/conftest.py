@@ -26,7 +26,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "").strip() or None
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend import app_settings, rate_limit  # noqa: E402
+from backend import app_settings, categories, kb_retrieval, rate_limit, topic_terms  # noqa: E402
 from backend.ai_service import provider  # noqa: E402
 
 
@@ -155,10 +155,19 @@ def _isolated_app_env(monkeypatch):
                  "SMTP_HOST", "SMTP_FROM",
                  "EMAIL_ENABLED"):
         monkeypatch.delenv(name, raising=False)
-    # Admin settings are cached per process; never leak between tests.
+    # Admin settings, categories, the KB and its terms are cached per
+    # process; never leak between tests. Every test starts with an empty
+    # KB and the default categories; tests/kb_fixture.py loads the
+    # neutral test KB.
     app_settings.clear_cache()
+    categories.clear_cache()
+    kb_retrieval.use([])
+    topic_terms.use([])
     yield
     app_settings.clear_cache()
+    categories.clear_cache()
+    kb_retrieval.use([])
+    topic_terms.use([])
     provider.set_backend(None)
 
 

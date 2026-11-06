@@ -15,21 +15,21 @@ import ChatMessage from "../components/ui/ChatMessage";
 import TicketListItem from "../components/ui/TicketListItem";
 import TicketTextDetail from "../components/TicketTextDetail";
 
-const AI_MARKDOWN = `Great question! Here's the difference between the two monitor types:
+const AI_MARKDOWN = `Great question! Here's the difference between the two leave types:
 
-- **Transaction Monitor:** records and replays a series of predefined steps (login, form submission, navigation) through a step-by-step interface. Ideal for multi-step workflows without writing code.
-- **Scripted Browser Monitor:** uses real browser scripting (Selenium WebDriver) for complex, customizable flows — dynamic content, custom logic, advanced interactions.
+- **Casual leave:** planned time off, applied for ahead of time and approved by your manager.
+- **Sick leave:** can be applied for on the day or afterwards, with a note when your policy asks for one.
 
-To set either one up:
+To apply for either one:
 
-1. Open **Admin → Monitors → Add Monitor** and pick the monitor type.
-2. Configure the URL, monitoring locations and validation settings.
-3. Attach an alert profile so downtime reaches the right people.
+1. Open **Leave → Apply Leave** and pick the leave type.
+2. Choose the dates and add a reason if your policy needs one.
+3. Click **Submit** so the request reaches your manager.
 
-If you tell me which flow you need to cover, I can recommend one.`;
+If you tell me which dates you need, I can say which type fits.`;
 
 const AI_PLAIN =
-  "To install the monitoring agent, download the installer that matches your operating system and run it with administrator rights. If the agent does not report in afterwards, collect the installer output and agent logs.";
+  "To install the mobile app, download it from the app store for your phone and sign in with your work email. If sign-in fails afterwards, take a screenshot of the error on the screen.";
 
 const NOW = Date.now();
 const ago = (mins) => new Date(NOW - mins * 60000).toISOString();
@@ -39,16 +39,16 @@ const TICKETS = [
     ticket_id: "TCK-8f21ab40",
     status: "resolved",
     route: "ai",
-    category: "WEB_MONITORING",
+    category: "USAGE",
     confidence: 0.97,
     created_at: ago(4),
-    ticket_text: "I want you to help on the website monitor",
+    ticket_text: "I want you to help me with leave",
   },
   {
     ticket_id: "TCK-1c93de77",
     status: "pending_customer",
     route: "clarify",
-    category: "SUPPORT",
+    category: "OTHER",
     confidence: 0.42,
     created_at: ago(38),
     ticket_text: "I want to track order 12345",
@@ -67,10 +67,10 @@ const TICKETS = [
     ticket_id: "TCK-27be44c1",
     status: "closed",
     route: "ai",
-    category: "AGENT",
+    category: "SETUP",
     confidence: 0.99,
     created_at: ago(2880),
-    ticket_text: "how do I install the monitoring agent on a Kubernetes cluster",
+    ticket_text: "how do I install the mobile app on Android",
   },
 ];
 
@@ -200,7 +200,7 @@ export default function UiGallery() {
         </div>
         <Textarea
           label="Describe your issue"
-          hint="Include the monitor name if the problem is specific to one."
+          hint="Say which part of the product it is about, and what you were doing."
           placeholder="e.g. Prod-WebServer-01 shows down but the site loads fine"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -250,7 +250,7 @@ export default function UiGallery() {
           <div className="chat-scroll">
             <ChatMessage
               sender="customer"
-              message="I want you to help on the website monitor"
+              message="I want you to help me with leave"
               createdAt={ago(9)}
             />
             <ChatMessage sender="ai" message={AI_PLAIN} createdAt={ago(9)} />

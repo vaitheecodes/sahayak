@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service._format import GROUNDING_RULES
 from backend.ai_service.grounding import content_words
@@ -30,7 +31,7 @@ _GROUNDING = f"{GROUNDING_RULES} Keep each item to one short sentence."
 
 def summarize_resolution(transcript: str) -> ChatResolutionSummary:
     summary = provider.complete_json(
-        "You summarize a Site24x7 support chat that the customer confirmed "
+        f"You summarize a support chat about {product.described()} that the customer confirmed "
         "as resolved by the AI assistant, for an internal reviewer. Fields: "
         "problem (what the customer needed), troubleshooting (steps the "
         "assistant suggested or the customer tried, in order), solution "
@@ -84,7 +85,7 @@ def tidy_handoff(summary: HandoffSummary, customer_text: str = "") -> HandoffSum
 
 def summarize_escalation(transcript: str, reason: str) -> HandoffSummary:
     summary = provider.complete_json(
-        "You write the hand-off brief for a Site24x7 support technician "
+        f"You write the hand-off brief for a support technician for {product.described()}, "
         f"taking over a chat the AI assistant could not resolve. {HANDOFF_FIELDS} "
         f"{_GROUNDING}",
         {"escalation_reason": reason, "transcript": transcript},

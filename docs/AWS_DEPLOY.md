@@ -867,9 +867,9 @@ deployment is a canary.
 ## 10. Smoke test, then full teardown
 
 **Smoke test:** `scripts/aws_smoke.py` (section 0, demo-day checklist).
-The container log starts with `KB: <n> entries loaded from /app/data/kb`;
-in production the API refuses to start with 0 (`STARTUP CONFIG ERROR:
-... has no KB entries`), and `/api/meta` shows `kb_entries`.
+The container log starts with `KB: <n> entries loaded from the database`
+(0 on a new install, with a warning: every question then goes to the
+support team), and `/api/meta` shows `kb_entries`.
 By hand:
 1. Sign in as the admin and change the password.
 2. Create a technician.

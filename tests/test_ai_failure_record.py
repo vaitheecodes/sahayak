@@ -23,11 +23,12 @@ from fastapi.testclient import TestClient
 from backend import chats, db, main, runtime
 from backend.ai_service import AIError, backends, chat_response, provider
 from backend.ai_service.backends import BedrockBackend
+from tests import kb_fixture
 from tests.test_bedrock_conversation import _REAL_COMPLETE, _StrictClient
 
 _counter = itertools.count()
 AWS_TEXT = "User arn:aws:iam::111122223333:user/SECRET-USER is not authorized"
-CUSTOMER_TEXT = "my agent stopped reporting on host zebracorn-prod-7"
+CUSTOMER_TEXT = "my payslip stopped showing for employee zebracorn-7"
 
 
 def _error(code):
@@ -122,7 +123,7 @@ def test_error_codes_are_names_only():
 # ---------------------------------------------------------------------------
 def test_a_provider_failure_is_recorded_on_the_chat(app_client, strict):
     headers = _customer(app_client)
-    first = app_client.post("/api/chats", json={"issue": "My Linux agent stopped sending data"},
+    first = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                             headers=headers).json()
     assert first["ai_error"] is None
     sid = first["session_id"]
@@ -158,7 +159,7 @@ def test_a_bug_in_the_turn_is_recorded_as_unknown(app_client, monkeypatch):
             raise RuntimeError("bug with " + CUSTOMER_TEXT)
 
     runtime.set_graph(Broken())
-    res = app_client.post("/api/chats", json={"issue": "My agent is offline"}, headers=headers).json()
+    res = app_client.post("/api/chats", json={"issue": "My payslip is missing"}, headers=headers).json()
     assert res["ai_error"] == chats.AI_UNAVAILABLE
     rows = [json.loads(r["detail"]) for r in _audit_rows(res["session_id"]) if r["action"] == "chat.ai_failure"]
     assert rows == [{"kind": "unknown", "operation": "turn", "code": "RuntimeError", "attempts": 1,
@@ -168,10 +169,10 @@ def test_a_bug_in_the_turn_is_recorded_as_unknown(app_client, monkeypatch):
 def test_our_filter_rejecting_the_reply_is_not_ai_unavailable(app_client, strict):
     headers = _customer(app_client)
     strict.text = "Hello [Customer Name],\n\n[Your answer here]\n\nBest regards,\n[Your Name]"
-    res = app_client.post("/api/chats", json={"issue": "My Linux agent stopped sending data"},
+    res = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                           headers=headers).json()
     assert res["ai_error"] is None and res["status"] == "active"
-    # No error was reported ("stopped sending data"): never the exact error message.
+    # No error was reported ("stopped working"): never the exact error message.
     assert res["messages"][-1]["content"] == chat_response.STEP_QUESTION
     outcomes = [(json.loads(r["detail"])["kind"], json.loads(r["detail"])["outcome"])
                 for r in _audit_rows(res["session_id"]) if r["action"] == "chat.ai_failure"]
@@ -180,28 +181,29 @@ def test_our_filter_rejecting_the_reply_is_not_ai_unavailable(app_client, strict
 
 def test_a_bad_continuation_verdict_falls_through_to_the_pipeline(app_client, strict):
     headers = _customer(app_client)
-    first = app_client.post("/api/chats", json={"issue": "My Linux agent stopped sending data"},
+    first = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                             headers=headers).json()
     strict.TOOL_REPLIES = {**_StrictClient.TOOL_REPLIES, "ContinuationVerdict": {"is_continuation": "maybe"}}
-    strict.text = "Check the agent log in the agent's logs folder."
+    strict.text = "Check the Exports page under Payroll."
     second = app_client.post(f"/api/chats/{first['session_id']}/messages",
-                             json={"message": "Where is the agent log on Linux?"}, headers=headers).json()
+                             json={"message": "Where is the payroll export page?"}, headers=headers).json()
     assert second["ai_error"] is None
-    assert second["messages"][-1]["content"] == "Check the agent log in the agent's logs folder."
+    assert second["messages"][-1]["content"] == "Check the Exports page under Payroll."
     rows = [json.loads(r["detail"]) for r in _audit_rows(first["session_id"]) if r["action"] == "chat.ai_failure"]
     assert [(r["kind"], r["operation"], r["outcome"]) for r in rows] == [
         ("parse_schema", "ContinuationVerdict", "fallback")]
 
 
 def test_a_ticket_follow_up_failure_is_recorded_on_the_ticket(app_client, strict):
+    kb_fixture.load()
     headers = _customer(app_client)
-    created = app_client.post("/api/tickets", json={"subject": "Agent install",
-                                                    "description": "How do I install the Site24x7 agent on Linux?"},
+    created = app_client.post("/api/tickets", json={"subject": "App install",
+                                                    "description": "How do I install the Brightdesk app on Android?"},
                               headers=headers).json()
     assert created["route"] == "ai"
     strict.fail_next = [_error("AccessDeniedException")]
     res = app_client.post(f"/api/tickets/{created['ticket_id']}/reply",
-                          json={"message": "Which log file should I check?"}, headers=headers).json()
+                          json={"message": "Which email should I sign in with?"}, headers=headers).json()
     assert res.get("ai_error")
     rows = [json.loads(r["detail"]) for r in _audit_rows(created["ticket_id"]) if r["action"] == "ticket.ai_failure"]
     assert [(r["kind"], r["code"], r["attempts"]) for r in rows] == [("access_denied", "AccessDeniedException", 1)]

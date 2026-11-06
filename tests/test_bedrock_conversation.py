@@ -66,7 +66,7 @@ class _StrictClient:
     `fail_next`: exceptions raised by the next calls, one per call."""
 
     TOOL_REPLIES = {
-        "Categorization": {"category": "AGENT", "confidence": 0.95},
+        "Categorization": {"category": "SETUP", "confidence": 0.95},
         "ContinuationVerdict": {"is_continuation": True},
     }
 
@@ -174,7 +174,7 @@ def test_the_strict_fake_rejects_what_bedrock_rejects(strict):
 # ---------------------------------------------------------------------------
 def test_chat_turn_after_an_ai_failure_sends_a_valid_request(app_client, strict):
     headers = _customer(app_client)
-    strict.text = "Hello Dana,\n\nRestart the agent service.\n\nBest regards,\n[Your Name]\nSite24x7 Support Team"
+    strict.text = "Hello Dana,\n\nRestart the agent service.\n\nBest regards,\n[Your Name]\nBrightdesk Support Team"
     first = app_client.post("/api/chats", json={"issue": "My Linux agent stopped sending data"},
                             headers=headers).json()
     assert first["ai_error"] is None

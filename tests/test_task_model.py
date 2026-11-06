@@ -47,7 +47,7 @@ def test_only_the_chat_answer_uses_the_chat_model(monkeypatch, client):
     monkeypatch.setenv("BEDROCK_MODEL_ID_CHAT", PRO)
     categorize_ticket.categorize_ticket(CategorizeInput(ticket_text="My Linux agent stopped sending data"))
     chat_response.answer(AnswerInput(ticket_text="Customer: how do I install the agent"))
-    chat_response.clarify(ClarifyInput(ticket_text="Customer: it is broken", category="MONITORING"))
+    chat_response.clarify(ClarifyInput(ticket_text="Customer: it is broken", category="ISSUE"))
     chat_response.answer(AnswerInput(ticket_text="how do I install the agent", reply_format="email",
                                      customer_name="Dana"))
     assert _models(client) == [LITE, PRO, LITE, LITE]

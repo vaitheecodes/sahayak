@@ -21,7 +21,8 @@ import sqlite3
 import uuid
 from pathlib import Path
 
-from backend.seed_data import seed_demo_staff, seed_departments, seed_orders
+from backend import categories
+from backend.seed_data import seed_demo_staff, seed_departments
 
 _DEFAULT_DB_PATH = Path(__file__).resolve().parent / "ticketapp.db"
 DB_PATH = Path(os.environ.get("DB_PATH") or _DEFAULT_DB_PATH)
@@ -331,15 +332,7 @@ CREATE TABLE IF NOT EXISTS attachments (
     created_at    TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS orders (
-    order_id       TEXT PRIMARY KEY,
-    customer_email TEXT NOT NULL,
-    status         TEXT NOT NULL,
-    items          TEXT NOT NULL,
-    order_date     TEXT NOT NULL
-);
-
--- categories: JSON array of KB category names (graph.CATEGORIES). A
+-- categories: JSON array of category names (backend/categories.py). A
 -- category belongs to at most one department (enforced in main.py) so
 -- routing a ticket to "the department that owns its category" is never
 -- ambiguous.
@@ -355,6 +348,169 @@ CREATE TABLE IF NOT EXISTS manager_departments (
     manager_id    TEXT NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
     department_id TEXT NOT NULL REFERENCES departments(department_id) ON DELETE CASCADE,
     PRIMARY KEY (manager_id, department_id)
+);
+
+-- Knowledge base (backend/kb_store.py, backend/categories.py, kb_ingester/).
+-- Categories are data: seeded with neutral defaults, the ingester may
+-- propose more, only confirmed ones are used.
+CREATE TABLE IF NOT EXISTS kb_categories (
+    name         TEXT PRIMARY KEY,
+    label        TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'confirmed',
+    source       TEXT NOT NULL DEFAULT 'staff',
+    created_at   TIMESTAMP NOT NULL,
+    confirmed_by TEXT,
+    confirmed_at TIMESTAMP
+);
+
+-- Where KB content comes from. public_confirmed_*: who confirmed the
+-- content is public or allowed to be used, and when (required).
+CREATE TABLE IF NOT EXISTS kb_sources (
+    source_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind                TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    root_url            TEXT,
+    config              TEXT NOT NULL DEFAULT '{}',
+    public_confirmed_by TEXT NOT NULL,
+    public_confirmed_at TIMESTAMP NOT NULL,
+    active              INTEGER NOT NULL DEFAULT 1,
+    created_by          TEXT NOT NULL,
+    created_at          TIMESTAMP NOT NULL
+);
+
+-- One ingestion run of a source. Model calls are estimated before the run
+-- starts and capped per run (model_call_cap) and per day; a run that hits
+-- a cap stops with stop_reason set. errors: counts by reason code only.
+CREATE TABLE IF NOT EXISTS kb_ingest_runs (
+    run_id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id             INTEGER NOT NULL REFERENCES kb_sources(source_id),
+    status                TEXT NOT NULL,
+    triggered_by          TEXT NOT NULL,
+    created_at            TIMESTAMP NOT NULL,
+    started_at            TIMESTAMP,
+    finished_at           TIMESTAMP,
+    estimated_model_calls INTEGER NOT NULL DEFAULT 0,
+    model_call_cap        INTEGER NOT NULL,
+    model_calls           INTEGER NOT NULL DEFAULT 0,
+    stop_reason           TEXT,
+    pages_fetched         INTEGER NOT NULL DEFAULT 0,
+    pages_unchanged       INTEGER NOT NULL DEFAULT 0,
+    pages_skipped         INTEGER NOT NULL DEFAULT 0,
+    chunks                INTEGER NOT NULL DEFAULT 0,
+    drafts_created        INTEGER NOT NULL DEFAULT 0,
+    steps_rejected        INTEGER NOT NULL DEFAULT 0,
+    errors                TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_kb_runs_source ON kb_ingest_runs(source_id, created_at);
+
+-- A fetched page or file. Only its hash is kept, never the page itself.
+CREATE TABLE IF NOT EXISTS kb_documents (
+    document_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id     INTEGER NOT NULL REFERENCES kb_sources(source_id),
+    location      TEXT NOT NULL,
+    title         TEXT,
+    content_hash  TEXT,
+    http_status   INTEGER,
+    etag          TEXT,
+    last_modified TEXT,
+    byte_size     INTEGER,
+    state         TEXT NOT NULL,
+    miss_count    INTEGER NOT NULL DEFAULT 0,
+    fetched_at    TIMESTAMP,
+    UNIQUE (source_id, location)
+);
+
+-- A heading section of a document. text is purged (purged_at) once every
+-- draft from it is decided, or after the retention period.
+CREATE TABLE IF NOT EXISTS kb_chunks (
+    chunk_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id       INTEGER NOT NULL REFERENCES kb_documents(document_id) ON DELETE CASCADE,
+    run_id            INTEGER REFERENCES kb_ingest_runs(run_id),
+    ordinal           INTEGER NOT NULL,
+    heading_path      TEXT NOT NULL DEFAULT '',
+    text              TEXT,
+    chunk_hash        TEXT NOT NULL,
+    char_start        INTEGER,
+    char_end          INTEGER,
+    flagged_injection INTEGER NOT NULL DEFAULT 0,
+    purged_at         TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_document ON kb_chunks(document_id);
+
+CREATE TABLE IF NOT EXISTS kb_entries (
+    kb_entry_id     TEXT PRIMARY KEY,
+    status          TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    answer          TEXT NOT NULL DEFAULT '',
+    kind            TEXT,
+    handling        TEXT NOT NULL DEFAULT 'answer',
+    collect         TEXT NOT NULL DEFAULT '[]',
+    category        TEXT NOT NULL,
+    source_url      TEXT,
+    document_id     INTEGER REFERENCES kb_documents(document_id) ON DELETE SET NULL,
+    chunk_id        INTEGER REFERENCES kb_chunks(chunk_id) ON DELETE SET NULL,
+    chunk_hash      TEXT,
+    run_id          INTEGER REFERENCES kb_ingest_runs(run_id),
+    stale           INTEGER NOT NULL DEFAULT 0,
+    supersedes      TEXT,
+    duplicate_of    TEXT,
+    duplicate_score REAL,
+    created_by      TEXT NOT NULL,
+    created_at      TIMESTAMP NOT NULL,
+    updated_by      TEXT,
+    updated_at      TIMESTAMP NOT NULL,
+    reviewed_by     TEXT,
+    reviewed_at     TIMESTAMP,
+    review_note     TEXT,
+    version         INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_kb_entries_status ON kb_entries(status);
+
+CREATE TABLE IF NOT EXISTS kb_entry_questions (
+    entry_id TEXT NOT NULL REFERENCES kb_entries(kb_entry_id) ON DELETE CASCADE,
+    ordinal  INTEGER NOT NULL,
+    text     TEXT NOT NULL,
+    PRIMARY KEY (entry_id, ordinal)
+);
+
+-- quote: the passage of the entry's chunk the step is backed by.
+-- support_check: the second model check's verdict ("supported"), NULL
+-- for steps written by staff.
+CREATE TABLE IF NOT EXISTS kb_entry_steps (
+    entry_id      TEXT NOT NULL REFERENCES kb_entries(kb_entry_id) ON DELETE CASCADE,
+    ordinal       INTEGER NOT NULL,
+    text          TEXT NOT NULL,
+    quote         TEXT NOT NULL,
+    quote_offset  INTEGER,
+    support_check TEXT,
+    PRIMARY KEY (entry_id, ordinal)
+);
+
+-- Product terms learned from the content: proposed by the ingester (or
+-- staff), confirmed by a reviewer. pattern is built from label + aliases.
+CREATE TABLE IF NOT EXISTS kb_terms (
+    term_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    label             TEXT NOT NULL,
+    kind              TEXT NOT NULL,
+    aliases           TEXT NOT NULL DEFAULT '[]',
+    pattern           TEXT NOT NULL,
+    status            TEXT NOT NULL,
+    merged_into       INTEGER REFERENCES kb_terms(term_id),
+    evidence_quote    TEXT,
+    evidence_chunk_id INTEGER REFERENCES kb_chunks(chunk_id) ON DELETE SET NULL,
+    evidence_count    INTEGER NOT NULL DEFAULT 0,
+    proposed_by       TEXT NOT NULL,
+    created_at        TIMESTAMP NOT NULL,
+    confirmed_by      TEXT,
+    confirmed_at      TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_terms_label ON kb_terms(lower(label));
+
+CREATE TABLE IF NOT EXISTS kb_entry_terms (
+    entry_id TEXT NOT NULL REFERENCES kb_entries(kb_entry_id) ON DELETE CASCADE,
+    term_id  INTEGER NOT NULL REFERENCES kb_terms(term_id) ON DELETE CASCADE,
+    PRIMARY KEY (entry_id, term_id)
 );
 """
 
@@ -651,7 +807,7 @@ def _init_postgres() -> None:
     db_postgres.migrate()
     conn = get_connection()
     try:
-        seed_orders(conn)
+        categories.seed(conn)
         seed_departments(conn)
         seed_demo_staff(conn)
         conn.commit()
@@ -679,7 +835,7 @@ def init_db() -> None:
         conn.commit()
         with conn:
             _migrate_chat_tickets(conn)
-        seed_orders(conn)
+        categories.seed(conn)
         seed_departments(conn)
         seed_demo_staff(conn)
     finally:

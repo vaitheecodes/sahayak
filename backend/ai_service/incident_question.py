@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from backend import categories, product
 from backend.ai_service import provider
-from backend.ai_service.schemas import CATEGORIES, IncidentQuestion, IncidentQuestionInput
+from backend.ai_service.schemas import IncidentQuestion, IncidentQuestionInput, with_categories
 from backend.timeutil import parse
 
 
@@ -38,7 +39,7 @@ def parse_incident_question(data: IncidentQuestionInput) -> IncidentQuestion:
 
     return provider.complete_json(
         "Decide whether the customer's message asks if there was, or currently is, "
-        "a known problem, outage or incident on the Site24x7 side (e.g. 'was there "
+        f"a known problem, outage or incident on the side of {product.described()} (e.g. 'was there "
         "an outage yesterday?', 'were you down at 3pm?', 'is this a known issue?', "
         "'did something happen last night?'). Requests for help with their own "
         "setup are NOT incident questions. If it is one, return the time window it "
@@ -48,9 +49,9 @@ def parse_incident_question(data: IncidentQuestionInput) -> IncidentQuestion:
         "'last night' is 20:00 to 06:00; present-tense questions ('is this a known "
         "issue?', 'are you down?') cover the last 6 hours up to now. Never return a "
         "window in the future. Also return the product area as category (one of: "
-        f"{', '.join(CATEGORIES)}) only if the message names one, else null, and a "
+        f"{', '.join(categories.names())}) only if the message names one, else null, and a "
         "short topic phrase if any.",
         {"current_time_ist": now.isoformat(), "customer_message": data.message},
-        IncidentQuestion,
+        with_categories(IncidentQuestion, categories.names(), optional=True),
         check=check,
     )

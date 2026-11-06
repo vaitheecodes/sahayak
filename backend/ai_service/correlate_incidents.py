@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 
+from backend import product
 from backend.ai_service import provider
 from backend.ai_service.schemas import CorrelateInput, CorrelationJudgement
 
@@ -60,7 +61,7 @@ def correlate_incidents(data: CorrelateInput) -> CorrelationJudgement:
             raise ValueError("a related group needs at least two tickets")
 
     result = provider.complete_json(
-        "You help a Site24x7 support manager spot incidents: several customers "
+        f"You help a support manager for {product.described()} spot incidents: several customers "
         "reporting what may be the same underlying problem. Judge whether the "
         "tickets in the tickets block (or a subset of them) plausibly share one "
         "incident. Similar wording alone is NOT evidence. Weigh time proximity, "

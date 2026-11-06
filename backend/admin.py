@@ -28,8 +28,9 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from backend import ai_failures, app_settings, audit, auth, db, graph, runtime, sla
+from backend import ai_failures, app_settings, audit, auth, db, runtime, sla
 from backend import ticket_lifecycle as lifecycle
+from backend.categories import names as category_names
 from backend.conversation import insert_ticket_message
 
 router = APIRouter()
@@ -524,7 +525,7 @@ def _validate_department(conn, body: DepartmentRequest, department_id: str | Non
     to only one department — otherwise "route to the department that owns
     this category" has two answers."""
     categories = sorted(set(body.categories))
-    invalid = [c for c in categories if c not in graph.CATEGORIES]
+    invalid = [c for c in categories if c not in category_names()]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Unknown category: {', '.join(invalid)}")
     clash = conn.execute(
@@ -548,7 +549,7 @@ def _validate_department(conn, body: DepartmentRequest, department_id: str | Non
 def admin_list_departments(admin_id: str = Depends(_admin)):
     conn = db.get_connection()
     try:
-        return {"departments": department_rows(conn), "categories": graph.CATEGORIES}
+        return {"departments": department_rows(conn), "categories": category_names()}
     finally:
         conn.close()
 
@@ -614,7 +615,7 @@ def _settings_payload() -> dict:
     return {
         "sections": {name: app_settings.get(name).model_dump() for name in app_settings.SECTIONS},
         "defaults": {name: app_settings.defaults(name).model_dump() for name in app_settings.SECTIONS},
-        "categories": graph.CATEGORIES,
+        "categories": category_names(),
         "language_tags": list(app_settings.LANGUAGE_TAGS),
     }
 
@@ -626,7 +627,7 @@ def admin_get_settings(admin_id: str = Depends(_admin)):
 
 @router.put("/api/admin/settings/{section}")
 def admin_save_settings(
-    section: Literal["routing", "incidents", "statuses", "sla"], values: dict, admin_id: str = Depends(_admin)
+    section: Literal["product", "routing", "incidents", "statuses", "sla"], values: dict, admin_id: str = Depends(_admin)
 ):
     """Save a whole section (validated). Applies to the next message,
     correlation run or page load."""
@@ -649,7 +650,7 @@ def admin_save_settings(
 
 
 @router.delete("/api/admin/settings/{section}")
-def admin_reset_settings(section: Literal["routing", "incidents", "statuses", "sla"], admin_id: str = Depends(_admin)):
+def admin_reset_settings(section: Literal["product", "routing", "incidents", "statuses", "sla"], admin_id: str = Depends(_admin)):
     """Back to the environment/default values."""
     conn = db.get_connection()
     try:

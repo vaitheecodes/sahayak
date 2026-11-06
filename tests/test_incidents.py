@@ -26,7 +26,7 @@ _counter = itertools.count()
 
 class _HumanWithCategory:
     def __init__(self):
-        self.category = "SERVER_MONITORING"
+        self.category = "ISSUE"
 
     def invoke(self, state):
         return {"route": "human", "category": self.category, "confidence": 0.5,
@@ -88,7 +88,7 @@ def _admin(client):
 
 
 def _demo_manager(client):
-    """Manages Infrastructure (AGENT, SERVER_MONITORING, ...)."""
+    """Manages Infrastructure (AGENT, ISSUE, ...)."""
     (p,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "manager"]
     return _login(client, p["email"], p["password"])
 
@@ -100,7 +100,7 @@ def _network_manager(client):
         "name": "Network Manager", "email": email, "role": "manager"}, headers=admin).json()
     staff_id, temp = created["staff_id"], created["temporary_password"]
     depts = client.get("/api/admin/departments", headers=admin).json()["departments"]
-    network = next(d for d in depts if d["name"] == "Network")
+    network = next(d for d in depts if d["name"] == "General")
     client.patch(f"/api/admin/staff/{staff_id}",
                  json={"department_id": network["department_id"]}, headers=admin)
     headers = _login(client, email, temp)
@@ -109,7 +109,7 @@ def _network_manager(client):
     return headers
 
 
-def _raise(client, customer, pipeline, category="SERVER_MONITORING", subject="Server monitor not collecting data"):
+def _raise(client, customer, pipeline, category="ISSUE", subject="Server monitor not collecting data"):
     pipeline.category = category
     res = client.post("/api/tickets", json={
         "subject": subject, "description": "No data from our Linux servers since 10:00 UTC."}, headers=customer)
@@ -167,21 +167,21 @@ def test_fewer_than_min_tickets_never_reaches_the_model(client, pipeline, judge)
 
 
 def test_categories_of_one_department_are_grouped_together(client, pipeline, judge):
-    """The classifier often splits one outage across AGENT and
+    """The classifier often splits one outage across SETUP and
     SERVER_MONITORING; both belong to Infrastructure, so they're one
     candidate group."""
-    _raise(client, _customer(client), pipeline, category="AGENT")
-    _raise(client, _customer(client), pipeline, category="SERVER_MONITORING")
-    _raise(client, _customer(client), pipeline, category="AGENT")
+    _raise(client, _customer(client), pipeline, category="SETUP")
+    _raise(client, _customer(client), pipeline, category="ISSUE")
+    _raise(client, _customer(client), pipeline, category="SETUP")
     (cluster,) = _clusters()
     assert len(_cluster_tickets(cluster["incident_id"])) == 3
-    assert cluster["category"] == "AGENT"
+    assert cluster["category"] == "SETUP"
 
 
 def test_different_departments_are_not_grouped(client, pipeline, judge):
-    _raise(client, _customer(client), pipeline, category="AGENT")       # Infrastructure
-    _raise(client, _customer(client), pipeline, category="NETFLOW")     # Network
-    _raise(client, _customer(client), pipeline, category="ALERTS")      # Monitoring & Alerts
+    _raise(client, _customer(client), pipeline, category="SETUP")       # Infrastructure
+    _raise(client, _customer(client), pipeline, category="OTHER")     # Network
+    _raise(client, _customer(client), pipeline, category="ISSUE")      # Monitoring & Alerts
     assert judge["calls"] == [] and _clusters() == []
 
 
@@ -294,7 +294,7 @@ def test_customer_banner_only_on_confirmed_clusters(client, pipeline, judge):
 # Department routing + manager scope
 # ---------------------------------------------------------------------------
 def test_cluster_routes_to_the_owning_departments_manager_only(client, pipeline, judge):
-    _three_customers_report(client, pipeline)  # SERVER_MONITORING -> Infrastructure
+    _three_customers_report(client, pipeline)  # ISSUE -> Infrastructure
     (cluster,) = _clusters()
     infra, network = _demo_manager(client), _network_manager(client)
 
@@ -302,12 +302,12 @@ def test_cluster_routes_to_the_owning_departments_manager_only(client, pipeline,
     assert client.get("/api/incidents", headers=network).json() == []
     assert client.get(f"/api/incidents/{cluster['incident_id']}", headers=network).status_code == 403
     detail = client.get(f"/api/incidents/{cluster['incident_id']}", headers=infra).json()
-    assert [d["name"] for d in detail["departments"]] == ["Infrastructure"]
+    assert [d["name"] for d in detail["departments"]] == ["Product Support"]
     assert detail["departments"][0]["source"] == "ai"
 
 
 def test_multi_department_cluster_surfaces_to_both_managers(client, pipeline, judge):
-    judge["departments"] = ["Network"]
+    judge["departments"] = ["General"]
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     for manager in (_demo_manager(client), _network_manager(client)):
@@ -317,7 +317,7 @@ def test_multi_department_cluster_surfaces_to_both_managers(client, pipeline, ju
 
 def test_uncertain_cluster_is_left_for_routing(client, pipeline, judge):
     judge["confidence"] = 0.4  # below INCIDENT_ROUTING_CONFIDENCE (0.6)
-    judge["departments"] = ["Network"]
+    judge["departments"] = ["General"]
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     assert cluster["needs_routing"] == 1
@@ -325,13 +325,13 @@ def test_uncertain_cluster_is_left_for_routing(client, pipeline, judge):
 
     admin = _admin(client)
     depts = client.get("/api/admin/departments", headers=admin).json()["departments"]
-    network = next(d for d in depts if d["name"] == "Network")
+    network = next(d for d in depts if d["name"] == "General")
     detail = client.put(f"/api/incidents/{cluster['incident_id']}/departments",
                         json={"department_ids": [network["department_id"]]},
                         headers=_network_manager(client)).json()
     assert detail["needs_routing"] is False
     (department,) = detail["departments"]
-    assert (department["name"], department["source"], department["confirmed"]) == ("Network", "manager", 1)
+    assert (department["name"], department["source"], department["confirmed"]) == ("General", "manager", 1)
     assert detail["reviews"][-1]["action"] == "departments_changed"
 
 
@@ -343,27 +343,27 @@ def test_manager_corrections_survive_ai_reruns(client, pipeline, judge):
     depts = client.get("/api/admin/departments", headers=_admin(client)).json()["departments"]
     by_name = {d["name"]: d["department_id"] for d in depts}
     client.put(f"/api/incidents/{cluster['incident_id']}/departments",
-               json={"department_ids": [by_name["Infrastructure"], by_name["Network"]]}, headers=infra)
+               json={"department_ids": [by_name["Product Support"], by_name["General"]]}, headers=infra)
 
     _raise(client, _customer(client), pipeline)  # AI re-judges the grown group
     names = {d["name"] for d in client.get(f"/api/incidents/{cluster['incident_id']}", headers=network).json()[
         "departments"]}
-    assert names == {"Infrastructure", "Network"}
+    assert names == {"Product Support", "General"}
 
 
 def test_manager_must_keep_one_of_their_departments(client, pipeline, judge):
     _three_customers_report(client, pipeline)
     (cluster,) = _clusters()
     depts = client.get("/api/admin/departments", headers=_admin(client)).json()["departments"]
-    network_id = next(d["department_id"] for d in depts if d["name"] == "Network")
+    network_id = next(d["department_id"] for d in depts if d["name"] == "General")
     res = client.put(f"/api/incidents/{cluster['incident_id']}/departments",
                      json={"department_ids": [network_id]}, headers=_demo_manager(client))
     assert res.status_code == 400
 
 
 def test_manager_can_open_linked_tickets_outside_their_categories(client, pipeline, judge):
-    judge["departments"] = ["Infrastructure"]
-    ids = _three_customers_report(client, pipeline, category="NETFLOW")  # owned by Network
+    judge["departments"] = ["Product Support"]
+    ids = _three_customers_report(client, pipeline, category="OTHER")  # owned by Network
     infra = _demo_manager(client)
     res = client.get(f"/api/staff/tickets/{ids[0]}", headers=infra)
     assert res.status_code == 200, res.text

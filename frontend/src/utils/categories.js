@@ -1,26 +1,13 @@
-/* Customer-facing labels for the 17 KB categories (backend graph.CATEGORIES).
- * Acronyms stay acronyms; everything else reads as a phrase. */
-const LABELS = {
-  ACCOUNT: "Account & licensing",
-  AGENT: "Monitoring agent",
-  ALERTS: "Alerts & notifications",
-  APM: "APM",
-  APPLICATION_MONITORING: "Application monitoring",
-  CLOUD: "Cloud monitoring",
-  CONTAINERS: "Containers",
-  DATA: "Data & retention",
-  INTEGRATION: "Integrations",
-  LOGS: "Logs",
-  MONITORING: "Monitors (general)",
-  NETFLOW: "NetFlow",
-  REPORTING: "Reports",
-  SERVER_MONITORING: "Server monitoring",
-  SNMP: "SNMP",
-  SUPPORT: "General support",
-  WEB_MONITORING: "Website monitoring",
-};
+/* Customer-facing category labels. Categories are data (backend
+ * categories.py): the labels come from /api/meta, loaded once before the
+ * app renders (main.jsx). A name without a label reads as a phrase. */
+let labels = {};
+
+export function setCategoryLabels(next) {
+  labels = { ...(next || {}) };
+}
 
 export function categoryLabel(value) {
   if (!value) return "—";
-  return LABELS[value] || value.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
