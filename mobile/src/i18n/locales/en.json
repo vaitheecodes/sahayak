@@ -1,0 +1,111 @@
+{
+  "app": {
+    "name": "Sahayak",
+    "tagline": "Help Desk"
+  },
+  "common": {
+    "retry": "Try again",
+    "cancel": "Cancel",
+    "show": "Show",
+    "hide": "Hide",
+    "loading": "Loading…"
+  },
+  "tabs": {
+    "chat": "Chat",
+    "tickets": "Tickets",
+    "account": "Account"
+  },
+  "auth": {
+    "signInTitle": "Sign in",
+    "signInSubtitle": "Use the account your support team set up for you.",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "noAccount": "No account yet? Your administrator creates accounts.",
+    "forgotPassword": "Forgot your password? Ask your administrator to reset it.",
+    "emailRequired": "Enter your email address.",
+    "passwordRequired": "Enter your password.",
+    "sessionExpired": "Your session has ended. Please sign in again.",
+    "staffAccount": "This app is for customers. Technicians, managers and admins, please use the web portal.",
+    "signedOut": "You've been signed out."
+  },
+  "password": {
+    "forcedTitle": "Choose a new password",
+    "forcedSubtitle": "Your account was set up with a temporary password. Choose your own to continue.",
+    "changeTitle": "Change password",
+    "current": "Current password",
+    "currentForced": "Temporary password",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "rules": "At least {{min}} characters.",
+    "save": "Save password",
+    "saving": "Saving…",
+    "saved": "Password changed.",
+    "currentRequired": "Enter your current password.",
+    "tooShort": "Use at least {{min}} characters.",
+    "tooLong": "That password is too long. Use fewer characters.",
+    "mismatch": "The two new passwords don't match.",
+    "sameAsCurrent": "Choose a password different from the current one.",
+    "signOutInstead": "Sign out instead"
+  },
+  "account": {
+    "title": "Account",
+    "appearance": "Appearance",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "security": "Security",
+    "changePassword": "Change password",
+    "about": "About",
+    "version": "Version",
+    "server": "Server",
+    "language": "Language",
+    "languageEnglish": "English",
+    "signOut": "Sign out"
+  },
+  "placeholder": {
+    "chatTitle": "Chat with Support Bot",
+    "chatBody": "Chat arrives in the next update.",
+    "ticketsTitle": "Your tickets",
+    "ticketsBody": "Tickets arrive in the next update."
+  },
+  "offline": {
+    "title": "Can't reach the help desk",
+    "body": "Check your connection and try again. You're still signed in.",
+    "configTitle": "App not configured",
+    "configBody": "This build has no valid server address. Please contact your administrator."
+  },
+  "errors": {
+    "network": "Can't reach the help desk. Check your connection and try again.",
+    "timeout": "The help desk took too long to answer. Please try again.",
+    "rateLimited_one": "You're going a bit fast. Please try again in {{count}} second.",
+    "rateLimited_other": "You're going a bit fast. Please try again in {{count}} seconds.",
+    "rateLimitedDone": "You can try again now.",
+    "tooLarge": "That upload is too large.",
+    "unavailable": "The help desk is busy right now. Please try again in a moment.",
+    "server": "Something went wrong on our side. Please try again.",
+    "forbidden": "You don't have access to that.",
+    "notFound": "We couldn't find that. It may have been removed.",
+    "badCredentials": "That email and password don't match. Please check and try again.",
+    "validation": "Some details need fixing.",
+    "fieldTooLong": "{{field}} is too long (at most {{max}} characters).",
+    "fieldTooShort": "{{field}} is too short (at least {{min}} characters).",
+    "fieldRequired": "{{field}} is required.",
+    "fieldInvalid": "{{field}} isn't valid.",
+    "unknown": "Something went wrong. Please try again."
+  },
+  "fields": {
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "subject": "Subject",
+    "description": "Description",
+    "message": "Message",
+    "issue": "Issue",
+    "priority": "Priority",
+    "category": "Category",
+    "current_password": "Current password",
+    "new_password": "New password"
+  }
+}
