@@ -7,7 +7,7 @@
 # AppSail's managed Python runtime does NOT install dependencies: the build
 # folder is uploaded as-is, so Linux x86-64 / CPython 3.13 wheels are
 # vendored next to the code. Only runtime files go in: backend/ (no local DB,
-# uploads or caches), the KB JSON, requirements-runtime.txt's packages and
+# uploads or caches), kb_ingester/, requirements-runtime.txt's packages and
 # app-config.json. No .env, no secrets, and NO env_variables in
 # app-config.json: every variable (APP_ENV included) is set in the AppSail
 # console, because it's undocumented whether `catalyst deploy` replaces the
@@ -25,6 +25,7 @@ mkdir -p "$OUT"
 
 rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '*.db' --exclude '*.db-*' \
   --exclude 'uploads/' "$ROOT/backend/" "$OUT/backend/"
+rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/kb_ingester/" "$OUT/kb_ingester/"
 cp "$ROOT/requirements-runtime.txt" "$OUT/"
 
 "$PY" -m pip install -r "$ROOT/requirements-runtime.txt" -t "$OUT" \

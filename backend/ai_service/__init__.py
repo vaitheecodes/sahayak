@@ -11,6 +11,7 @@ which sends them to the backend chosen by AI_PROVIDER (backends.py).
     summarize_incident       refresh an incident's summary
     draft_post_incident      customer + internal post-incident summary
     incident_question        "was there an outage?" -> time window + topic
+    draft_kb_entries         help content -> draft KB entries (+ step check)
 
 Routes and the LangGraph agent (backend/graph.py) call these; nothing
 else talks to the model. Untrusted text is always passed as delimited

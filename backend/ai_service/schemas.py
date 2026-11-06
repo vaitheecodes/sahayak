@@ -313,3 +313,71 @@ class IncidentQuestion(BaseModel):
     window_end: datetime | None = None
     category: Category | None = None
     topic: str | None = Field(default=None, max_length=200)
+
+
+# ---------------------------------------------------------------------------
+# draft_kb_entries (kb_ingester/drafting.py checks every field afterwards)
+# ---------------------------------------------------------------------------
+TermKind = Literal["module", "variant", "platform", "integration", "edition"]
+_Short = Annotated[str, Field(min_length=1, max_length=200)]
+_Label = Annotated[str, Field(min_length=1, max_length=41)]
+
+
+class DraftInput(BaseModel):
+    chunk_text: str
+    heading_path: str = ""
+    page_title: str = ""
+    known_terms: list[dict] = []  # {label, kind, aliases}
+
+
+class DraftStep(BaseModel):
+    text: str = _text(400)
+    # Empty or not a passage of the chunk: the step is dropped by code.
+    quote: str = Field(default="", max_length=400)
+
+
+class DraftEntry(BaseModel):
+    title: str = _text(120)
+    questions: list[_Short] = Field(min_length=1, max_length=6)
+    answer: str = Field(default="", max_length=1500)
+    kind: Literal["how-to", "troubleshooting"]
+    steps: list[DraftStep] = _items(12)
+    applies_to: list[_Label] = _items(5)
+    category: Category
+    new_category: str | None = Field(default=None, max_length=41)
+
+
+class ProposedTerm(BaseModel):
+    label: _Label
+    kind: TermKind
+    aliases: list[_Label] = _items(5)
+    evidence_quote: str = Field(default="", max_length=400)
+
+
+class ProposedCategory(BaseModel):
+    # Checked by code (categories.problem): a bad name drops this proposal
+    # only, not the whole draft.
+    name: str = Field(min_length=1, max_length=41)
+    label: str = _text(60)
+    description: str = Field(default="", max_length=200)
+
+
+class DraftedEntries(BaseModel):
+    entries: list[DraftEntry] = _items(4)
+    proposed_terms: list[ProposedTerm] = _items(8)
+    proposed_categories: list[ProposedCategory] = _items(2)
+
+
+class StepToCheck(BaseModel):
+    id: int
+    step: str
+    quote: str
+
+
+class StepVerdict(BaseModel):
+    id: int
+    supported: bool
+
+
+class StepSupport(BaseModel):
+    verdicts: list[StepVerdict] = _items(60)

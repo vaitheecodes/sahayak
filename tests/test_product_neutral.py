@@ -161,10 +161,17 @@ def _tracked(*paths: str) -> list[Path]:
     return [ROOT / line for line in out.splitlines() if (ROOT / line).is_file()]
 
 
+# The product-neutral core. Only these are checked: a separate tool
+# outside the core (a future monitoring tool in monitor/) may use the
+# words, and so may tests.
+CORE = ("backend", "kb_ingester", "scripts", "migrations", "frontend/src", "Dockerfile")
+
+
 def test_no_product_words_in_the_code_prompts_migrations_or_frontend():
     found = []
-    files = _tracked("backend", "scripts", "migrations", "frontend/src", "Dockerfile")
-    files += [p for p in (ROOT / "backend").rglob("*.py")] + [ROOT / "migrations" / "postgres" / "0003_kb.sql"]
+    files = _tracked(*CORE)
+    files += [p for d in ("backend", "kb_ingester") for p in (ROOT / d).rglob("*.py")]
+    files += list((ROOT / "migrations" / "postgres").glob("*.sql"))
     for path in sorted(set(files)):
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
             if _PRODUCT_WORDS.search(line) and not (path.suffix in (".jsx", ".js") and _ALLOWED.search(line)):
@@ -172,6 +179,10 @@ def test_no_product_words_in_the_code_prompts_migrations_or_frontend():
                     continue
                 found.append(f"{path.relative_to(ROOT)}:{number}")
     assert found == []
+
+
+def test_the_ban_is_limited_to_the_core():
+    assert "monitor" not in CORE and not any(c.startswith("monitor/") for c in CORE)
 
 
 def test_no_kb_data_ships_with_the_code():

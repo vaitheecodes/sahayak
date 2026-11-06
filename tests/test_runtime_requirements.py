@@ -1,4 +1,4 @@
-"""Every third-party package the deployed backend imports must be in
+"""Every third-party package the deployed backend (backend/, kb_ingester/) imports must be in
 requirements-runtime.txt (AppSail doesn't install anything else), and the
 heavy pipeline libraries must stay out of it."""
 
@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 # import name -> distribution name, where they differ
 DIST = {"jwt": "pyjwt", "dotenv": "python-dotenv", "typing_extensions": "typing-extensions",
-        "psycopg_pool": "psycopg-pool"}
+        "psycopg_pool": "psycopg-pool", "bs4": "beautifulsoup4"}
 # Imported only lazily by optional providers; not needed with quickml_appsail/mock.
 OPTIONAL = {"openai"}
 # Pulled in transitively by fastapi/pydantic, and botocore by boto3.
@@ -27,13 +27,13 @@ def _runtime_requirements() -> set[str]:
 
 def _backend_imports() -> set[str]:
     names = set()
-    for path in (ROOT / "backend").rglob("*.py"):
+    for path in [*(ROOT / "backend").rglob("*.py"), *(ROOT / "kb_ingester").rglob("*.py")]:
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.Import):
                 names |= {a.name.split(".")[0] for a in node.names}
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 names.add(node.module.split(".")[0])
-    return {n for n in names if n not in sys.stdlib_module_names and n not in ("backend", "__future__")}
+    return {n for n in names if n not in sys.stdlib_module_names and n not in ("backend", "kb_ingester", "__future__")}
 
 
 def test_every_runtime_import_is_a_runtime_requirement():

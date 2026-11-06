@@ -1,6 +1,7 @@
 # Allow-list: the image needs only what the Dockerfile copies.
 *
 !backend/
+!kb_ingester/
 !migrations/
 !scripts/db_migrate.py
 !requirements-runtime.txt

@@ -39,6 +39,7 @@ import random
 import re
 import time
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
@@ -606,10 +607,17 @@ def _sample(schema: dict, defs: dict) -> Any:
     return None
 
 
+# Schema title -> fn(system_prompt, user_content) -> dict: a more useful
+# offline answer for one operation (kb_ingester/mock_drafts.py registers
+# the KB drafter's, so a local run without a model still drafts entries).
+MOCK_RESPONDERS: dict[str, Callable[[str, str], dict]] = {}
+
+
 class MockBackend:
     """Deterministic and offline: JSON requests get the minimal valid
-    object for the schema; text requests a fixed sentence. Useful for
-    running the app without a model; tests script their own replies."""
+    object for the schema (or a registered responder's answer); text
+    requests a fixed sentence. Useful for running the app without a
+    model; tests script their own replies."""
 
     name = "mock"
     TEXT = "This is a placeholder reply from the offline mock AI provider."
@@ -617,6 +625,9 @@ class MockBackend:
     def generate(self, system_prompt, user_content, *, max_tokens, json_schema=None, extra_messages=()):
         if json_schema is None:
             return self.TEXT
+        responder = MOCK_RESPONDERS.get(json_schema.get("title", ""))
+        if responder is not None:
+            return json.dumps(responder(system_prompt, user_content))
         return json.dumps(_sample(json_schema, json_schema.get("$defs", {})))
 
 
