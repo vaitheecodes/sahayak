@@ -4,7 +4,7 @@ An AI-powered help desk for any product, inspired by Zoho Desk and AI
 customer-experience platforms such as Thunai.ai, Zendesk AI and Intercom
 Fin. The product is configured, not coded: its name, categories and
 knowledge base are data, and the knowledge base is built from the
-product's own content (`kb_ingester/`, in progress).
+product's own content (`kb_ingester/`; one URL at a time so far).
 
 - **Customers** chat with an AI assistant grounded in the product's
   knowledge base, or raise email-style tickets with attachments.
@@ -483,7 +483,34 @@ tables in `backend/db.py` and `migrations/postgres/0003_kb.sql`):
   only when the customer has mentioned it.
 - **Categories** (`kb_categories`): neutral defaults, extended without code.
 - **Sources, runs, documents, chunks**: where content came from and how
-  it was ingested (the ingester, `kb_ingester/`, is being built).
+  it was ingested (`kb_ingester/`, below).
+
+### Building it from a product's pages
+
+Managers and technicians find it under **Knowledge base** in the
+sidebar (the admin doesn't review the KB).
+
+1. **Sources** (manager): add a public page URL and tick the confirmation
+   that the content is public or allowed to be used (your name and the
+   time are stored). Private and internal addresses are refused.
+2. **Estimate a run** (manager): the page is fetched and split into
+   sections, with no model calls, and the cost is shown: pages x sections
+   x 2 model calls (one to draft, one to check the steps). Unchanged pages
+   and sections cost nothing. **Start run** drafts them; a run stops
+   cleanly at the per-run or per-day cap (admin Settings -> Knowledge base
+   limits) and the next run continues.
+3. **Review queue**: drafts with their flags (possible duplicate, source
+   changed, suspicious text, answer removed). The editor shows each step
+   beside the passage it is quoted from. Technicians edit; managers
+   approve or reject. Only approved entries are used by the bot.
+4. **Terms / Categories**: the drafter proposes product terms and
+   categories; technicians can propose terms too; managers confirm,
+   reject or merge them.
+
+Every step of a draft must quote a passage of its page, and a second
+model call checks the passage supports it; the answer must be in the
+model's own words. Pages are never stored: only a hash, the section text
+until its drafts are decided (30 days at most), and the short quotes.
 
 A reviewed KB moves between environments as a JSON pack (format: the
 neutral test fixture `tests/fixtures/kb/brightdesk.json`, a fictional HR

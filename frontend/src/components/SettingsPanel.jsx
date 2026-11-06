@@ -91,6 +91,7 @@ function Section({ title, description, section, data, onSaved, children }) {
 export default function SettingsPanel() {
   const [payload, setPayload] = useState(null);
   const [product, setProduct] = useState(null);
+  const [kb, setKb] = useState(null);
   const [routing, setRouting] = useState(null);
   const [incidents, setIncidents] = useState(null);
   const [statuses, setStatuses] = useState(null);
@@ -99,6 +100,7 @@ export default function SettingsPanel() {
   function apply(next) {
     setPayload(next);
     setProduct(next.sections.product);
+    setKb(next.sections.kb);
     setRouting(next.sections.routing);
     setIncidents(next.sections.incidents);
     setStatuses(next.sections.statuses);
@@ -133,6 +135,26 @@ export default function SettingsPanel() {
           onChange={(v) => setProduct({ ...product, description: v })} />
         <TextField label="Support team name" value={product.support_team_name} maxLength={80} required
           onChange={(v) => setProduct({ ...product, support_team_name: v })} />
+      </Section>
+
+      <Section
+        title="Knowledge base limits"
+        description="Hard caps on the model calls the knowledge-base ingester may make. A run stops cleanly when one is used up; the next run continues where it stopped."
+        section="kb"
+        data={kb}
+        onSaved={apply}
+      >
+        <div className="field-row">
+          <NumberField label="Model calls per run" step={1} min={2} max={1000} value={kb.model_calls_per_run}
+            onChange={(v) => setKb({ ...kb, model_calls_per_run: v })} />
+          <NumberField label="Model calls per day (all runs, UTC)" step={1} min={2} max={10000}
+            value={kb.model_calls_per_day} onChange={(v) => setKb({ ...kb, model_calls_per_day: v })} />
+          <NumberField label="Runs per hour per manager" step={1} min={1} max={100} value={kb.runs_per_hour}
+            onChange={(v) => setKb({ ...kb, runs_per_hour: v })} />
+          <NumberField label="Days to keep section text" step={1} min={1} max={365}
+            hint="Removed earlier once every draft from it is decided."
+            value={kb.chunk_retention_days} onChange={(v) => setKb({ ...kb, chunk_retention_days: v })} />
+        </div>
       </Section>
 
       <Section

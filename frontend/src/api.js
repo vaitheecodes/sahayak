@@ -332,4 +332,35 @@ export const api = {
 
   // Public, read-only (the /docs page).
   routingPolicy: () => request("/public/routing-policy"),
+
+  // Knowledge base (technicians and managers; managers run sources and
+  // decide; the backend enforces both).
+  kbSources: () => request("/kb/sources", { auth: true }),
+  kbCreateSource: (body) => request("/kb/sources", { method: "POST", body, auth: true }),
+  kbSourceRuns: (sourceId) => request(`/kb/sources/${sourceId}/runs`, { auth: true }),
+  kbEstimate: (sourceId) => request(`/kb/sources/${sourceId}/estimate`, { method: "POST", auth: true }),
+  kbStartRun: (runId, expectedModelCalls) =>
+    request(`/kb/runs/${runId}/start`, {
+      method: "POST",
+      body: { expected_model_calls: expectedModelCalls },
+      auth: true,
+    }),
+  kbRun: (runId) => request(`/kb/runs/${runId}`, { auth: true }),
+  kbEntries: (filters = {}) => request(`/kb/entries?${query(filters)}`, { auth: true }),
+  kbEntry: (entryId) => request(`/kb/entries/${encodeURIComponent(entryId)}`, { auth: true }),
+  kbEditEntry: (entryId, body) =>
+    request(`/kb/entries/${encodeURIComponent(entryId)}`, { method: "PATCH", body, auth: true }),
+  kbDecideEntry: (entryId, decision, version, note) =>
+    request(`/kb/entries/${encodeURIComponent(entryId)}/${decision}`, {
+      method: "POST",
+      body: { version, note },
+      auth: true,
+    }),
+  kbTerms: (status = "all") => request(`/kb/terms?${query({ status })}`, { auth: true }),
+  kbProposeTerm: (body) => request("/kb/terms", { method: "POST", body, auth: true }),
+  kbTermAction: (termId, action, body) =>
+    request(`/kb/terms/${termId}/${action}`, { method: "POST", body, auth: true }),
+  kbCategories: () => request("/kb/categories", { auth: true }),
+  kbCategoryAction: (name, action, body) =>
+    request(`/kb/categories/${encodeURIComponent(name)}/${action}`, { method: "POST", body, auth: true }),
 };

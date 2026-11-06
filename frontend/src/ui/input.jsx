@@ -24,7 +24,7 @@ export function Textarea({ className, ...props }) {
 export function Select({ className, children, ...props }) {
   return (
     <div className={cn("relative inline-flex w-full", className)}>
-      <select data-slot="select" className={cn(fieldClass, "cursor-pointer appearance-none pr-8")} {...props}>
+      <select data-slot="select" className={cn(fieldClass, "cursor-pointer appearance-none py-0 pr-8")} {...props}>
         {children}
       </select>
       <svg

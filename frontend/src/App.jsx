@@ -11,6 +11,7 @@ import Docs from "./pages/Docs";
 import IncidentHistory from "./pages/IncidentHistory";
 import RoutingPolicyDoc from "./pages/RoutingPolicyDoc";
 import TryATicket from "./pages/TryATicket";
+import KnowledgeBase from "./pages/KnowledgeBase";
 import UiGallery from "./pages/UiGallery";
 
 // Client-side gate only, for navigation. Every endpoint enforces the
@@ -75,6 +76,15 @@ export default function App() {
           element={
             <RequireRole roles={["technician", "manager"]}>
               <TryATicket />
+            </RequireRole>
+          }
+        />
+        {/* Technicians and managers: sources, review, terms, categories. */}
+        <Route
+          path="/kb/:section?/:id?"
+          element={
+            <RequireRole roles={["technician", "manager"]}>
+              <KnowledgeBase />
             </RequireRole>
           }
         />

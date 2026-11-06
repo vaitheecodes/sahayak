@@ -2,7 +2,7 @@
 
 An AI help desk for any product: ticketing, AI chat, a technician
 workspace, incident correlation and an admin console, plus a generic KB
-ingester (`kb_ingester/`, being built) and a mobile app (`mobile/`,
+ingester (`kb_ingester/`) and a mobile app (`mobile/`,
 untracked, not part of this work). Started as a copy of ticketapp-ai-aws
 @ b77e159; never edit `../ticketapp-ai-aws`.
 
@@ -34,29 +34,90 @@ knowledge base are data, never code.
      settings); conftest gives every test an empty KB and no terms.
      `tests/test_product_neutral.py` fails if product words (Site24x7,
      monitor, APM, ...) reappear in code, prompts, migrations or frontend.
-2. **Generic KB ingester (next)** — sources (URL, then site crawl,
-   forums, TXT/MD/PDF upload, pasted text; resolved tickets later) ->
-   safe fetch -> clean -> chunk by headings -> model-drafted entries whose
-   every step is backed by a quoted passage (a second model check for
-   how-to steps) -> drafts with near-duplicate and changed-source flags ->
-   review in the web app. Managers manage sources/runs and approve or
-   reject; technicians edit drafts and propose terms; the admin stays
-   minimal. Every run shows its estimated model calls first and stops at a
-   per-run and per-day cap. Adding a source needs a stored confirmation
-   (who, when) that the content is public / allowed. Planned order: a
-   minimal URL -> draft -> review slice first, then crawl, forums and
-   sitemaps.
+2. **Generic KB ingester (vertical slice done)** — `kb_ingester/`, mounted
+   by the backend at `/api/kb` and shipped with it (Dockerfile, AppSail,
+   deploy workflow). See "KB ingester" below. Still to come: site crawl
+   (robots.txt is already honoured per page), sitemaps, forum threads,
+   TXT/MD/PDF upload, pasted text, resolved tickets as a source.
+
+## KB ingester (`kb_ingester/`)
+
+One URL -> SafeFetcher -> clean -> chunk -> draft -> checks -> drafts ->
+review. Module map in `kb_ingester/__init__.py`.
+
+- **SafeFetcher** (`safe_fetch.py`): http/https on 80/443 only, no
+  userinfo, no localhost/.internal/.local names; every resolved address
+  must be public (private, loopback, link-local, CGNAT, multicast,
+  reserved, docs, ULA, IPv4-mapped/6to4/NAT64 checked inside, metadata
+  169.254.169.254 / fd00:ec2::254 named); connects to the checked IP (TLS
+  verified for the host name), so DNS rebinding can't swap it; redirects
+  by hand, max 5, each re-checked; 5 MB cap (declared, streamed, and after
+  gzip), 10 s socket timeout + 30 s deadline, content-type allowlist,
+  `Accept-Encoding: identity`, 1 request/s per host. Errors are reason
+  codes. `UrlSource` (`sources.py`) checks robots.txt (4xx: allowed;
+  5xx: disallowed) for `SahayakKBBot`. Tests fake DNS and servers
+  (`tests/kb_ingest_helpers.FakeWeb`).
+- **Clean / chunk**: bs4 `html.parser` (no lxml); nav, aside, forms,
+  cookie/consent/share widgets, hidden elements and heading permalinks
+  go; h1-h3 become `#` lines; chunks are heading sections of 300-1,200
+  words (small ones merged, long ones split at blank lines), max 40 per
+  page.
+- **Drafting** (`drafting.py`, AI op `ai_service/draft_kb_entries.py`):
+  the chunk is a `<source_chunk>` data block (closing tags escaped), the
+  call has no tools. Code then checks: each step's quote must be a
+  passage of the chunk (normalised, 15-300 chars); the remaining steps go
+  to `check_step_support` (one call per chunk) and unsupported ones are
+  dropped; the answer must be a paraphrase (no 12-word run from the
+  chunk, <= 60% shared trigrams), otherwise it is removed; a how-to with
+  no steps left, or an entry with nothing left, is dropped. Injection
+  phrasing in the chunk, or injection/unknown links in the output, flag
+  the draft. Proposed terms need an evidence quote; proposed categories
+  a valid name and an entry that asked for them. Both are stored
+  `proposed`. The mock AI provider drafts from list items
+  (`mock_drafts.py`, registered in `backends.MOCK_RESPONDERS`) so local
+  runs show something to review.
+- **Runs** (`runs.py`): estimate (fetch + chunk, no model calls: chunks to
+  draft x 2 calls) -> start (the caller repeats the estimate; cap = min of
+  per-run cap, today's remaining cap, estimate; reserved under an
+  advisory lock) -> `execute` as a BackgroundTask, stopping between
+  chunks when the next one wouldn't fit (`run_cap` / `daily_cap`), or
+  after 3 AI failures in a row. Drafted chunks are skipped by hash, so
+  the next run resumes; an unchanged page costs nothing; a document's
+  `content_hash` moves only when all its chunks are drafted, and entries
+  from chunks no longer on the page become `stale`. Startup fails runs
+  left queued/running (`recover_interrupted`). Caps: admin Settings ->
+  Knowledge base limits (app_settings `kb`; env `KB_MODEL_CALLS_PER_RUN`
+  / `_PER_DAY`), plus runs per hour per manager and one active run per
+  source. Near-duplicates (`dedupe.py`, TF-IDF cosine >= 0.8 over title,
+  questions, answer, steps vs. every draft/approved entry) are flagged.
+- **Review** (`review.py`, `api.py`): technicians + managers read,
+  edit drafts (version-checked; an edited step's quote must still be in
+  the chunk and loses its AI check) and propose terms; managers add
+  sources (with the public/allowed confirmation, stored with who/when),
+  estimate/start runs, approve/reject, confirm/reject/merge terms and
+  categories (a confirmed or merged category takes the drafts that asked
+  for it). The admin gets 403 on all of `/api/kb`. Approving needs
+  confirmed terms. Chunk text is purged once no draft from it is left,
+  or after `chunk_retention_days`. Everything is in `audit_events`
+  (`kb.*`, ids and field names only).
+- **UI**: `/kb/review[/<id>]`, `/kb/sources`, `/kb/terms`,
+  `/kb/categories` (`pages/KnowledgeBase.jsx`, `components/kb/`); the
+  editor shows each step beside its quote and marks the quotes in the
+  source section.
+- Tests: `test_kb_safe_fetch.py` (SSRF), `test_kb_clean_chunk.py`,
+  `test_kb_drafting.py` (checks, injection), `test_kb_ingest_api.py`
+  (runs, caps, review, roles; runs on Postgres too).
 
 ## Knowledge base (`backend/kb_store.py`)
 
-Tables (SQLite in `backend/db.py` SCHEMA, Postgres in
-`migrations/postgres/0003_kb.sql`): `kb_entries` (title, answer, kind,
+Tables (SQLite in `backend/db.py` SCHEMA + `_ADDED_COLUMNS`, Postgres in
+`migrations/postgres/0003_kb.sql` + `0004_kb_ingest.sql`): `kb_entries` (title, answer, kind,
 handling, collect, category, source_url / document / chunk / chunk_hash,
 stale, supersedes, duplicate_of, status draft|approved|rejected|retired,
 reviewer, version), `kb_entry_questions`, `kb_entry_steps` (text + the
 quote it is backed by + support_check), `kb_terms` (label, kind
 module|variant|platform|integration|edition, aliases, pattern built from
-them, status proposed|confirmed|rejected), `kb_entry_terms`,
+them, status proposed|confirmed|rejected|merged), `kb_entry_terms`,
 `kb_categories`, and for the ingester `kb_sources` (with
 `public_confirmed_by/_at`), `kb_ingest_runs` (estimated / capped / used
 model calls, stop_reason, counts), `kb_documents` (hash only, never the
@@ -644,6 +705,8 @@ the suite is green on SQLite and on Postgres (`DB_BACKEND=postgres
 TEST_DATABASE_URL=...`; locally `PG_LOCAL_PORT=5434 scripts/pg_local.sh
 start`, as 5433 may be ticketapp-ai-aws's server).
 
-**Next:** the KB ingester vertical slice (one URL -> safe fetch -> clean
--> chunk -> draft entries -> review list with approve/reject), shown to
-the user before crawl, forum detection and sitemaps.
+**Ingester vertical slice** (`kb_ingester/`, see above): one URL to
+reviewed entries, checked in a browser with the mock AI.
+
+**Next:** a real run against Bedrock (needs the user's go-ahead on cost
+and credentials), then crawl, sitemaps, forums, file upload, pasted text.

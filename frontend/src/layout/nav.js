@@ -1,6 +1,10 @@
 import {
   Activity,
   BookOpen,
+  ClipboardCheck,
+  Globe,
+  Shapes,
+  Tags,
   Building2,
   ChartColumn,
   FlaskConical,
@@ -19,6 +23,18 @@ import {
 /* The sidebar for each role: groups of links to whole screens (never
  * anchors into one page). The backend enforces the same boundaries: a
  * link missing here is a 403 there (tests/test_role_scope.py). */
+
+// Technicians edit drafts and propose terms; managers also add sources,
+// run them and decide (kb_ingester/api.py).
+const KNOWLEDGE_BASE = {
+  label: "Knowledge base",
+  items: [
+    { to: "/kb/review", label: "Review queue", icon: ClipboardCheck },
+    { to: "/kb/sources", label: "Sources", icon: Globe },
+    { to: "/kb/terms", label: "Terms", icon: Tags },
+    { to: "/kb/categories", label: "Categories", icon: Shapes },
+  ],
+};
 
 const RESOURCES = {
   label: "Resources",
@@ -54,6 +70,7 @@ export const NAV = {
           { to: "/technician/incidents", label: "Assigned incidents", icon: Siren },
         ],
       },
+      KNOWLEDGE_BASE,
       { label: "Tools", items: [{ to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical }] },
       RESOURCES,
     ],
@@ -69,6 +86,7 @@ export const NAV = {
           { to: "/manager/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
         ],
       },
+      KNOWLEDGE_BASE,
       { label: "Tools", items: [{ to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical }] },
       RESOURCES,
     ],
