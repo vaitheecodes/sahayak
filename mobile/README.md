@@ -16,6 +16,17 @@ portal, and the app turns their accounts away at sign-in.
 Accounts are created by the admin (web portal, Users). The first sign-in
 asks for a new password.
 
+## What's in the app
+
+- Sign in (customers only), forced password change, session restore and
+  expiry, Account tab (theme, change password, sign out).
+- Tickets: list with All / Open / Resolved / Escalated filters, search,
+  unread dot and pull-to-refresh (reloads whenever the tab comes back into
+  view); email-style thread with incident notice, chat transcript, reply
+  (4000 characters) and Reopen; new ticket (subject, category from
+  `/api/meta`, priority, description up to 8000 characters).
+- Not yet: chat (Stage 3), attachments (Stage 4), push notifications.
+
 ## API URL and https
 
 The URL comes only from `EXPO_PUBLIC_API_URL` (`app.config.ts`), never the
@@ -28,14 +39,17 @@ A release JS bundle also refuses http at runtime.
 
 ## Tests
 
-`npm test` (Jest + React Native Testing Library) and `npm run typecheck`.
+`npm test` (Jest + React Native Testing Library), `npm run typecheck` and
+`npm run lint`.
 
 ## Layout
 
 ```
 app/            routes (Expo Router): sign-in, change-password, offline,
-                password (modal), (tabs)/{index=chat, tickets, account}
-src/api/        fetch client, ApiError mapping, endpoint helpers, types
+                password (modal), (tabs)/{index=chat, tickets, account},
+                tickets/[id] (thread), tickets/new (modal)
+src/api/        fetch client, ApiError mapping, endpoint helpers (auth,
+                tickets, meta), types
 src/auth/       SessionProvider (token in expo-secure-store), tokenStore
 src/features/   screens by area
 src/i18n/       i18next setup + locales/en.json (add ta.json / hi.json later)

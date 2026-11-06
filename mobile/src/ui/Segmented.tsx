@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, space } from '../theme/tokens';
 import { Text } from './Text';
@@ -10,15 +10,16 @@ type Props<T extends string> = {
   value: T;
   onChange: (value: T) => void;
   accessibilityLabel: string;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function Segmented<T extends string>({ options, value, onChange, accessibilityLabel }: Props<T>) {
+export function Segmented<T extends string>({ options, value, onChange, accessibilityLabel, style }: Props<T>) {
   const { colors } = useTheme();
   return (
     <View
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
-      style={[styles.track, { backgroundColor: colors.raised, borderColor: colors.border }]}
+      style={[styles.track, { backgroundColor: colors.raised, borderColor: colors.border }, style]}
     >
       {options.map((o) => {
         const selected = o.value === value;

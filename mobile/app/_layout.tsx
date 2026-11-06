@@ -1,6 +1,8 @@
 import '../src/i18n';
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Platform } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -12,6 +14,8 @@ import { apiConfig } from '../src/config';
 import { SessionProvider, useSession } from '../src/auth/SessionProvider';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
 import { ConfigErrorScreen } from '../src/features/auth/StatusScreens';
+import { MetaProvider } from '../src/features/meta/MetaProvider';
+import { HeaderTextButton } from '../src/ui/HeaderTextButton';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -49,6 +53,7 @@ function ConfigOnly({ fontsReady }: { fontsReady: boolean }) {
 function Navigator({ fontsReady }: { fontsReady: boolean }) {
   const { status, user } = useSession();
   const { colors, scheme } = useTheme();
+  const { t } = useTranslation();
   const ready = fontsReady && status !== 'loading';
 
   useEffect(() => {
@@ -61,7 +66,7 @@ function Navigator({ fontsReady }: { fontsReady: boolean }) {
   const mustChange = signedIn && user!.must_change_password;
 
   return (
-    <>
+    <MetaProvider>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
@@ -85,8 +90,25 @@ function Navigator({ fontsReady }: { fontsReady: boolean }) {
         <Stack.Protected guard={signedIn && !mustChange}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="password" options={{ headerShown: true, title: '', presentation: 'modal' }} />
+          <Stack.Screen
+            name="tickets/[id]"
+            options={{ headerShown: true, title: '', headerBackTitle: t('tabs.tickets') }}
+          />
+          <Stack.Screen
+            name="tickets/new"
+            options={{
+              headerShown: true,
+              title: t('newTicket.title'),
+              presentation: 'modal',
+              // An iOS sheet has no back button; Android keeps its back arrow.
+              headerLeft:
+                Platform.OS === 'ios'
+                  ? () => <HeaderTextButton label={t('common.cancel')} onPress={() => router.back()} />
+                  : undefined,
+            }}
+          />
         </Stack.Protected>
       </Stack>
-    </>
+    </MetaProvider>
   );
 }

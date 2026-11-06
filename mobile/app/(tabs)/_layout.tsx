@@ -1,6 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle, Inbox, UserRound } from 'lucide-react-native';
+import { MessageCircle, Inbox, Plus, UserRound } from 'lucide-react-native';
+import { HeaderTextButton } from '../../src/ui/HeaderTextButton';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { fonts } from '../../src/theme/tokens';
 
@@ -32,6 +33,14 @@ export default function TabsLayout() {
         name="tickets"
         options={{
           title: t('tabs.tickets'),
+          headerRight: () => (
+            <HeaderTextButton
+              label={t('tickets.newShort')}
+              accessibilityLabel={t('tickets.new')}
+              icon={<Plus size={18} color={colors.primary} />}
+              onPress={() => router.push('/tickets/new')}
+            />
+          ),
           tabBarIcon: ({ color, size }) => <Inbox color={color} size={size} />,
         }}
       />

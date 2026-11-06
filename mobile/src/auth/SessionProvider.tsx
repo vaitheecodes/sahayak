@@ -64,6 +64,8 @@ export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
     setStatus('signedOut');
   }, []);
 
+  // tokenRef is read when a request is sent, never while rendering.
+  /* eslint-disable react-hooks/refs */
   const api = useMemo(
     () =>
       createApiClient({
@@ -78,6 +80,7 @@ export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
       }),
     [baseUrl, fetchImpl, endSession],
   );
+  /* eslint-enable react-hooks/refs */
 
   /** Confirms the stored token with /auth/me. */
   const restore = useCallback(async () => {
@@ -107,6 +110,8 @@ export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
   }, [api, endSession]);
 
   useEffect(() => {
+    // The request is async: state is only set after it answers.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     restore();
   }, [restore]);
 

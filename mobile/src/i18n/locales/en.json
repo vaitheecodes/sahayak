@@ -8,7 +8,8 @@
     "cancel": "Cancel",
     "show": "Show",
     "hide": "Hide",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "close": "Close"
   },
   "tabs": {
     "chat": "Chat",
@@ -66,9 +67,7 @@
   },
   "placeholder": {
     "chatTitle": "Chat with Support Bot",
-    "chatBody": "Chat arrives in the next update.",
-    "ticketsTitle": "Your tickets",
-    "ticketsBody": "Tickets arrive in the next update."
+    "chatBody": "Chat arrives in the next update."
   },
   "offline": {
     "title": "Can't reach the help desk",
@@ -107,5 +106,87 @@
     "category": "Category",
     "current_password": "Current password",
     "new_password": "New password"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutes_one": "{{count}} min ago",
+    "minutes_other": "{{count}} min ago",
+    "hours_one": "{{count}}h ago",
+    "hours_other": "{{count}}h ago",
+    "yesterday": "yesterday",
+    "days_one": "{{count}}d ago",
+    "days_other": "{{count}}d ago"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "tickets": {
+    "title": "Tickets",
+    "new": "New ticket",
+    "newShort": "New",
+    "filterLabel": "Filter tickets",
+    "all": "All",
+    "open": "Open",
+    "resolved": "Resolved",
+    "escalated": "Escalated",
+    "search": "Search by subject or ticket #",
+    "chatBadge": "Chat",
+    "newReply": "New reply",
+    "emptyTitle": "No tickets yet",
+    "emptyBody": "Raise a ticket, or start a chat — we'll track it here.",
+    "noMatchTitle": "No tickets match",
+    "noMatchBody": "Try another filter or search.",
+    "clearSearch": "Clear search",
+    "updated": "Updated {{when}}"
+  },
+  "ticket": {
+    "category": "Category",
+    "priority": "Priority",
+    "created": "Created",
+    "chatTranscript": "Chat transcript",
+    "chatTranscriptCount_one": "{{count}} message, before escalation",
+    "chatTranscriptCount_other": "{{count}} messages, before escalation",
+    "you": "You",
+    "bot": "Support Bot",
+    "to": "to {{name}}",
+    "serviceUpdate": "Service update",
+    "showEarlier_one": "Show {{count}} earlier message",
+    "showEarlier_other": "Show {{count}} earlier messages",
+    "attachments": "Attachments",
+    "attachmentsLater": "Opening attachments arrives in a later update.",
+    "reopenPrompt": "Not solved after all? Reopen the ticket and our support team will take it from here.",
+    "reopen": "Reopen ticket",
+    "reopening": "Reopening…",
+    "closedNote": "This ticket is closed. Raise a new one if you need more help.",
+    "reply": "Reply",
+    "replyPlaceholder": "Write your reply…",
+    "send": "Send",
+    "sending": "Sending…",
+    "sendingHint": "Sending — if our AI assistant is handling this ticket it will reply in a few seconds.",
+    "replyTooLong": "Your reply is too long (at most {{max}} characters).",
+    "counter": "{{count}} / {{max}}",
+    "notFound": "This ticket isn't available."
+  },
+  "newTicket": {
+    "title": "Raise a ticket",
+    "subtitle": "We'll reply in the ticket thread and by email.",
+    "subject": "Subject",
+    "category": "Category",
+    "categoryNone": "Not sure",
+    "priority": "Priority",
+    "description": "Description",
+    "descriptionPlaceholder": "What happened, where in the product, and what you've tried so far.",
+    "submit": "Submit ticket",
+    "submitting": "Submitting…",
+    "submittingHint": "Our AI assistant reads every new ticket first, so this can take a few seconds.",
+    "subjectRequired": "Enter a subject.",
+    "descriptionRequired": "Describe the problem.",
+    "tooLong": "Too long (at most {{max}} characters).",
+    "categoriesFailed": "Categories couldn't be loaded. You can still send the ticket without one.",
+    "timeout": "The help desk took too long to answer. Your ticket may still have been created — check Tickets before sending it again.",
+    "attachmentsLater": "Attachments arrive in a later update. You can add details in a reply."
   }
 }
