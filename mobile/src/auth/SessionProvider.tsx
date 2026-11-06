@@ -48,9 +48,11 @@ type Props = {
   baseUrl: string;
   children: ReactNode;
   fetchImpl?: typeof fetch;
+  /** Request timeout; tests shorten it. */
+  timeoutMs?: number;
 };
 
-export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
+export function SessionProvider({ baseUrl, children, fetchImpl, timeoutMs }: Props) {
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [user, setUser] = useState<Me | null>(null);
   const [notice, setNotice] = useState<SignedOutNotice>(null);
@@ -71,6 +73,7 @@ export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
       createApiClient({
         baseUrl,
         fetchImpl,
+        timeoutMs,
         getToken: () => tokenRef.current,
         onUnauthorized: () => {
           if (tokenRef.current) endSession('expired');
@@ -78,7 +81,7 @@ export function SessionProvider({ baseUrl, children, fetchImpl }: Props) {
         onPasswordChangeRequired: () =>
           setUser((u) => (u ? { ...u, must_change_password: true } : u)),
       }),
-    [baseUrl, fetchImpl, endSession],
+    [baseUrl, fetchImpl, timeoutMs, endSession],
   );
   /* eslint-enable react-hooks/refs */
 

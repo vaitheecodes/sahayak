@@ -24,8 +24,16 @@ asks for a new password.
   unread dot and pull-to-refresh (reloads whenever the tab comes back into
   view); email-style thread with incident notice, chat transcript, reply
   (4000 characters) and Reopen; new ticket (subject, category from
-  `/api/meta`, priority, description up to 8000 characters).
-- Not yet: chat (Stage 3), attachments (Stage 4), push notifications.
+  `/api/meta`, priority, description up to 8000 characters). Long threads
+  collapse their middle but always keep the newest staff reply open.
+- Chat: start a chat (issue up to 500 characters, optional category) and
+  see past chats; the conversation with a typing indicator while the bot
+  answers, a 4000-character composer, "My issue is solved" and "Raise a
+  ticket" (subject confirmed first). Resolved and escalated chats are
+  read-only, with a link to the ticket. A timed-out message is never
+  resent: the chat reloads and says it may have gone through.
+- Not yet: attachments (Stage 4), push notifications.
+- API gaps the app works around: `BACKEND_WISHLIST.md`.
 
 ## API URL and https
 
@@ -47,9 +55,9 @@ A release JS bundle also refuses http at runtime.
 ```
 app/            routes (Expo Router): sign-in, change-password, offline,
                 password (modal), (tabs)/{index=chat, tickets, account},
-                tickets/[id] (thread), tickets/new (modal)
+                tickets/[id] (thread), tickets/new (modal), chats/[id]
 src/api/        fetch client, ApiError mapping, endpoint helpers (auth,
-                tickets, meta), types
+                tickets, meta, chats), types
 src/auth/       SessionProvider (token in expo-secure-store), tokenStore
 src/features/   screens by area
 src/i18n/       i18next setup + locales/en.json (add ta.json / hi.json later)

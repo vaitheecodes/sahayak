@@ -65,10 +65,6 @@
     "languageEnglish": "English",
     "signOut": "Sign out"
   },
-  "placeholder": {
-    "chatTitle": "Chat with Support Bot",
-    "chatBody": "Chat arrives in the next update."
-  },
   "offline": {
     "title": "Can't reach the help desk",
     "body": "Check your connection and try again. You're still signed in.",
@@ -188,5 +184,57 @@
     "categoriesFailed": "Categories couldn't be loaded. You can still send the ticket without one.",
     "timeout": "The help desk took too long to answer. Your ticket may still have been created — check Tickets before sending it again.",
     "attachmentsLater": "Attachments arrive in a later update. You can add details in a reply."
+  },
+  "chatStatus": {
+    "active": "Active",
+    "escalated": "Escalated",
+    "resolved": "Resolved",
+    "abandoned": "Ended"
+  },
+  "chat": {
+    "title": "Chat",
+    "startTitle": "Start a chat",
+    "startSubtitle": "Our support bot answers right away and brings in the support team if needed.",
+    "issue": "What do you need help with?",
+    "issuePlaceholder": "Describe the problem, or what you're trying to do",
+    "issueRequired": "Tell us what you need help with.",
+    "category": "Category (optional)",
+    "categoryNone": "Not sure",
+    "start": "Start chat",
+    "starting": "Connecting…",
+    "startingHint": "The support bot is reading your message — this takes a few seconds.",
+    "startTimeout": "The help desk took too long to answer, but your chat may have started. Check Your chats below before starting another.",
+    "history": "Your chats",
+    "emptyTitle": "No chats yet",
+    "emptyBody": "Start a chat for a quick answer from the support bot.",
+    "rowChat": "Chat",
+    "rowTicket": "Ticket {{id}}",
+    "updated": "last message {{when}}",
+    "you": "You",
+    "bot": "Support Bot",
+    "typing": "Support Bot is typing…",
+    "sendingMessage": "Sending…",
+    "messageLabel": "Message",
+    "placeholderFirst": "Add more detail…",
+    "placeholderFollowUp": "Ask a follow-up…",
+    "send": "Send",
+    "tooLong": "Your message is too long (at most {{max}} characters).",
+    "solved": "My issue is solved",
+    "solving": "Closing…",
+    "solvedNeedsAnswer": "Available once the support bot has answered.",
+    "raiseTicket": "Raise a ticket",
+    "raiseTicketInstead": "Raise a ticket instead",
+    "confirmText": "We'll create a ticket for our support team with this whole conversation, so you won't need to repeat anything.",
+    "subject": "Ticket subject",
+    "subjectRequired": "Give the ticket a subject.",
+    "createTicket": "Create ticket",
+    "creatingTicket": "Creating ticket…",
+    "timeout": "The help desk took too long to answer. Your message may have gone through — we've reloaded the chat, so check it before sending again.",
+    "actionTimeout": "The help desk took too long to answer. We've reloaded the chat to show where it stands.",
+    "resolvedNote": "This chat is resolved and closed. Start a new chat any time.",
+    "escalatedNote": "Escalated to our support team as ticket {{id}}. They'll reply in the ticket.",
+    "openTicket": "Open ticket",
+    "newChat": "Start a new chat",
+    "notFound": "This chat isn't available."
   }
 }

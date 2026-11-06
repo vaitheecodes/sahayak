@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native';
-import type { TicketStatus } from '../api/types';
+import type { ChatStatus, TicketStatus } from '../api/types';
 import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, space, type Palette } from '../theme/tokens';
 import { Text } from './Text';
@@ -32,6 +32,20 @@ export function Chip({ label, tone = 'neutral' }: { label: string; tone?: Tone }
 
 export function StatusChip({ status, label }: { status: TicketStatus; label: string }) {
   return <Chip tone={TONE[status] ?? 'neutral'} label={label} />;
+}
+
+// Chats have their own lifecycle (backend/chats.py), drawn from the same
+// tones: an active chat waits on the customer, an escalated one is with the
+// support team, a resolved one is done.
+const CHAT_TONE: Record<ChatStatus, Tone> = {
+  active: 'accent',
+  escalated: 'warning',
+  resolved: 'positive',
+  abandoned: 'neutral',
+};
+
+export function ChatStatusChip({ status, label }: { status: ChatStatus; label: string }) {
+  return <Chip tone={CHAT_TONE[status] ?? 'neutral'} label={label} />;
 }
 
 /** Small outlined tag, e.g. "Chat" on a ticket escalated from a chat. */

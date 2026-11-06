@@ -1,20 +1,15 @@
-import { useTranslation } from 'react-i18next';
-import { MessageCircle } from 'lucide-react-native';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { EmptyState } from '../../src/ui/EmptyState';
-import { Screen } from '../../src/ui/Screen';
+import { router } from 'expo-router';
+import { ChatHomeScreen } from '../../src/features/chat/ChatHomeScreen';
+import { primeChat } from '../../src/features/chat/chatCache';
 
-// Stage 3 replaces this with the support chat.
 export default function ChatTab() {
-  const { t } = useTranslation();
-  const { colors } = useTheme();
   return (
-    <Screen scroll={false} edges={[]}>
-      <EmptyState
-        icon={<MessageCircle size={32} color={colors.mutedFg} />}
-        title={t('placeholder.chatTitle')}
-        body={t('placeholder.chatBody')}
-      />
-    </Screen>
+    <ChatHomeScreen
+      onStarted={(session) => {
+        primeChat(session);
+        router.push({ pathname: '/chats/[id]', params: { id: session.session_id } });
+      }}
+      onOpen={(id) => router.push({ pathname: '/chats/[id]', params: { id } })}
+    />
   );
 }

@@ -91,6 +91,10 @@ function Navigator({ fontsReady }: { fontsReady: boolean }) {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="password" options={{ headerShown: true, title: '', presentation: 'modal' }} />
           <Stack.Screen
+            name="chats/[id]"
+            options={{ headerShown: true, title: t('chat.title'), headerBackTitle: t('tabs.chat') }}
+          />
+          <Stack.Screen
             name="tickets/[id]"
             options={{ headerShown: true, title: '', headerBackTitle: t('tabs.tickets') }}
           />

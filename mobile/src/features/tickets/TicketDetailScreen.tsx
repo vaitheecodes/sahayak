@@ -30,11 +30,7 @@ import { Chip, StatusChip, Tag } from '../../ui/StatusChip';
 import { Text } from '../../ui/Text';
 import { useMeta } from '../meta/MetaProvider';
 import { isRetryable } from './retryable';
-
-// Long threads collapse their middle, as on the web (TicketThread.jsx):
-// the first message and the two latest stay open.
-const COLLAPSE_AFTER = 4;
-const COLLAPSE_KEEP_LATEST = 2;
+import { threadItems } from './threadView';
 
 type Props = {
   ticketId: string;
@@ -121,11 +117,7 @@ export function TicketDetailScreen({ ticketId, onLoaded }: Props) {
   }
 
   const { ticket, messages, chat } = detail;
-  const collapsible = messages.length > COLLAPSE_AFTER && !expanded;
-  const hiddenCount = collapsible ? messages.length - 1 - COLLAPSE_KEEP_LATEST : 0;
-  const visible: (ThreadMessage | null)[] = collapsible
-    ? [messages[0], null, ...messages.slice(-COLLAPSE_KEEP_LATEST)]
-    : messages;
+  const items = threadItems(messages, expanded);
 
   return (
     <KeyboardAvoidingView
@@ -172,20 +164,20 @@ export function TicketDetailScreen({ ticketId, onLoaded }: Props) {
         {chat && chat.transcript.length > 0 ? <ChatTranscript messages={chat.transcript} /> : null}
 
         <View style={styles.thread}>
-          {visible.map((m) =>
-            m === null ? (
+          {items.map((item) =>
+            item.kind === 'hidden' ? (
               <Pressable
-                key="collapsed"
+                key={item.key}
                 accessibilityRole="button"
                 onPress={() => setExpanded(true)}
                 style={[styles.expand, { borderColor: colors.border }]}
               >
                 <Text variant="label" tone="primary">
-                  {t('ticket.showEarlier', { count: hiddenCount })}
+                  {t('ticket.showEarlier', { count: item.count })}
                 </Text>
               </Pressable>
             ) : (
-              <MessageCard key={m.message_id} message={m} />
+              <MessageCard key={item.message.message_id} message={item.message} />
             ),
           )}
         </View>

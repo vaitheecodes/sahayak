@@ -5,10 +5,10 @@ import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 export const BASE = 'https://api.test';
 
-export function renderWithSession(ui: ReactElement, fetchImpl: typeof fetch) {
+export function renderWithSession(ui: ReactElement, fetchImpl: typeof fetch, opts: { timeoutMs?: number } = {}) {
   return render(
     <ThemeProvider>
-      <SessionProvider baseUrl={BASE} fetchImpl={fetchImpl}>
+      <SessionProvider baseUrl={BASE} fetchImpl={fetchImpl} timeoutMs={opts.timeoutMs}>
         {ui}
       </SessionProvider>
     </ThemeProvider>,

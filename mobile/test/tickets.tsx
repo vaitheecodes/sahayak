@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Text } from 'react-native';
 import { screen, waitFor } from '@testing-library/react-native';
-import type { TicketDetail, TicketSummary } from '../src/api/types';
+import type { ChatSession, ChatSummary, ChatTranscriptMessage, TicketDetail, TicketSummary } from '../src/api/types';
 import { useSession } from '../src/auth/SessionProvider';
 import { MetaProvider } from '../src/features/meta/MetaProvider';
 import { fakeFetch, type FakeReply, type FakeRequest } from './fakeFetch';
@@ -25,10 +25,18 @@ function SignedIn({ children }: { children: ReactNode }) {
   return status === 'signedIn' ? <MetaProvider>{children}</MetaProvider> : <Text>gate:{status}</Text>;
 }
 
-export async function renderSignedIn(ui: ReactElement, routes: Record<string, Handler>) {
+/** A request that never answers, so the client's own timeout fires. */
+export function hangOnce(impl: typeof fetch) {
+  (impl as unknown as jest.Mock).mockImplementationOnce(
+    (_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted')))),
+  );
+}
+
+export async function renderSignedIn(ui: ReactElement, routes: Record<string, Handler>, opts: { timeoutMs?: number } = {}) {
   await storeToken('tok');
   const fake = fakeFetch({ 'GET /api/auth/me': { body: ME }, 'GET /api/meta': { body: META }, ...routes });
-  const result = await renderWithSession(<SignedIn>{ui}</SignedIn>, fake.impl);
+  const result = await renderWithSession(<SignedIn>{ui}</SignedIn>, fake.impl, opts);
   await waitFor(() => expect(screen.queryByText(/^gate:/)).not.toBeOnTheScreen());
   return { ...result, ...fake };
 }
@@ -90,6 +98,36 @@ export function detail(overrides: Partial<TicketDetail> = {}, ticket: Partial<Ti
         attachments: [],
       },
     ],
+    ...overrides,
+  };
+}
+
+export function chatSummary(overrides: Partial<ChatSummary> = {}): ChatSummary {
+  return {
+    session_id: 'CHAT-00000001',
+    status: 'active',
+    issue: 'How do I add a team member?',
+    created_at: '2026-11-06T09:00:00+00:00',
+    updated_at: '2026-11-06T09:00:10+00:00',
+    resolved_at: null,
+    ticket_id: null,
+    ...overrides,
+  };
+}
+
+export function chatLine(id: string, role: ChatTranscriptMessage['role'], content: string): ChatTranscriptMessage {
+  return { message_id: id, role, content, created_at: '2026-11-06T09:00:00+00:00' };
+}
+
+export function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
+  return {
+    ...chatSummary(),
+    category: null,
+    messages: [
+      chatLine('CM1', 'customer', 'How do I add a team member?'),
+      chatLine('CM2', 'ai', 'Open **Settings**, then:\n\n1. Choose Team\n2. Tap Invite'),
+    ],
+    ai_error: null,
     ...overrides,
   };
 }

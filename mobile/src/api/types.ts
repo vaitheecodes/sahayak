@@ -115,3 +115,30 @@ export type Meta = {
   product: { name: string; support_team_name: string };
   kb_entries: number;
 };
+
+// --- AI chat (backend/chats.py) ---------------------------------------------
+
+/** active: talking to the AI; resolved: the customer confirmed it's solved;
+ *  escalated: handed to the support team as a ticket. Only active chats
+ *  take messages. */
+export type ChatStatus = 'active' | 'resolved' | 'escalated' | 'abandoned';
+
+export type ChatSummary = {
+  session_id: string;
+  status: ChatStatus;
+  issue: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  /** The ticket an escalated chat became. */
+  ticket_id: string | null;
+};
+
+/** Every chat call returns the whole session, so the screen just re-renders
+ *  from it. AI messages are plain text: the server marks no fixed choices. */
+export type ChatSession = ChatSummary & {
+  category: string | null;
+  messages: ChatTranscriptMessage[];
+  /** The AI couldn't answer; the customer's message is still saved. */
+  ai_error: string | null;
+};

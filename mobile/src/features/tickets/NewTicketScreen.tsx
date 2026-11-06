@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { isApiError } from '../../api/errors';
 import { DESCRIPTION_MAX, SUBJECT_MAX, ticketsApi } from '../../api/tickets';
@@ -12,6 +12,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 import { radius, space, type as typeScale } from '../../theme/tokens';
 import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
+import { ChoiceChips } from '../../ui/ChoiceChips';
 import { Screen } from '../../ui/Screen';
 import { Segmented } from '../../ui/Segmented';
 import { Text } from '../../ui/Text';
@@ -112,34 +113,19 @@ export function NewTicketScreen({ onCreated }: Props) {
         <Text variant="label" tone="muted">
           {t('newTicket.category')}
         </Text>
-        <View accessibilityRole="radiogroup" accessibilityLabel={t('newTicket.category')} style={styles.chips}>
-          {[null, ...meta.categories].map((c) => {
-            const selected = c === category;
-            return (
-              <Pressable
-                key={c ?? '__none'}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                onPress={() => {
-                  setCategory(c);
-                  clearField('category');
-                }}
-                disabled={submitting}
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: selected ? colors.primary : colors.border,
-                    backgroundColor: selected ? colors.pill.accent.bg : colors.sheet,
-                  },
-                ]}
-              >
-                <Text variant="label" style={{ color: selected ? colors.pill.accent.fg : colors.fg }}>
-                  {c === null ? t('newTicket.categoryNone') : meta.categoryLabel(c)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <ChoiceChips
+          accessibilityLabel={t('newTicket.category')}
+          value={category}
+          onChange={(c) => {
+            setCategory(c);
+            clearField('category');
+          }}
+          disabled={submitting}
+          options={[
+            { value: null, label: t('newTicket.categoryNone') },
+            ...meta.categories.map((c) => ({ value: c, label: meta.categoryLabel(c) })),
+          ]}
+        />
         {meta.failed && !meta.loaded ? (
           <Text variant="caption" tone="muted">
             {t('newTicket.categoriesFailed')}
@@ -217,15 +203,6 @@ const styles = StyleSheet.create({
   segmented: { margin: 0 },
   flex: { flex: 1 },
   group: { gap: space.xs + 2 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: {
-    borderWidth: 1,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm - 2,
-    minHeight: 36,
-    justifyContent: 'center',
-  },
   textarea: {
     minHeight: 160,
     borderWidth: 1,

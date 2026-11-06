@@ -78,6 +78,22 @@ describe('TicketDetailScreen', () => {
     expect(screen.getByText('message three')).toBeOnTheScreen();
   });
 
+  it('never hides the newest staff reply behind the collapse', async () => {
+    const messages = [
+      msg('M0', 'customer', 'message one'),
+      msg('M1', 'ai', 'message two'),
+      msg('M2', 'customer', 'message three'),
+      msg('M3', 'staff', 'Fixed it on our side, please check'),
+      msg('M4', 'system', 'Status changed to Resolved'),
+      msg('M5', 'system', 'Assigned to Ravi Kumar'),
+    ];
+    await setup(detail({ messages }));
+    expect(screen.getByText('Fixed it on our side, please check')).toBeOnTheScreen();
+    expect(screen.queryByText('message two')).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Show 2 earlier messages' }));
+    expect(screen.getByText('message two')).toBeOnTheScreen();
+  });
+
   it('sends a reply, clears the composer and reloads the thread', async () => {
     const updated = detail();
     updated.messages = [...updated.messages, msg('M3', 'customer', 'Chrome on Android')];
