@@ -1,0 +1,1688 @@
+/* ===========================================================================
+   Customer support portal: request cards, workspace, My tickets list,
+   email-style ticket thread, attachments, toast, loading skeletons.
+   Built only on tokens.css; accent text uses accent-400 (accent-500 is a
+   fill, see tokens.css).
+   ========================================================================= */
+
+.page.page-portal {
+  max-width: 1240px;
+}
+
+.portal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.portal-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .portal-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------- request cards */
+
+.request-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .request-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.request-card {
+  display: grid;
+  justify-content: stretch;
+  white-space: normal;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
+  text-align: left;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--l-radius-lg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--l-ease-out), background var(--dur-fast) var(--l-ease-out);
+}
+
+.request-card:hover {
+  background: var(--surface-overlay);
+  border-color: var(--border-strong);
+}
+
+.request-card.is-active {
+  border-color: var(--accent-500);
+  background: var(--accent-soft);
+}
+
+.request-card-icon {
+  grid-row: span 2;
+  color: var(--accent-400);
+}
+
+.request-card-title {
+  font-weight: 600;
+  font-size: var(--l-text-md);
+}
+
+.request-card-desc {
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* ----------------------------------------------------------- workspace */
+
+.workspace {
+  scroll-margin-top: var(--space-4);
+}
+
+.workspace-title {
+  font-size: var(--l-text-lg);
+  font-weight: 600;
+  margin: 0;
+}
+
+.request-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.request-form .hint {
+  margin: calc(var(--space-3) * -1) 0 0;
+}
+
+.request-form .error {
+  margin: 0;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.live-chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  min-width: 0;
+}
+
+.live-chat-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.live-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.live-chat-actions button {
+  font-size: var(--l-text-sm);
+  padding: 0.35rem 0.75rem;
+}
+
+.live-chat-issue {
+  flex-basis: 100%;
+  order: 3;
+  color: var(--text-secondary);
+  font-size: var(--l-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.chat-escalate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--l-radius-md);
+  background: var(--surface-overlay);
+}
+
+.chat-escalate-text {
+  margin: 0;
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.chat-escalate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.chat-typing {
+  margin: 0;
+  font-size: var(--l-text-sm);
+  color: var(--text-tertiary);
+}
+
+.chat-error,
+.chat-escalated-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--l-radius-md);
+  font-size: var(--l-text-sm);
+}
+
+.chat-error {
+  background: var(--status-danger-soft);
+  color: var(--text-primary);
+}
+
+.chat-escalated-note {
+  background: var(--status-warn-soft);
+}
+
+.chat-error p,
+.chat-escalated-note p {
+  margin: 0;
+}
+
+.chat-transcript {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--l-radius-md);
+  background: var(--surface-page);
+}
+
+.chat-transcript > summary {
+  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  font-weight: 600;
+  font-size: var(--l-text-base);
+}
+
+.chat-transcript[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.chat-transcript .chat-scroll {
+  padding: var(--space-4);
+}
+
+/* --------------------------------------------------------- side panel */
+
+.panel-switch {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 0.4rem 0.5rem 0.6rem;
+  font-size: var(--l-text-md);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.panel-switch button:hover {
+  background: none;
+  color: var(--text-primary);
+}
+
+.panel-switch button.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-500);
+}
+
+.panel-count {
+  font-size: var(--l-text-xs);
+  font-weight: 500;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--l-radius-pill);
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------ reviews */
+
+.reviews-filter {
+  max-width: 28rem;
+  margin-bottom: var(--space-4);
+}
+
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.review-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.review-head .hint {
+  margin: var(--space-1) 0 0;
+}
+
+.review-issue {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.review-summary {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--l-text-base);
+}
+
+.review-summary > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.review-summary dt {
+  color: var(--text-tertiary);
+}
+
+.review-summary dd {
+  margin: 0;
+}
+
+.review-summary ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+@media (max-width: 520px) {
+  .review-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.empty-compact {
+  padding: var(--space-6) var(--space-4);
+}
+
+.mono {
+  font-family: var(--l-font-mono);
+}
+
+.capitalize {
+  text-transform: capitalize;
+}
+
+/* ---------------------------------------------------------- my tickets */
+
+.my-tickets {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--l-radius-lg);
+  max-height: calc(100vh - 2 * var(--space-4));
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .my-tickets {
+    position: static;
+    max-height: none;
+  }
+}
+
+.my-tickets-title {
+  font-size: var(--l-text-lg);
+  font-weight: 600;
+  margin: 0;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: 3px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--l-radius-md);
+}
+
+.filter-tabs button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 0.35rem 0.25rem;
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+  border-radius: var(--l-radius-sm);
+}
+
+.filter-tabs button:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.filter-tabs button.active {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.my-tickets-search {
+  width: 100%;
+}
+
+.my-tickets-list {
+  list-style: none;
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.my-ticket {
+  display: flex;
+  white-space: normal;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--l-radius-md);
+  background: none;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.my-ticket:hover {
+  background: var(--surface-hover);
+}
+
+.my-ticket.is-selected {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-strong);
+}
+
+.my-ticket-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--l-text-xs);
+  color: var(--text-tertiary);
+}
+
+.my-ticket-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--l-font-mono);
+}
+
+.my-ticket-time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.my-ticket-subject {
+  font-size: var(--l-text-base);
+  line-height: var(--l-leading-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.my-ticket-subject.is-unread {
+  font-weight: 600;
+}
+
+.my-ticket-bottom {
+  display: flex;
+}
+
+.unread-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent-400);
+  flex-shrink: 0;
+}
+
+.type-badge {
+  font-family: var(--l-font-sans);
+  font-size: var(--l-text-xs);
+  font-weight: 500;
+  padding: 0.125rem 0.4rem;
+  border-radius: var(--l-radius-xs);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  letter-spacing: var(--l-tracking-label);
+}
+
+.my-ticket-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+/* -------------------------------------------------------------- thread */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.thread-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.thread-id {
+  font-family: var(--l-font-mono);
+  font-size: var(--l-text-sm);
+  color: var(--text-tertiary);
+}
+
+.thread-title {
+  margin: 0;
+  font-size: var(--l-text-xl);
+  font-weight: 600;
+  letter-spacing: var(--l-tracking-title);
+  line-height: var(--l-leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.thread-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-1) 0 0;
+  font-size: var(--l-text-sm);
+}
+
+.thread-facts div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.thread-facts dt {
+  color: var(--text-tertiary);
+}
+
+.thread-facts dd {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.thread-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.email-card {
+  position: relative;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-page);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--l-radius-md);
+  overflow: hidden;
+}
+
+/* The only visual difference between senders: a left accent bar. */
+.email-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--border-strong);
+}
+
+.email-card-ai::before {
+  background: var(--accent-500);
+}
+
+.email-card-staff::before {
+  background: var(--status-ok);
+}
+
+.email-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.email-avatar {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: var(--l-text-sm);
+  font-weight: 600;
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+}
+
+.email-card-ai .email-avatar {
+  background: var(--accent-soft-strong);
+  color: var(--accent-300);
+}
+
+.email-card-staff .email-avatar {
+  background: var(--status-ok-soft);
+  color: var(--status-ok);
+}
+
+.email-from {
+  flex: 1;
+  min-width: 0;
+}
+
+.email-from-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.email-sender {
+  font-weight: 600;
+  font-size: var(--l-text-base);
+}
+
+.email-badge {
+  font-size: var(--l-text-xs);
+  font-weight: 500;
+  padding: 0.125rem 0.45rem;
+  border-radius: var(--l-radius-pill);
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+}
+
+.email-badge-ai {
+  background: var(--accent-soft);
+  color: var(--accent-400);
+}
+
+.email-badge-staff {
+  background: var(--status-ok-soft);
+  color: var(--status-ok);
+}
+
+.email-to,
+.email-time {
+  font-size: var(--l-text-sm);
+  color: var(--text-tertiary);
+}
+
+.email-time {
+  white-space: nowrap;
+}
+
+.email-body {
+  font-size: var(--l-text-base);
+  line-height: var(--l-leading-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.email-plain {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.email-card .file-chips {
+  margin-top: var(--space-3);
+}
+
+.thread-system {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--l-text-sm);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.thread-collapsed {
+  display: flex;
+  justify-content: center;
+}
+
+.thread-expand {
+  font-size: var(--l-text-sm);
+  color: var(--accent-400);
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--l-radius-pill);
+  padding: 0.3rem 0.9rem;
+}
+
+.thread-expand:hover {
+  background: var(--surface-hover);
+}
+
+.reopen-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--status-ok-soft);
+  border-radius: var(--l-radius-md);
+  font-size: var(--l-text-sm);
+}
+
+.reopen-bar p {
+  margin: 0;
+}
+
+.reply-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.reply-label {
+  font-weight: 600;
+  font-size: var(--l-text-base);
+}
+
+.reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.reply-composer .hint,
+.reply-composer .error {
+  margin: 0;
+}
+
+/* --------------------------------------------------------- attachments */
+
+.attach {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.attach-compact {
+  flex: 1;
+}
+
+.attach-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--l-radius-md);
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  font-size: var(--l-text-base);
+  text-align: center;
+  transition: border-color var(--dur-fast) var(--l-ease-out), background var(--dur-fast) var(--l-ease-out);
+}
+
+.attach-drop.is-dragging {
+  border-color: var(--accent-400);
+  background: var(--accent-soft);
+}
+
+.attach-drop.is-disabled {
+  opacity: 0.6;
+}
+
+.attach-browse {
+  color: var(--accent-400);
+  padding: 0;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.attach-hint {
+  font-size: var(--l-text-sm);
+  color: var(--text-tertiary);
+}
+
+.attach-icon {
+  flex-shrink: 0;
+}
+
+.attach-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+}
+
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--l-radius-sm);
+  background: var(--surface-overlay);
+  font-size: var(--l-text-sm);
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.file-chip-link {
+  padding-right: 0.6rem;
+  cursor: pointer;
+}
+
+.file-chip-link:hover {
+  border-color: var(--border-strong);
+}
+
+.file-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.file-chip-size {
+  color: var(--text-tertiary);
+  font-size: var(--l-text-xs);
+  white-space: nowrap;
+}
+
+.file-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  border-radius: var(--l-radius-xs);
+}
+
+.file-chip-remove:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------- toast */
+
+.toast-region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  left: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 28rem;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-radius: var(--l-radius-md);
+  background: var(--surface-float);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--l-text-base);
+  pointer-events: auto;
+}
+
+.toast-ok {
+  border-left: 3px solid var(--status-ok);
+}
+
+.toast-error {
+  border-left: 3px solid var(--status-danger);
+}
+
+.toast-info {
+  border-left: 3px solid var(--status-info);
+}
+
+.toast-close {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------ skeleton */
+
+.skeleton {
+  border-radius: var(--l-radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-overlay) 0%,
+    var(--border-default) 50%,
+    var(--surface-overlay) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 0.85rem;
+}
+
+.skeleton-card {
+  height: 7rem;
+  border-radius: var(--l-radius-md);
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* ===========================================================================
+   Staff workspace (technician + manager)
+   ========================================================================= */
+
+.staff-layout {
+  grid-template-columns: 22rem minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .staff-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: 3px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--l-radius-md);
+}
+
+.view-tabs button {
+  border: none;
+  background: none;
+  padding: 0.4rem 0.25rem;
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+  border-radius: var(--l-radius-sm);
+}
+
+.view-tabs button:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.view-tabs button.active {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.inline-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.inline-select select {
+  font-size: var(--l-text-sm);
+  padding: 0.3rem 0.5rem;
+}
+
+.my-ticket-customer {
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.my-ticket-bottom {
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Priority: low neutral, medium info, high orange, urgent the one solid
+   lozenge (never color alone: the word is always there). */
+.priority-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1.25rem;
+  font-size: var(--l-text-xs);
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 0 0.375rem;
+  border-radius: var(--l-radius-sm);
+  background: var(--priority-low-soft);
+  color: var(--priority-low);
+}
+
+.priority-medium {
+  background: var(--priority-medium-soft);
+  color: var(--priority-medium);
+}
+
+.priority-high {
+  background: var(--priority-high-soft);
+  color: var(--priority-high);
+}
+
+.priority-urgent {
+  background: var(--priority-urgent-soft);
+  color: var(--priority-urgent);
+}
+
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.ticket-history {
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.ticket-history > summary {
+  cursor: pointer;
+}
+
+.ticket-history ol {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* AI panel: deliberately not an email card, so it never reads as part of
+   the customer conversation. */
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px dashed var(--accent-400);
+  border-radius: var(--l-radius-md);
+  background: var(--accent-soft);
+}
+
+.ai-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ai-panel-head h3 {
+  margin: 0;
+  font-size: var(--l-text-md);
+}
+
+.ai-panel-tag {
+  font-size: var(--l-text-xs);
+  color: var(--accent-300);
+  letter-spacing: var(--l-tracking-label);
+}
+
+.ai-panel-issue {
+  margin: 0;
+  font-weight: 500;
+}
+
+.ai-panel-section h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.ai-panel-section ul,
+.ai-panel-section ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: var(--l-text-base);
+}
+
+.ai-panel-section .hint {
+  margin: var(--space-1) 0 0;
+}
+
+/* Internal notes: amber, so a private note can't be mistaken for a reply. */
+.email-card-note {
+  background: var(--status-warn-soft);
+  border-color: var(--note-border);
+}
+
+.email-card-note::before {
+  background: var(--status-warn);
+}
+
+.email-card-note .email-avatar {
+  background: var(--note-strong);
+  color: var(--status-warn);
+}
+
+.private-tag {
+  font-size: var(--l-text-xs);
+  font-weight: 600;
+  padding: 0.125rem 0.45rem;
+  border-radius: var(--l-radius-pill);
+  background: var(--note-strong);
+  color: var(--status-warn);
+}
+
+.thread-system.is-internal {
+  color: var(--text-secondary);
+}
+
+.staff-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--l-radius-md);
+  background: var(--surface-page);
+}
+
+.staff-composer.is-note {
+  border-color: var(--note-border);
+  background: var(--status-warn-soft);
+}
+
+.composer-modes {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: var(--space-1);
+  padding: 3px;
+  border-radius: var(--l-radius-md);
+  background: var(--surface-input);
+  border: 1px solid var(--border-subtle);
+}
+
+.composer-modes button {
+  border: none;
+  background: none;
+  padding: 0.35rem 0.8rem;
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+  border-radius: var(--l-radius-sm);
+}
+
+.composer-modes button.active {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.is-note .composer-modes button.active {
+  background: var(--note-strong);
+  color: var(--status-warn);
+}
+
+.composer-hint {
+  margin: 0;
+  font-size: var(--l-text-sm);
+  color: var(--status-warn);
+}
+
+.staff-composer .hint {
+  margin: var(--space-1) 0 0;
+}
+
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.composer-status select {
+  min-width: 12rem;
+}
+
+/* Manager dashboard */
+.manager-summary {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 640px) {
+  .manager-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-value {
+  font-size: var(--l-text-2xl);
+  font-weight: 600;
+  letter-spacing: var(--l-tracking-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.scope-card .section-title {
+  margin-bottom: var(--space-3);
+}
+
+.manager-tickets {
+  margin-top: var(--space-6);
+}
+
+/* ===========================================================================
+   Incidents
+   ========================================================================= */
+
+.confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--l-font-mono);
+  font-size: var(--l-text-xs);
+  color: var(--text-secondary);
+}
+
+.confidence-bar {
+  width: 3rem;
+  height: 0.3rem;
+  border-radius: var(--l-radius-pill);
+  background: var(--surface-overlay);
+  overflow: hidden;
+}
+
+.confidence-bar span {
+  display: block;
+  height: 100%;
+  background: var(--status-neutral);
+}
+
+.confidence-high .confidence-bar span {
+  background: var(--accent-400);
+}
+
+.confidence-medium .confidence-bar span {
+  background: var(--status-info);
+}
+
+.incident-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.incident-section h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.incident-section p {
+  margin: 0;
+}
+
+.incident-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.facts-hypotheses {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .facts-hypotheses {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.incident-ticket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.incident-ticket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.incident-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.incident-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.incident-review .error {
+  margin: 0;
+}
+
+.incident-departments-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--l-text-sm);
+}
+
+.incident-departments-editor > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.incident-departments-editor[open] > fieldset,
+.incident-departments-editor[open] > button {
+  margin-top: var(--space-3);
+}
+
+.incident-reviews {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--l-text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.linked-incidents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--l-text-sm);
+  color: var(--text-secondary);
+}
+
+.linked-incidents li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Customer-facing: neutral, informational, no alarm colour. */
+.incident-banner {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--l-radius-md);
+  border: 1px solid var(--status-info);
+  background: var(--status-info-soft);
+  font-size: var(--l-text-base);
+}
+
+/* ===========================================================================
+   Admin console: customers, settings, activity
+   ========================================================================= */
+
+.table-search {
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 0 var(--space-3);
+}
+
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-section .section-title,
+.settings-section > .hint,
+.settings-section .error,
+.settings-section .success-text {
+  margin: 0;
+}
+
+.settings-section .field-row {
+  flex-wrap: wrap;
+}
+
+.settings-section input[type="number"] {
+  max-width: 9rem;
+}
+
+.status-labels .field-group {
+  flex: 1 1 10rem;
+}
+
+.audit-filters {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* ===========================================================================
+   Admin: All Tickets
+   ========================================================================= */
+
+.admin-tickets .list-filters {
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.admin-tickets .table-search {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.tickets-table th,
+.tickets-table td {
+  padding: 0.6rem 0.7rem;
+  vertical-align: middle;
+}
+
+.tickets-table td button {
+  font-size: var(--l-text-sm);
+  padding: 0.35rem 0.7rem;
+}
+
+.tickets-table tbody tr.is-selected,
+.tickets-table tbody tr.is-selected:hover {
+  background: var(--table-row-selected);
+  box-shadow: inset 2px 0 0 var(--accent-500);
+}
+
+.ticket-cell,
+.customer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* <td> can't be a flex container in every browser's table layout; the
+   inner spans carry the layout instead. */
+td.ticket-cell,
+td.customer-cell {
+  display: table-cell;
+}
+
+.ticket-cell > span,
+.customer-cell > span {
+  display: block;
+}
+
+.ticket-cell-id {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--l-text-sm);
+}
+
+.ticket-cell-subject {
+  max-width: 17rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.customer-cell .hint {
+  font-size: var(--l-text-xs);
+}
+
+.route-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-ticket-detail {
+  margin-top: var(--space-5);
+  scroll-margin-top: var(--space-4);
+}
+
+/* ---- Post-incident summary (IncidentResolution.jsx) ---------------------- */
+.incident-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.resolve-form,
+.summary-editor,
+.summary-sent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.resolve-form-row,
+.summary-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 760px) {
+  .resolve-form-row,
+  .summary-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.summary-editor {
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.incident-update-card {
+  position: relative;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-page);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-info);
+  border-radius: var(--l-radius-md);
+}
+
+.incident-update-from {
+  margin: 0;
+  font-weight: 600;
+}
+
+.incident-update-subject {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--l-text-sm);
+}
+
+.incident-update-body,
+.pre-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assignee-picker select {
+  max-width: 20rem;
+}
+
+/* Customer thread: the post-incident update from the Support Team. */
+.email-card-incident::before {
+  background: var(--status-info);
+}
+
+.email-subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-weight: 600;
+}
+
+/* ---- Public incident history (pages/IncidentHistory.jsx) ---------------- */
+.incident-history {
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.incident-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.incident-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--l-text-sm);
+}

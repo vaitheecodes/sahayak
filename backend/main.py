@@ -1,0 +1,1206 @@
+"""FastAPI app wiring auth, ticket, and queue endpoints to the LangGraph
+pipeline.
+
+Run from the repo root: uvicorn backend.main:app --reload
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
+from urllib.parse import quote
+
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field, field_validator
+
+from backend import admin, admin_reports, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
+from backend import handoff_signals
+from backend import incidents, kb_retrieval
+from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
+from backend import try_ticket
+from backend.ai_service import backends as ai_backends
+from backend.ai_service import provider as ai_provider
+from backend import ticket_lifecycle as lifecycle
+from backend.repositories import messages as messages_repo
+from backend.conversation import ESCALATION_MARKER as _ESCALATION_MARKER
+from backend.conversation import Outbox as _Outbox
+from backend.conversation import customer_row as _customer_row
+from backend.conversation import followup_gate, handoff_brief, latest_transcript
+from backend.conversation import insert_ticket_message as _insert_message
+from backend.conversation import now as _now
+from backend.conversation import subject_for as _subject_for
+
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Ticket Resolution Agent")
+
+# Comma-separated list, so the deployed Static Web Apps origin can be set as
+# an App Service Application Setting without a code change. Falls back to the
+# local Vite dev/preview ports when unset.
+#
+# Note: these must be explicit origins, not "*" — allow_credentials=True and
+# a wildcard origin are mutually exclusive per the CORS spec, and browsers
+# reject the combination.
+_DEFAULT_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+
+# The attachment upload (POST /api/tickets/{id}/attachments) takes at most
+# MAX_ATTACHMENTS_PER_MESSAGE files of MAX_ATTACHMENT_BYTES, but FastAPI
+# reads the whole multipart body into temporary files before the handler
+# can count them. A request declaring more than this is refused before
+# its body is read, and one declaring no length (chunked) too.
+MAX_UPLOAD_REQUEST_BYTES = 55 * 1024 * 1024
+_ATTACHMENT_UPLOAD_PATH = re.compile(r"^/api/tickets/[^/]+/attachments/?$")
+
+
+class _UploadSizeLimit:
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if (scope["type"] == "http" and scope["method"] == "POST"
+                and _ATTACHMENT_UPLOAD_PATH.match(scope["path"])):
+            length = dict(scope.get("headers", [])).get(b"content-length")
+            if length is None:
+                refusal = (411, "Content-Length required for uploads")
+            elif not length.isdigit() or int(length) > MAX_UPLOAD_REQUEST_BYTES:
+                refusal = (413, "Upload too large (at most 5 files of 10 MB)")
+            else:
+                refusal = None
+            if refusal:
+                response = JSONResponse({"detail": refusal[1]}, status_code=refusal[0])
+                return await response(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+# Added before CORS so CORS wraps it (the last added runs first) and a
+# refused upload still carries the CORS headers the browser needs.
+app.add_middleware(_UploadSizeLimit)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class _CatalystRequestContext:
+    """AI_PROVIDER=quickml_appsail: capture the credential AppSail injects
+    into this request (X-ZC-* headers) for the QuickML call, scoped to the
+    request and its background tasks through a context variable. Never
+    stored globally or logged. Note: these headers are trusted only because
+    AppSail sets them; this middleware is a no-op for any other provider."""
+
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or ai_backends.env("AI_PROVIDER") != "quickml_appsail":
+            return await self.app(scope, receive, send)
+        headers: dict[str, str] = {}
+        duplicated = False
+        for k, v in scope.get("headers", []):
+            name = k.decode("latin-1").lower()
+            if name.startswith("x-zc-"):
+                duplicated |= name in headers
+                headers[name] = v.decode("latin-1")
+        # AppSail does NOT strip client-sent X-ZC-* headers: it adds its own
+        # value next to the client's (verified 24 Oct 2026), and which comes
+        # first isn't reliable. A duplicated header may be forged, so capture
+        # nothing: the AI call then fails safely for this request.
+        creds = None if duplicated else ai_backends.AppSailCredentials.from_headers(headers)
+        token = ai_backends.appsail_credentials.set(creds)
+        try:
+            return await self.app(scope, receive, send)
+        finally:
+            ai_backends.appsail_credentials.reset(token)
+
+
+app.add_middleware(_CatalystRequestContext)
+
+app.include_router(chats.router)
+app.include_router(staff_tickets.router)
+app.include_router(incidents.router)
+app.include_router(admin.router)
+app.include_router(admin_users.router)
+app.include_router(admin_reports.router)
+app.include_router(incident_resolution.router)
+app.include_router(try_ticket.router)
+
+
+@app.get("/health")
+def health() -> dict:
+    """Liveness for AppSail and uptime checks: no auth, no DB, no AI."""
+    return {"ok": True}
+
+
+@app.exception_handler(storage.StorageError)
+def storage_unavailable(request, exc):
+    """S3 unreachable or refusing: the message is ours (no AWS text)."""
+    logger.warning("Attachment storage unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": "Attachments are unavailable right now. "
+                                                            "Please try again."},
+                        headers={"Retry-After": "5"})
+
+
+@app.exception_handler(db_postgres.DatabaseBusy)
+@app.exception_handler(db_postgres.DatabaseUnavailable)
+def database_unavailable(request, exc):
+    """Pool exhausted (or Postgres down): ask the client to retry rather
+    than hang or return a bare 500. The message has no credentials."""
+    logger.warning("Database unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": "The service is busy. Please try again."},
+                        headers={"Retry-After": "2"})
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    if db.is_postgres():
+        db_postgres.close_pool()
+
+
+def check_kb() -> None:
+    """Print how many KB entries loaded (one plain line, so it reaches the
+    container log whatever the logging setup). Without a KB every chat
+    gets the no-KB hand-off, so production refuses to start on 0."""
+    count = kb_retrieval.entry_count()
+    print(f"KB: {count} entries loaded from {kb_retrieval.KB_PATH.parent}", flush=True)
+    if count == 0 and auth.is_production():
+        raise auth.config_error(str(kb_retrieval.KB_PATH),
+                                "has no KB entries (missing from the image, or unreadable)")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    auth.check_production_config()
+    check_kb()
+    try:
+        storage.check_config()
+    except storage.StorageConfigError as exc:
+        raise auth.config_error(exc.variable, exc.problem) from None
+    db.init_db()
+    auth.ensure_admin()
+    conn = db.get_connection()
+    try:
+        app_settings.load(conn)
+    finally:
+        conn.close()
+    runtime.set_graph(graph.build_graph())
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+class SignupRequest(BaseModel):
+    name: str = Field(max_length=120)
+    email: str = Field(max_length=254)
+    password: str  # at most 72 bytes: auth.validate_new_password (400)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _validate_category(value: str | None) -> str | None:
+    if value in (None, ""):
+        return None
+    if value not in graph.CATEGORIES:
+        raise ValueError("Unknown category")
+    return value
+
+
+class CreateTicketRequest(BaseModel):
+    """Raise a ticket (email-style, no chat)."""
+
+    subject: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=8000)
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    category: str | None = None
+
+    _check_category = field_validator("category")(_validate_category)
+
+
+class ChatMessageRequest(BaseModel):
+    message: str = Field(max_length=4000)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+# route -> ticket status after the pipeline runs. "clarify" means the AI
+# asked the customer something, so the ticket waits on them.
+_STATUS_FOR_ROUTE = {"ai": "resolved", "clarify": "pending_customer", "human": "open"}
+
+# Shown to the customer, and stored as a system message, when a bare
+# closing acknowledgment ("thanks") locks an already-resolved ticket
+# instead of silently doing nothing.
+_TICKET_CLOSED_MESSAGE = "Ticket marked resolved — conversation closed."
+
+_REOPENED_MESSAGE = "Ticket reopened by the customer."
+
+# Ticket-type (email-style) hand-off: the customer isn't watching a live
+# chat, so tell them in the thread (and by email) what happens next.
+_EMAIL_HANDOFF_BODY = (
+    "Thanks for the details. This one needs a member of our support team, so "
+    "I've passed your request to them along with everything you've sent so "
+    "far. A support agent will reply to you by email."
+)
+_EMAIL_HANDOFF_CLOSING = "You don't need to do anything else for now."
+
+_AI_UNAVAILABLE = (
+    "Our AI assistant is unavailable right now. Your message is saved and "
+    "nothing about your ticket has changed — please try again shortly."
+)
+
+AI_SENDER_NAME = "Support Bot"
+SUPPORT_TEAM_NAME = "Support"
+
+
+# ---------------------------------------------------------------------------
+# Message helpers
+# ---------------------------------------------------------------------------
+def _build_transcript(messages: list[dict]) -> str:
+    speaker = {"customer": "Customer", "ai": "Agent (AI)"}
+    return "\n".join(
+        f"{speaker.get(m['sender'], m['sender'])}: {m['message']}" for m in messages
+    )
+
+
+def _last_ai_message(conn, ticket_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT message FROM ticket_messages WHERE ticket_id = ? AND sender = 'ai' "
+        "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (ticket_id,),
+    ).fetchone()
+    return row["message"] if row else None
+
+
+def _transcript_for(conn, ticket_id: str) -> str:
+    """The public conversation, for AI prompts: internal notes and system
+    events never reach the model."""
+    return latest_transcript(
+        _build_transcript([dict(row) for row in messages_repo.public_replies(conn, ticket_id)]))
+
+
+def _load_ticket(conn, ticket_id: str):
+    return conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+
+
+def _customer_ticket_or_error(conn, ticket_id: str, customer_id: str):
+    ticket = _load_ticket(conn, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket["customer_id"] != customer_id:
+        raise HTTPException(status_code=403, detail="Not your ticket")
+    return ticket
+
+
+def _display_name(conn, ticket) -> str:
+    return ticket["contact_name"] or _customer_row(conn, ticket["customer_id"])["name"]
+
+
+def _record_ai_reply(conn, ticket, text: str, outbox: _Outbox) -> str:
+    """Store an AI reply in the thread; for ticket-type requests also
+    queue it as a real email (no-op unless SMTP is configured)."""
+    message_id = _insert_message(conn, ticket["ticket_id"], "ai", text)
+    if ticket["ticket_type"] == "ticket":
+        customer = _customer_row(conn, ticket["customer_id"])
+        outbox.append(
+            (customer["email"], f"Re: [{ticket['ticket_id']}] {_subject_for(ticket)}", text)
+        )
+    return message_id
+
+
+def _ticket_handoff(transcript: str, ticket, reason_key: str, category) -> tuple:
+    """The hand-off brief, made with no connection held. Never depends on
+    the AI: see conversation.handoff_brief."""
+    return handoff_brief("ticket", transcript, reason_key, _subject_for(ticket), category)
+
+
+def _write_escalation(conn, ticket, summary, steps: list[str], category, confidence,
+                      outbox: _Outbox) -> None:
+    """Hand an AI-handled ticket to the support team: attach the AI
+    hand-off brief (summary + suggested steps; staff-only, also appended
+    to `ticket_text` so the queue preview shows it), move the ticket into
+    the open human queue, and tell the customer with an email-style
+    reply. Used by decide_route's own 'human' route, both hand-off
+    signals in backend/handoff_signals.py, and a customer reopening an
+    AI-resolved ticket — one mechanism, so a ticket escalated for any
+    reason reaches the queue looking the same. (Chats escalate through
+    backend/chats.py.)"""
+    original_text = ticket["ticket_text"].split(f"\n\n{_ESCALATION_MARKER}\n", 1)[0]
+    conn.execute(
+        "UPDATE tickets SET route = 'human', category = ?, confidence = ?, ticket_text = ?, "
+        "ai_summary = ?, ai_suggestions = ? WHERE ticket_id = ?",
+        (
+            category,
+            confidence,
+            f"{original_text}\n\n{_ESCALATION_MARKER}\n{summary.as_text(steps)}",
+            summary.model_dump_json(),
+            json.dumps(steps),
+            ticket["ticket_id"],
+        ),
+    )
+    lifecycle.set_assignee(conn, ticket["ticket_id"], None, lifecycle.SYSTEM)
+    lifecycle.set_status(conn, ticket["ticket_id"], "open", lifecycle.SYSTEM)
+    _record_ai_reply(
+        conn,
+        ticket,
+        email_utils.format_email_reply(
+            _display_name(conn, ticket), _EMAIL_HANDOFF_BODY, _EMAIL_HANDOFF_CLOSING
+        ),
+        outbox,
+    )
+
+
+def _pipeline_state(ticket, ticket_text: str, customer_name: str, **extra) -> dict:
+    state = {
+        "ticket_id": ticket["ticket_id"],
+        "customer_id": ticket["customer_id"],
+        "channel": ticket["channel"],
+        "ticket_text": ticket_text,
+        "reply_format": "email",
+        "customer_name": customer_name,
+        "requested_category": ticket["requested_category"],
+    }
+    state.update(extra)
+    return state
+
+
+def _with_ai_line(transcript: str, text: str) -> str:
+    """The transcript as it will read once the AI reply is stored."""
+    return f"{transcript}\n{_build_transcript([{'sender': 'ai', 'message': text}])}"
+
+
+# A follow-up on a ticket the AI is still handling (route ai or clarify)
+# runs in three steps so no connection is held while the model works:
+# store the customer's message and commit; work out the outcome with the
+# AI (no connection); re-check the ticket is still with the AI and write
+# the outcome in one transaction. An AI failure writes nothing after the
+# stored message: the ticket is never resolved, closed or escalated
+# because an AI call failed.
+@dataclass
+class _Followup:
+    ticket: dict
+    transcript: str
+    prior_ai: str | None
+    customer_name: str
+    recent_ai: list[str] = field(default_factory=list)  # last 2 AI replies, oldest first
+
+
+@dataclass
+class _FollowupOutcome:
+    kind: Literal["reply", "close", "classified", "escalate"]
+    response: dict
+    text: str | None = None              # AI reply to store first
+    result: dict | None = None           # pipeline result ("classified")
+    summary: object = None
+    steps: list[str] = field(default_factory=list)
+    category: object = None
+    confidence: object = None
+
+
+def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
+    ticket = f.ticket
+    # "Was there an outage yesterday?" — answered from incident memory only.
+    incident_answer = incident_memory.answer_incident_question(
+        None, ticket["customer_id"], message_text, on_ticket=True
+    )
+    if incident_answer is not None:
+        return _FollowupOutcome("reply", {"route": ticket["route"], "message": incident_answer},
+                                text=incident_answer)
+
+    gate = followup_gate(message_text, f.prior_ai, answered=ticket["status"] == "resolved")
+
+    def escalate(reason_key, response, transcript, category, confidence, text=None):
+        summary, steps = _ticket_handoff(transcript, ticket, reason_key, category)
+        return _FollowupOutcome("escalate", response, text=text, summary=summary, steps=steps,
+                                category=category, confidence=confidence)
+
+    if gate == "handoff":
+        return escalate("customer_request", {"route": "human"}, f.transcript,
+                        ticket["category"], ticket["confidence"])
+
+    if gate == "close":
+        return _FollowupOutcome("close", {"route": "closed", "message": _TICKET_CLOSED_MESSAGE})
+
+    if gate == "continuation":
+        state = _pipeline_state(
+            ticket,
+            f.transcript,
+            f.customer_name,
+            category=ticket["category"],
+            kb_candidates=graph.retrieve_kb_candidates_for_continuation(f.transcript),
+            continuation=True,
+            recent_ai_replies=f.recent_ai,
+        )
+        state.update(graph.fetch_customer_history(state))
+        state.update(graph.lookup_order(state))
+        reply = graph.generate_response(state)
+        ai_response = reply["ai_response"]
+        # Steps to collect what support needs: the ticket goes to the team now.
+        if reply.get("needs_info"):
+            return escalate(graph.handoff_reason(reply["needs_info"]), {"route": "human", "message": ai_response},
+                            _with_ai_line(f.transcript, ai_response),
+                            ticket["category"], ticket["confidence"], text=ai_response)
+        # An answer that concedes it can't actually help hasn't resolved anything.
+        if handoff_signals.admits_limitation(ai_response):
+            return escalate("ai_cannot_resolve", {"route": "human", "message": ai_response},
+                            _with_ai_line(f.transcript, ai_response),
+                            ticket["category"], ticket["confidence"], text=ai_response)
+        return _FollowupOutcome("reply", {"route": "ai", "message": ai_response}, text=ai_response)
+
+    result = runtime.get_graph().invoke(
+        _pipeline_state(ticket, f.transcript, f.customer_name,
+                        clarification_attempts=ticket["clarification_attempts"],
+                        recent_ai_replies=f.recent_ai)
+    )
+    if result["route"] == "ai" and result.get("needs_info"):
+        return escalate(graph.handoff_reason(result["needs_info"]),
+                        {"route": "human", "message": result["ai_response"]},
+                        _with_ai_line(f.transcript, result["ai_response"]),
+                        result.get("category"), result.get("confidence"),
+                        text=result["ai_response"])
+    if result["route"] in ("ai", "clarify"):
+        # An "ai" answer that concedes it can't do the thing is a hand-off
+        # signal, not a resolution (see backend/handoff_signals.py).
+        if result["route"] == "ai" and handoff_signals.admits_limitation(result["ai_response"]):
+            return escalate("ai_cannot_resolve", {"route": "human", "message": result["ai_response"]},
+                            _with_ai_line(f.transcript, result["ai_response"]),
+                            result.get("category"), result.get("confidence"),
+                            text=result["ai_response"])
+        return _FollowupOutcome("classified", {"route": result["route"], "message": result["ai_response"]},
+                                text=result["ai_response"], result=result)
+
+    # decide_route escalated mid-conversation.
+    return escalate("routing_policy", {"route": "human"}, f.transcript,
+                    result.get("category"), result.get("confidence"))
+
+
+def _apply_followup(conn, ticket_id: str, o: _FollowupOutcome, outbox: _Outbox) -> dict | None:
+    """None (nothing written) if the ticket left the AI meanwhile. Caller commits."""
+    ticket = _load_ticket(conn, ticket_id)
+    if ticket["route"] == "human" or ticket["status"] == "closed":
+        return None
+    if o.text is not None:
+        _record_ai_reply(conn, ticket, o.text, outbox)
+    if o.kind == "close":
+        _insert_message(conn, ticket_id, "system", _TICKET_CLOSED_MESSAGE)
+        lifecycle.set_status(conn, ticket_id, "closed", ticket["customer_id"])
+    elif o.kind == "classified":
+        result = o.result
+        conn.execute(
+            "UPDATE tickets SET category = ?, confidence = ?, route = ?, "
+            "clarification_attempts = ? WHERE ticket_id = ?",
+            (
+                result.get("category"),
+                result.get("confidence"),
+                result["route"],
+                result.get("clarification_attempts", 0),
+                ticket_id,
+            ),
+        )
+        lifecycle.set_status(conn, ticket_id, _STATUS_FOR_ROUTE[result["route"]], lifecycle.SYSTEM)
+    elif o.kind == "escalate":
+        _write_escalation(conn, ticket, o.summary, o.steps, o.category, o.confidence, outbox)
+    return o.response
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+@app.post("/api/auth/customer/signup")
+def customer_signup(body: SignupRequest, request: Request):
+    """The only public signup. Technicians and managers are created by
+    the admin (/api/admin/staff); the admin is bootstrapped from env.
+    Limited per IP (backend/rate_limit.py)."""
+    rate_limit.check_signup(rate_limit.client_ip(request))
+    return auth.signup_customer(body.name.strip(), body.email.strip(), body.password)
+
+
+@app.post("/api/auth/login")
+def login(body: LoginRequest, request: Request):
+    """One login for every role; the response's `role` tells the
+    frontend which portal to open. Rate limited per IP and per account
+    (backend/rate_limit.py)."""
+    email = body.email.strip()
+    rate_limit.check_login(rate_limit.client_ip(request), email)
+    try:
+        result = auth.login(email, body.password)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            rate_limit.record_failure(email)
+        raise
+    rate_limit.record_success(email)
+    return result
+
+
+@app.get("/api/auth/me")
+def me(user: dict = Depends(auth.get_current_user)):
+    return {
+        "user_id": user["id"],
+        "role": user["role"],
+        "name": user["name"],
+        "email": user["email"],
+        "must_change_password": user["must_change_password"],
+    }
+
+
+@app.post("/api/auth/change-password")
+def change_password(body: ChangePasswordRequest, user: dict = Depends(auth.get_current_user)):
+    auth.change_password(user, body.current_password, body.new_password)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Customer endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/categories")
+def categories():
+    """The 17 KB categories, for the customer's category pickers."""
+    return graph.CATEGORIES
+
+
+@app.get("/api/tickets/mine")
+def tickets_mine(customer_id: str = Depends(auth.get_current_customer)):
+    """The customer's ticket list, newest first. Chats live in
+    /api/chats and only become tickets when escalated (ticket_type
+    'chat'). Curated fields only: no confidence, route reasoning, or the
+    internal case summary."""
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT t.*, "
+            "  (SELECT MAX(m.created_at) FROM ticket_messages m "
+            f"   WHERE m.ticket_id = t.ticket_id AND {db.CUSTOMER_VISIBLE_SQL}) AS last_message_at, "
+            "  EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.ticket_id "
+            "          AND m.sender IN ('ai', 'staff') AND m.visibility = 'public_reply' "
+            "          AND (t.customer_last_read_at IS NULL OR m.created_at > t.customer_last_read_at)) AS unread "
+            "FROM tickets t WHERE t.customer_id = ? "
+            "ORDER BY t.created_at DESC",
+            (customer_id,),
+        ).fetchall()
+        return [
+            {
+                "ticket_id": t["ticket_id"],
+                "ticket_type": t["ticket_type"],
+                "subject": _subject_for(t),
+                "status": t["status"],
+                "priority": t["priority"],
+                "category": t["requested_category"] or t["category"],
+                "created_at": t["created_at"],
+                "last_updated": t["last_message_at"] or t["created_at"],
+                "unread": bool(t["unread"]),
+                # Handed to the support team (drives the "Escalated" filter
+                # tab; escalation is a route, not one of the five statuses).
+                "escalated": t["route"] == "human",
+            }
+            for t in rows
+        ]
+    finally:
+        conn.close()
+
+
+def _thread_message(row, customer_name: str, staff_names: dict, attachments: list) -> dict:
+    sender = row["sender"]
+    if sender == "customer":
+        name, role, to = customer_name, "Customer", SUPPORT_TEAM_NAME
+    elif sender == "ai":
+        name, role, to = AI_SENDER_NAME, "AI Assistant", customer_name
+    elif sender == "staff" and row["author_id"] is None:
+        # Posted on behalf of the team (incident updates), not one technician.
+        name, role, to = SUPPORT_TEAM_NAME + " Team", "Support Team", customer_name
+    elif sender == "staff":
+        name, role, to = staff_names.get(row["author_id"], "Support Agent"), "Support Agent", customer_name
+    else:
+        name, role, to = "System", "System", None
+    return {
+        "message_id": row["message_id"],
+        "sender": sender,
+        "sender_name": name,
+        "sender_role": role,
+        "to": to,
+        "subject": row["subject"],
+        "incident_update": sender == "staff" and row["author_id"] is None
+        and row["subject"] == incident_resolution.UPDATE_SUBJECT,
+        "message": row["message"],
+        "created_at": row["created_at"],
+        "attachments": attachments,
+    }
+
+
+@app.get("/api/tickets/{ticket_id}")
+def ticket_detail(ticket_id: str, customer_id: str = Depends(auth.get_current_customer)):
+    """Header + email-style thread for one of the customer's tickets.
+    Viewing marks every reply so far as read (clears the unread dot)."""
+    conn = db.get_connection()
+    try:
+        ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
+        customer_name = _display_name(conn, ticket)
+        staff_names = {
+            r["staff_id"]: r["name"]
+            for r in conn.execute(
+                "SELECT s.staff_id, s.name FROM staff s JOIN ticket_messages m "
+                "ON m.author_id = s.staff_id WHERE m.ticket_id = ?",
+                (ticket_id,),
+            )
+        }
+        attachments: dict[str, list] = {}
+        for a in conn.execute(
+            "SELECT attachment_id, message_id, filename, content_type, size_bytes "
+            "FROM attachments WHERE ticket_id = ? ORDER BY created_at ASC, rowid ASC",
+            (ticket_id,),
+        ):
+            attachments.setdefault(a["message_id"], []).append(
+                {k: a[k] for k in ("attachment_id", "filename", "content_type", "size_bytes")}
+            )
+        messages = [
+            _thread_message(row, customer_name, staff_names, attachments.get(row["message_id"], []))
+            # Internal notes and staff-only events are filtered here, in the
+            # query: they never leave the database on a customer request.
+            for row in messages_repo.customer_thread(conn, ticket_id)
+        ]
+        chat = None
+        if ticket["chat_session_id"]:
+            chat = {
+                "session_id": ticket["chat_session_id"],
+                "transcript": chats.transcript_rows(conn, ticket["chat_session_id"]),
+            }
+        conn.execute(
+            "UPDATE tickets SET customer_last_read_at = ? WHERE ticket_id = ?", (_now(), ticket_id)
+        )
+        conn.commit()
+        return {
+            # Only for a manager-confirmed incident, and deliberately neutral:
+            # no cause, no outage claim.
+            "incident_notice": (
+                incidents.CUSTOMER_NOTICE if incidents.confirmed_incident_for(conn, ticket_id) else None
+            ),
+            "chat": chat,
+            "ticket": {
+                "ticket_id": ticket["ticket_id"],
+                "ticket_type": ticket["ticket_type"],
+                "subject": _subject_for(ticket),
+                "status": ticket["status"],
+                "route": ticket["route"],
+                "priority": ticket["priority"],
+                "category": ticket["requested_category"] or ticket["category"],
+                "created_at": ticket["created_at"],
+            },
+            "messages": messages,
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/api/tickets")
+def tickets_create(
+    body: CreateTicketRequest,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_ai_customer),
+):
+    """Raise a ticket (ticket_type 'ticket'): created immediately, no
+    chat. The AI answers in the thread as an email (greeting, KB-grounded
+    body, signature), or hands off to the support team with an email
+    saying an agent will reply. Attachments are uploaded afterwards to
+    the returned message_id. If the pipeline itself fails (LLM outage)
+    the ticket is still created and simply waits in the human queue."""
+    subject = body.subject.strip()
+    description = body.description.strip()
+    if not subject or not description:
+        raise HTTPException(status_code=400, detail="Subject and description are required")
+
+    ticket_id = f"TCK-{uuid.uuid4().hex[:8]}"
+    ticket_text = f"{subject}\n\n{description}"
+    conn = db.get_connection()
+    try:
+        contact_name = _customer_row(conn, customer_id)["name"]
+    finally:
+        conn.close()
+    failures = ai_provider.start_failure_log()
+    try:
+        result = runtime.get_graph().invoke(
+            {
+                "ticket_id": ticket_id,
+                "customer_id": customer_id,
+                "channel": "email",
+                "ticket_text": ticket_text,
+                "reply_format": "email",
+                "customer_name": contact_name,
+                "requested_category": body.category,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 — any pipeline failure falls back to a human
+        logger.exception("Pipeline failed for new ticket %s; queueing for a human", ticket_id)
+        ai_failures.note_exception(exc, failures)
+        result = {"route": "human", "category": None, "confidence": None, "pipeline_failed": True}
+
+    created = _store_new_ticket(
+        ticket_id, customer_id, ticket_text, result, background_tasks,
+        subject=subject, priority=body.priority, requested_category=body.category,
+        contact_name=contact_name,
+    )
+    _record_ai_failures(ticket_id, failures)
+    # Look for other customers reporting the same thing (after the response).
+    background_tasks.add_task(incidents.run_for_ticket, ticket_id)
+    return created
+
+
+def _store_new_ticket(ticket_id, customer_id, ticket_text, result, background_tasks, *,
+                      subject, priority, requested_category, contact_name) -> dict:
+    route = result["route"]
+    ai_response = result.get("ai_response")
+
+    # An "ai" answer that concedes it can't actually do the thing ("I
+    # don't have access to your billing details") hasn't resolved
+    # anything, however confidently it was classified — route it to a
+    # human instead of recording it as the resolution. Same signal as
+    # the follow-up check in _decide_followup.
+    # Steps to collect what support needs ("escalate_with_info" KB entry)
+    # go to the team the same way.
+    reason_key = (graph.handoff_reason(result["needs_info"]) if route == "ai" and result.get("needs_info")
+                  else "ai_cannot_resolve")
+    escalate_for_limitation = route == "ai" and (
+        bool(result.get("needs_info")) or handoff_signals.admits_limitation(ai_response or "")
+    )
+    if escalate_for_limitation:
+        route = "human"
+
+    handoff = None
+    if escalate_for_limitation:
+        # The brief is written before the connection is opened; the
+        # transcript is what the thread will hold (the request + the reply).
+        handoff = _ticket_handoff(
+            _build_transcript([{"sender": "customer", "message": ticket_text},
+                               {"sender": "ai", "message": ai_response}]),
+            {"subject": subject, "ticket_text": ticket_text}, reason_key,
+            result.get("category"),
+        )
+
+    outbox = _Outbox()
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO tickets (ticket_id, customer_id, channel, ticket_text, "
+            "category, confidence, route, ai_response, status, assigned_technician_id, "
+            "clarification_attempts, created_at, ticket_type, subject, priority, "
+            "requested_category, contact_name) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ticket_id, customer_id, "email", ticket_text,
+                result.get("category"), result.get("confidence"), route, ai_response,
+                _STATUS_FOR_ROUTE[route], None, result.get("clarification_attempts", 0),
+                _now(), "ticket", subject, priority, requested_category, contact_name,
+            ),
+        )
+        lifecycle.record_created(conn, ticket_id, _STATUS_FOR_ROUTE[route], customer_id)
+        ticket = _load_ticket(conn, ticket_id)
+        message_id = _insert_message(conn, ticket_id, "customer", ticket_text)
+        if ai_response:
+            _record_ai_reply(conn, ticket, ai_response, outbox)
+        if escalate_for_limitation:
+            _write_escalation(conn, ticket, *handoff, result.get("category"),
+                              result.get("confidence"), outbox)
+        elif route == "human" and not result.get("pipeline_failed"):
+            # decide_route sent it straight to a human: tell the customer.
+            _record_ai_reply(
+                conn,
+                ticket,
+                email_utils.format_email_reply(
+                    contact_name, _EMAIL_HANDOFF_BODY, _EMAIL_HANDOFF_CLOSING
+                ),
+                outbox,
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    outbox.flush(background_tasks)
+
+    return {
+        "ticket_id": ticket_id,
+        "message_id": message_id,
+        "ticket_type": "ticket",
+        "route": route,
+        "status": _STATUS_FOR_ROUTE[route],
+        "ai_response": ai_response,
+    }
+
+
+@app.post("/api/tickets/{ticket_id}/reply")
+def ticket_reply(
+    ticket_id: str,
+    body: ChatMessageRequest,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_ai_customer),
+):
+    """Email-style reply from the ticket thread. While the AI is handling
+    the ticket it goes through the same follow-up gates as a chat
+    message (and the AI answers in the thread). Once the ticket is with
+    the support team it is added to the thread for them, and a reply to a
+    Pending Customer or Resolved ticket returns it to Open (owner kept).
+    Attachments go to the returned message_id."""
+    message_text = body.message.strip()
+    if not message_text:
+        raise HTTPException(status_code=400, detail="message cannot be empty")
+
+    outbox = _Outbox()
+    followup = None
+    conn = db.get_connection()
+    try:
+        ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
+        if ticket["status"] == "closed":
+            raise HTTPException(status_code=400, detail="This ticket has been closed.")
+        if ticket["route"] == "human":
+            message_id = _insert_message(conn, ticket_id, "customer", message_text)
+            # The customer answered (pending_customer) or isn't satisfied
+            # (resolved): either way it's back with the support team.
+            if ticket["status"] in ("resolved", "pending_customer"):
+                lifecycle.set_status(conn, ticket_id, "open", customer_id)
+            response = {"route": "human"}
+        else:
+            prior_ai = _last_ai_message(conn, ticket_id)
+            message_id = _insert_message(conn, ticket_id, "customer", message_text)
+            recent_ai = [r["message"] for r in conn.execute(
+                "SELECT message FROM ticket_messages WHERE ticket_id = ? AND sender = 'ai' "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 2", (ticket_id,)).fetchall()][::-1]
+            followup = _Followup(dict(ticket), _transcript_for(conn, ticket_id), prior_ai,
+                                 _display_name(conn, ticket), recent_ai)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if followup is not None:
+        response = _finish_followup(ticket_id, followup, message_text, outbox)
+    conn = db.get_connection()
+    try:
+        response["message_id"] = message_id
+        response["status"] = _load_ticket(conn, ticket_id)["status"]
+    finally:
+        conn.close()
+    outbox.flush(background_tasks)
+    return response
+
+
+def _record_ai_failures(ticket_id: str, failures: list) -> None:
+    if not failures:
+        return
+    conn = db.get_connection()
+    try:
+        ai_failures.record(conn, "ticket", ticket_id, failures)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, outbox: _Outbox) -> dict:
+    unavailable = {"route": followup.ticket["route"], "ai_error": _AI_UNAVAILABLE}
+    failures = ai_provider.start_failure_log()
+    try:
+        outcome = _decide_followup(followup, message_text)
+    except Exception as exc:  # noqa: BLE001 — provider/network/parse failures alike
+        logger.exception("AI follow-up failed for %s", ticket_id)
+        ai_failures.note_exception(exc, failures)
+        _record_ai_failures(ticket_id, failures)
+        return unavailable
+    conn = db.get_connection()
+    try:
+        response = _apply_followup(conn, ticket_id, outcome, outbox)
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Storing the AI follow-up failed for %s", ticket_id)
+        conn.rollback()
+        outbox.clear()
+        ai_failures.note_exception(exc, failures, operation="store_turn")
+        _record_ai_failures(ticket_id, failures)
+        return unavailable
+    finally:
+        conn.close()
+    _record_ai_failures(ticket_id, failures)
+    if response is None:  # the ticket left the AI while it was working
+        outbox.clear()
+        return {"route": "human"}
+    return response
+
+
+@app.post("/api/tickets/{ticket_id}/reopen")
+def ticket_reopen(
+    ticket_id: str,
+    background_tasks: BackgroundTasks,
+    customer_id: str = Depends(auth.get_current_customer),
+):
+    """Reopen a resolved ticket. If the AI resolved it, the answer didn't
+    hold, so it goes to the support team through the normal escalation
+    path (with a case summary). If a technician resolved it, it returns to
+    Open with its owner kept."""
+    outbox = _Outbox()
+    conn = db.get_connection()
+    try:
+        ticket = _customer_ticket_or_error(conn, ticket_id, customer_id)
+        if ticket["status"] != "resolved":
+            raise HTTPException(status_code=400, detail="Only resolved tickets can be reopened")
+        transcript = None if ticket["route"] == "human" else _transcript_for(conn, ticket_id)
+    finally:
+        conn.close()
+    # An AI-resolved ticket goes to the support team with a hand-off brief,
+    # written with no connection held.
+    handoff = None if transcript is None else _ticket_handoff(
+        transcript, ticket, "customer_reopened", ticket["category"])
+    conn = db.get_connection()
+    try:
+        ticket = _load_ticket(conn, ticket_id)
+        if ticket["status"] != "resolved":
+            raise HTTPException(status_code=400, detail="Only resolved tickets can be reopened")
+        _insert_message(conn, ticket_id, "system", _REOPENED_MESSAGE)
+        if ticket["route"] == "human" or handoff is None:
+            lifecycle.set_status(conn, ticket_id, "open", customer_id)
+        else:
+            _write_escalation(conn, ticket, *handoff, ticket["category"], ticket["confidence"], outbox)
+        conn.commit()
+        status = _load_ticket(conn, ticket_id)["status"]
+    finally:
+        conn.close()
+    outbox.flush(background_tasks)
+    return {"ticket_id": ticket_id, "status": status}
+
+
+# --- Attachments -----------------------------------------------------------
+MAX_ATTACHMENTS_PER_MESSAGE = 5
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
+
+def _looks_like_text(data: bytes) -> bool:
+    return b"\x00" not in data[:8192]
+
+
+# extension -> (served content type, content check). The content check
+# stops e.g. an executable renamed to .png; the served type comes from
+# this table, never from the client's Content-Type header.
+_ALLOWED_ATTACHMENTS = {
+    ".png": ("image/png", lambda d: d.startswith(b"\x89PNG\r\n\x1a\n")),
+    ".jpg": ("image/jpeg", lambda d: d.startswith(b"\xff\xd8\xff")),
+    ".jpeg": ("image/jpeg", lambda d: d.startswith(b"\xff\xd8\xff")),
+    ".pdf": ("application/pdf", lambda d: d.startswith(b"%PDF-")),
+    ".txt": ("text/plain", _looks_like_text),
+    ".log": ("text/plain", _looks_like_text),
+}
+
+
+@app.post("/api/tickets/{ticket_id}/attachments")
+def upload_attachments(
+    ticket_id: str,
+    message_id: str = Form(...),
+    files: list[UploadFile] = File(...),
+    customer_id: str = Depends(auth.get_current_customer),
+):
+    """Attach files to one of the customer's own messages on their own
+    ticket. All files are validated before any is written: at most 5 per
+    message, 10 MB each, png/jpg/pdf/txt/log whose contents match the
+    extension. Stored (backend/storage.py: local disk or S3) under a random
+    name; the database keeps only the metadata."""
+    conn = db.get_connection()
+    try:
+        _customer_ticket_or_error(conn, ticket_id, customer_id)
+        message = conn.execute(
+            "SELECT sender FROM ticket_messages WHERE message_id = ? AND ticket_id = ?",
+            (message_id, ticket_id),
+        ).fetchone()
+        if message is None:
+            raise HTTPException(status_code=404, detail="Message not found on this ticket")
+        if message["sender"] != "customer":
+            raise HTTPException(status_code=400, detail="Attachments can only be added to your own messages")
+        existing = conn.execute(
+            "SELECT COUNT(*) FROM attachments WHERE message_id = ?", (message_id,)
+        ).fetchone()[0]
+        if existing + len(files) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"At most {MAX_ATTACHMENTS_PER_MESSAGE} attachments per message",
+            )
+
+        validated = []
+        for upload in files:
+            filename = Path(upload.filename or "").name
+            ext = Path(filename).suffix.lower()
+            if ext not in _ALLOWED_ATTACHMENTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{filename or 'File'}: only PNG, JPG, PDF, TXT and LOG files are allowed",
+                )
+            data = upload.file.read(MAX_ATTACHMENT_BYTES + 1)
+            if len(data) > MAX_ATTACHMENT_BYTES:
+                raise HTTPException(status_code=413, detail=f"{filename} is larger than 10 MB")
+            if not data:
+                raise HTTPException(status_code=400, detail=f"{filename} is empty")
+            content_type, matches = _ALLOWED_ATTACHMENTS[ext]
+            if not matches(data):
+                raise HTTPException(
+                    status_code=400, detail=f"{filename} doesn't look like a {ext[1:].upper()} file"
+                )
+            validated.append((filename, ext, content_type, data))
+
+        store = storage.get_storage()
+        written: list[str] = []
+        created = []
+        try:
+            for filename, ext, content_type, data in validated:
+                attachment_id = f"ATT-{uuid.uuid4().hex[:12]}"
+                stored_name = f"{uuid.uuid4().hex}{ext}"
+                store.put(stored_name, data, content_type)
+                written.append(stored_name)
+                conn.execute(
+                    "INSERT INTO attachments (attachment_id, ticket_id, message_id, filename, "
+                    "stored_name, content_type, size_bytes, uploaded_by, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (attachment_id, ticket_id, message_id, filename, stored_name,
+                     content_type, len(data), customer_id, _now()),
+                )
+                created.append(
+                    {"attachment_id": attachment_id, "filename": filename,
+                     "content_type": content_type, "size_bytes": len(data)}
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            for stored_name in written:
+                try:
+                    store.delete(stored_name)
+                except storage.StorageError:
+                    logger.warning("Could not remove an orphaned attachment after a failed upload")
+            raise
+        return created
+    finally:
+        conn.close()
+
+
+@app.get("/api/tickets/{ticket_id}/attachments/{attachment_id}")
+def download_attachment(
+    ticket_id: str, attachment_id: str, user: dict = Depends(auth.get_current_user)
+):
+    """The ticket's customer (only from messages they can see), a
+    technician or manager who may open the ticket in the workspace
+    (staff_tickets._ticket_for_staff: with the support team, and for a
+    manager in their departments), or the admin."""
+    if user["must_change_password"]:
+        raise HTTPException(status_code=403, detail="Password change required")
+    conn = db.get_connection()
+    try:
+        if user["role"] == "customer":
+            _customer_ticket_or_error(conn, ticket_id, user["id"])
+        elif user["role"] in auth.STAFF_ROLES:
+            staff_tickets._ticket_for_staff(conn, ticket_id, user)
+        visible = f"AND {db.CUSTOMER_VISIBLE_SQL}" if user["role"] == "customer" else ""
+        row = conn.execute(
+            "SELECT a.filename, a.stored_name, a.content_type FROM attachments a "
+            "JOIN ticket_messages m ON m.message_id = a.message_id "
+            f"WHERE a.attachment_id = ? AND a.ticket_id = ? {visible}",
+            (attachment_id, ticket_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    # The bytes are streamed from here after the access check above; the
+    # client never gets a storage link (no public or presigned URLs).
+    try:
+        data = storage.get_storage().read(row["stored_name"])
+    except storage.StorageNotFound:
+        raise HTTPException(status_code=404, detail="Attachment file is missing") from None
+    return Response(
+        content=data,
+        media_type=row["content_type"],
+        headers={
+            "Content-Disposition": _attachment_disposition(row["filename"]),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+def _attachment_disposition(filename: str) -> str:
+    """Same header Starlette's FileResponse writes."""
+    quoted = quote(filename)
+    if quoted != filename:
+        return f"attachment; filename*=utf-8''{quoted}"
+    return f'attachment; filename="{filename}"'
+
+
+# ---------------------------------------------------------------------------
+# Manager endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/manager/departments")
+def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
+    """The manager's department (a list of zero or one) and the KB
+    categories it owns — the scope of their dashboard."""
+    conn = db.get_connection()
+    try:
+        return admin.department_rows(
+            conn,
+            "WHERE department_id = (SELECT department_id FROM staff WHERE staff_id = ?)",
+            (manager_id,),
+        )
+    finally:
+        conn.close()
+
+
+@app.get("/api/meta")
+def meta():
+    """Public display configuration: admin-configured status labels, the
+    KB categories, and how many KB entries loaded (a count, no content)."""
+    return {
+        "status_labels": app_settings.get("statuses").model_dump(),
+        "categories": graph.CATEGORIES,
+        "kb_entries": kb_retrieval.entry_count(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routing policy (public, read-only: the /docs page; /api/debug/... is the
+# older path, kept for existing links)
+# ---------------------------------------------------------------------------
+@app.get("/api/public/routing-policy")
+@app.get("/api/debug/routing-policy")
+def routing_policy():
+    """The live routing policy (admin settings applied)."""
+    policy = app_settings.get("routing")
+    return {
+        "confidence_threshold": policy.confidence_threshold,
+        "high_risk_confidence_threshold": policy.high_risk_confidence_threshold,
+        "high_risk_categories": policy.high_risk_categories,
+        "escalation_language_tags": policy.escalation_language_tags,
+        "categories": graph.CATEGORIES,
+        "max_clarification_attempts": policy.max_clarification_attempts,
+        "decision_order": [
+            "escalation language tags (hard override -> human, always)",
+            "a how-to that names no kind of monitor, or whose only KB guides are for "
+            "something not named yet (e.g. Linux / Windows) -> ONE fixed question, no "
+            "ticket; never asked twice",
+            f"high-risk category ({'/'.join(policy.high_risk_categories) or 'none'}) "
+            "below its stricter confidence bar -> an escalate_with_info KB entry "
+            "gives its steps and collect list, then a ticket; a vague first "
+            "report (no error, not a how-to) gets ONE clarifying question, then "
+            "a human; anything else -> human",
+            "a how-to request below the base bar (or the answer to its one "
+            "question) -> ai: answered from the KB, or 'no guide yet' and a ticket "
+            "(never a clarifying question)",
+            "other categories below the base confidence threshold -> "
+            "clarify, up to max_clarification_attempts rounds",
+            "still below the bar after max attempts -> force human",
+            "otherwise -> ai",
+        ],
+    }

@@ -1,0 +1,3 @@
+# Local development (pipeline + tests). The deployed backend uses
+# requirements-runtime.txt (see scripts/build_appsail.sh).
+-r requirements-dev.txt

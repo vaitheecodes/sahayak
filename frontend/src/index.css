@@ -1,0 +1,14 @@
+/* Entry stylesheet.
+ *
+ * Layer order: Tailwind's theme and preflight, then the legacy stylesheets
+ * (styles/legacy/, the pre-redesign UI, removed as each area is rebuilt),
+ * then components and utilities, so every utility wins over legacy CSS. */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss";
+@import "./styles/legacy/tokens.css" layer(legacy);
+@import "./styles/legacy/components.css" layer(legacy);
+@import "./styles/legacy/portal.css" layer(legacy);
+@import "./styles/legacy/admin.css" layer(legacy);
+@import "./styles/legacy/pages.css" layer(legacy);
+@import "./styles/theme.css";

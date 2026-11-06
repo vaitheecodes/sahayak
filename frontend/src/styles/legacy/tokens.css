@@ -1,0 +1,447 @@
+/* ===========================================================================
+   Design tokens — ticketapp-ai (Site24x7-style help desk)
+   ===========================================================================
+   Two themes, one vocabulary. Light is the default; dark follows the OS;
+   [data-theme="light"|"dark"] on <html> forces either (see ThemeToggle).
+   Every text token clears WCAG AA 4.5:1 on every surface it may sit on, and
+   every border/ring/chart token used as the only boundary clears 3:1 —
+   ratios in docs/DESIGN_SYSTEM.md §3.
+
+   Rule that survives from the dark-only era: accent-500/550/600/700 are
+   FILLS. Accent TEXT and icons use accent-400 (which is dark blue in light
+   mode and light blue in dark mode).
+   ========================================================================= */
+
+/* --- theme-independent: type, space, radius, motion, semantic aliases ---- */
+:root {
+  --l-font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --l-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --l-text-xs: 0.6875rem;  /* 11px — chips, table headers */
+  --l-text-sm: 0.8125rem;  /* 13px — meta, labels, dense data */
+  --l-text-base: 0.875rem; /* 14px — UI body */
+  --l-text-md: 1rem;       /* 16px — prose, chat */
+  --l-text-lg: 1.125rem;   /* 18px — section heading */
+  --l-text-xl: 1.375rem;   /* 22px — page title */
+  --l-text-2xl: 1.75rem;   /* 28px — KPI value, landing (was 30px) */
+
+  --l-leading-tight: 1.25;
+  --l-leading-snug: 1.45;
+  --l-leading-relaxed: 1.6;
+
+  --l-tracking-label: 0.04em;
+  --l-tracking-tight: -0.011em;
+  --l-tracking-title: -0.018em;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Tighter than before: controls 6, cards 8, dialogs 10. Pills only for
+     counters and the theme segmented control's track. */
+  --l-radius-xs: 3px;
+  --l-radius-sm: 4px;
+  --l-radius-md: 6px;
+  --l-radius-lg: 8px;
+  --l-radius-xl: 10px;
+  --l-radius-pill: 999px;
+
+  --control-h-sm: 1.75rem;   /* new — 28px */
+  --control-h-md: 2.125rem;  /* new — 34px */
+  --control-h-lg: 2.5rem;    /* new — 40px (login, dialog primary) */
+
+  --l-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  /* Semantic aliases — resolve against whichever theme block is active
+     (same element, so var() substitutes the themed value). */
+  --priority-low: var(--status-neutral);          /* new */
+  --priority-low-soft: var(--status-neutral-soft);/* new */
+  --priority-medium: var(--status-info);          /* new */
+  --priority-medium-soft: var(--status-info-soft);/* new */
+  --priority-high: var(--status-orange);          /* new */
+  --priority-high-soft: var(--status-orange-soft);/* new */
+  --priority-urgent: var(--text-on-accent);       /* new — text on solid fill */
+  --priority-urgent-soft: var(--danger-fill);     /* new — solid red lozenge */
+
+  --sla-on-track: var(--status-info);             /* new */
+  --sla-on-track-soft: var(--status-info-soft);   /* new */
+  --sla-at-risk: var(--status-warn);              /* new */
+  --sla-at-risk-soft: var(--status-warn-soft);    /* new */
+  --sla-breached: var(--status-danger);           /* new */
+  --sla-breached-soft: var(--status-danger-soft); /* new */
+  --sla-met: var(--status-ok);                    /* new */
+  --sla-met-soft: var(--status-ok-soft);          /* new */
+  --sla-paused: var(--status-neutral);            /* new */
+  --sla-paused-soft: var(--status-neutral-soft);  /* new */
+
+  --focus-ring-width: 2px;                        /* new */
+  --focus-ring-offset: 2px;                       /* new */
+}
+
+/* --- LIGHT (default) ----------------------------------------------------- */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces — paper on a cool off-white page */
+  --surface-page: #f5f6f8;
+  --surface-raised: #ffffff;
+  --surface-overlay: #eef0f3;      /* recessed/neutral fill: counts, segmented track, skeleton */
+  --surface-float: #ffffff;        /* new — toasts, dialogs, menus (true floating layer) */
+  --surface-input: #ffffff;
+  --surface-hover: rgba(23, 27, 36, 0.04);
+  --surface-active: rgba(23, 27, 36, 0.07);
+  --header-bg: #ffffff;            /* new */
+  --scrim: rgba(23, 27, 36, 0.45); /* new — dialog backdrop */
+
+  /* borders */
+  --border-subtle: #e3e6eb;        /* card / table hairlines (decorative) */
+  --border-default: #d2d7de;       /* button outlines, dividers */
+  --border-strong: #a3abb7;        /* emphasised dividers, scrollbar thumb */
+  --border-input: #868f9d;         /* new — 3.27:1 on white: field boundary */
+  --border-input-hover: #6b7482;   /* new */
+
+  /* text */
+  --text-primary: #171b24;
+  --text-secondary: #4a5262;
+  --text-tertiary: #5f6878;
+  --text-on-accent: #ffffff;
+
+  /* accent — restrained blue */
+  --accent-300: #3d7be0;
+  --accent-400: #1a5bc4;           /* accent TEXT + icons, links */
+  --accent-500: #2563d6;           /* identity fills: active tab rail, dots, focus border */
+  --accent-550: #1a52b3;           /* primary hover (darker in light) */
+  --accent-600: #1f5fcc;           /* primary rest */
+  --accent-700: #16469a;           /* primary pressed */
+  --accent-soft: #e8effc;
+  --accent-soft-strong: #d4e2f9;
+  --accent-ring: rgba(37, 99, 214, 0.28); /* soft halo around focused inputs (decorative) */
+  --focus-ring: #2563d6;           /* new — the 3:1 indicator itself */
+
+  /* status (fg = text-safe on its soft AND on raised) */
+  --status-ok: #17744a;
+  --status-ok-soft: #e5f3ec;
+  --status-warn: #875400;
+  --status-warn-soft: #fcf1db;
+  --status-info: #1b5bbf;
+  --status-info-soft: #e6eefb;
+  --status-neutral: #4f5868;
+  --status-neutral-soft: #edeff3;
+  --status-danger: #b3261e;
+  --status-danger-soft: #fceceb;
+  --status-wait: #8a3a7c;          /* new — pending customer, active chat */
+  --status-wait-soft: #f6e9f3;     /* new */
+  --status-orange: #a94a08;        /* new — priority high only */
+  --status-orange-soft: #fcede2;   /* new */
+  --danger-fill: #b3261e;          /* new — solid destructive button, urgent lozenge */
+  --danger-fill-hover: #a12019;    /* new */
+  --note-fill: var(--status-warn-soft);  /* new — internal note card */
+  --note-border: #ecd29a;          /* new */
+  --note-strong: #f5e2b5;          /* new — note avatar/tag/active mode fill */
+
+  /* tables */
+  --table-header-bg: #f5f6f8;      /* new */
+  --table-zebra: #f9fafb;          /* new — optional, wide admin tables only */
+  --table-row-hover: #eef2fa;      /* new */
+  --table-row-selected: #e3ecfb;   /* new */
+
+  /* charts — CVD-checked categorical set (see §3.3) */
+  --l-chart-1: #3163c9;  /* blue   */
+  --l-chart-2: #8a3208;  /* rust   */
+  --l-chart-3: #08896a;  /* teal   */
+  --l-chart-4: #b33188;  /* magenta*/
+  --l-chart-5: #b97a0c;  /* ochre  */
+  --l-chart-6: #43474f;  /* slate  */
+  --l-chart-grid: #e3e6eb;
+  --l-chart-axis: #868f9d;
+  --l-chart-label: var(--text-tertiary);
+
+  /* elevation — light mode gets a real (subtle) shadow scale */
+  --shadow-1: 0 1px 2px rgba(23, 27, 36, 0.06);                                   /* new — cards, rows */
+  --shadow-2: 0 1px 3px rgba(23, 27, 36, 0.08), 0 1px 2px rgba(23, 27, 36, 0.04); /* new — hover lift, KPI */
+  --shadow-3: 0 12px 24px -6px rgba(23, 27, 36, 0.16), 0 4px 8px -4px rgba(23, 27, 36, 0.08); /* new */
+  --shadow-overlay: var(--shadow-3);
+  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 6px 16px -12px rgba(23, 27, 36, 0.25);
+
+  --selection-bg: #cfe0fb;         /* new */
+}
+
+/* --- DARK: OS preference (keep identical to the forced block below) ------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface-page: #0f1114;
+    --surface-raised: #16191e;
+    --surface-overlay: #1e2228;
+    --surface-float: #1e2228;
+    --surface-input: #121418;
+    --surface-hover: rgba(255, 255, 255, 0.04);
+    --surface-active: rgba(255, 255, 255, 0.07);
+    --header-bg: #16191e;
+    --scrim: rgba(0, 0, 0, 0.6);
+
+    --border-subtle: #252930;
+    --border-default: #30353e;
+    --border-strong: #464c57;
+    --border-input: #666e7b;
+    --border-input-hover: #7c8491;
+
+    --text-primary: #e7e9ed;
+    --text-secondary: #aeb5c1;
+    --text-tertiary: #8f97a4;
+    --text-on-accent: #ffffff;
+
+    --accent-300: #9cc0f8;
+    --accent-400: #74a7f5;
+    --accent-500: #4a8af0;
+    --accent-550: #3170e0;
+    --accent-600: #2a65d4;
+    --accent-700: #2459bd;
+    --accent-soft: #172540;
+    --accent-soft-strong: #1e3156;
+    --accent-ring: rgba(116, 167, 245, 0.35);
+    --focus-ring: #74a7f5;
+
+    --status-ok: #5cc493;
+    --status-ok-soft: #15291f;
+    --status-warn: #e3b54e;
+    --status-warn-soft: #2b2312;
+    --status-info: #74a7f5;
+    --status-info-soft: #15233a;
+    --status-neutral: #a2aab6;
+    --status-neutral-soft: #23272e;
+    --status-danger: #f2847b;
+    --status-danger-soft: #331a19;
+    --status-wait: #df92cd;
+    --status-wait-soft: #2e1a2a;
+    --status-orange: #f0995c;
+    --status-orange-soft: #2f1e12;
+    --danger-fill: #c4372d;
+    --danger-fill-hover: #ad2f26;
+    --note-fill: var(--status-warn-soft);
+    --note-border: #5a4720;
+    --note-strong: #3b2f15;
+
+    --table-header-bg: #1b1f25;
+    --table-zebra: #191c22;
+    --table-row-hover: #1d2330;
+    --table-row-selected: #1f2c45;
+
+    --l-chart-1: #5b8def;
+    --l-chart-2: #e0702e;
+    --l-chart-3: #4fd1a8;
+    --l-chart-4: #d68bc8;
+    --l-chart-5: #d9c046;
+    --l-chart-6: #7a828f;
+    --l-chart-grid: #252930;
+    --l-chart-axis: #666e7b;
+    --l-chart-label: var(--text-tertiary);
+
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+    --shadow-overlay: var(--shadow-3);
+    --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+    --selection-bg: #2a3a57;
+  }
+}
+
+/* --- DARK: forced (keep identical to the media block above) -------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-page: #0f1114;
+  --surface-raised: #16191e;
+  --surface-overlay: #1e2228;
+  --surface-float: #1e2228;
+  --surface-input: #121418;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.07);
+  --header-bg: #16191e;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --border-subtle: #252930;
+  --border-default: #30353e;
+  --border-strong: #464c57;
+  --border-input: #666e7b;
+  --border-input-hover: #7c8491;
+
+  --text-primary: #e7e9ed;
+  --text-secondary: #aeb5c1;
+  --text-tertiary: #8f97a4;
+  --text-on-accent: #ffffff;
+
+  --accent-300: #9cc0f8;
+  --accent-400: #74a7f5;
+  --accent-500: #4a8af0;
+  --accent-550: #3170e0;
+  --accent-600: #2a65d4;
+  --accent-700: #2459bd;
+  --accent-soft: #172540;
+  --accent-soft-strong: #1e3156;
+  --accent-ring: rgba(116, 167, 245, 0.35);
+  --focus-ring: #74a7f5;
+
+  --status-ok: #5cc493;
+  --status-ok-soft: #15291f;
+  --status-warn: #e3b54e;
+  --status-warn-soft: #2b2312;
+  --status-info: #74a7f5;
+  --status-info-soft: #15233a;
+  --status-neutral: #a2aab6;
+  --status-neutral-soft: #23272e;
+  --status-danger: #f2847b;
+  --status-danger-soft: #331a19;
+  --status-wait: #df92cd;
+  --status-wait-soft: #2e1a2a;
+  --status-orange: #f0995c;
+  --status-orange-soft: #2f1e12;
+  --danger-fill: #c4372d;
+  --danger-fill-hover: #ad2f26;
+  --note-fill: var(--status-warn-soft);
+  --note-border: #5a4720;
+  --note-strong: #3b2f15;
+
+  --table-header-bg: #1b1f25;
+  --table-zebra: #191c22;
+  --table-row-hover: #1d2330;
+  --table-row-selected: #1f2c45;
+
+  --l-chart-1: #5b8def;
+  --l-chart-2: #e0702e;
+  --l-chart-3: #4fd1a8;
+  --l-chart-4: #d68bc8;
+  --l-chart-5: #d9c046;
+  --l-chart-6: #7a828f;
+  --l-chart-grid: #252930;
+  --l-chart-axis: #666e7b;
+  --l-chart-label: var(--text-tertiary);
+
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: var(--shadow-3);
+  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+  --selection-bg: #2a3a57;
+}
+
+/* ===========================================================================
+   Base + browser surfaces
+   ===========================================================================
+   The parts nobody draws still carry the design: selection, caret, scrollbar,
+   focus ring, and the numerals in a data table. Left at their defaults they
+   belong to no design system at all. */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--l-font-sans);
+  font-size: var(--l-text-base);
+  line-height: var(--l-leading-snug);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--text-primary);
+}
+
+:root {
+  caret-color: var(--accent-400);
+  accent-color: var(--accent-500);
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--l-radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--l-radius-xs);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: var(--l-tracking-tight);
+  line-height: var(--l-leading-tight);
+  margin: 0;
+}
+
+a {
+  color: var(--accent-400);
+  text-decoration-color: color-mix(in srgb, var(--accent-400) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-color: var(--accent-400);
+}
+
+/* Any numeric column — confidence, thresholds, counts — lines up only if the
+   digits are the same width. */
+.tabular,
+td,
+th {
+  font-variant-numeric: tabular-nums;
+}
+
+code,
+kbd,
+.mono {
+  font-family: var(--l-font-mono);
+  font-variant-ligatures: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

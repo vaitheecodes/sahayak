@@ -1,0 +1,37 @@
+{
+  "categories": [],
+  "terms": {
+    "iOS": "\\bios\\b|\\biphones?\\b|\\bipads?\\b",
+    "Android": "\\bandroid\\b"
+  },
+  "intent_terms": {
+    "add_api_monitor_error_har": [
+      "API"
+    ],
+    "alert_email_delivery": [],
+    "alert_sms_delivery": [],
+    "agent_firewall_ports": [],
+    "user_roles": [],
+    "ping_monitoring": [
+      "ping"
+    ],
+    "agent_installation": [
+      "Linux",
+      "Windows"
+    ],
+    "report_dashboard": [],
+    "mobile_apm": [
+      "Android",
+      "iOS"
+    ],
+    "website_monitoring": [
+      "website"
+    ],
+    "user_management": [],
+    "alert_configuration": [],
+    "monitor_groups": [],
+    "apm_setup": [
+      "APM"
+    ]
+  }
+}
