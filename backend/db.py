@@ -642,6 +642,12 @@ _ADDED_COLUMNS = {
         ("assigned_technician_id", "TEXT REFERENCES staff(staff_id)"),
         ("resolved_by", "TEXT"),
     ],
+    # KB ingester runs (kb_ingester/runs.py); Postgres: 0004_kb_ingest.sql.
+    "kb_ingest_runs": [("estimate", "TEXT NOT NULL DEFAULT '{}'")],
+    "kb_documents": [("url", "TEXT"), ("pending_hash", "TEXT")],
+    "kb_chunks": [("drafted_at", "TIMESTAMP")],
+    "kb_entries": [("draft_notes", "TEXT NOT NULL DEFAULT '{}'")],
+    "kb_categories": [("merged_into", "TEXT")],
     "ticket_messages": [
         ("author_id", "TEXT"),
         ("visibility", "TEXT NOT NULL DEFAULT 'public_reply'"),

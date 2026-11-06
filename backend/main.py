@@ -38,6 +38,9 @@ from backend.conversation import followup_gate, handoff_brief, latest_transcript
 from backend.conversation import insert_ticket_message as _insert_message
 from backend.conversation import now as _now
 from backend.conversation import subject_for as _subject_for
+from kb_ingester import api as kb_api
+from kb_ingester import mock_drafts as _kb_mock_drafts  # noqa: F401 — registers the mock drafter
+from kb_ingester import runs as kb_runs
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +143,7 @@ app.include_router(admin_users.router)
 app.include_router(admin_reports.router)
 app.include_router(incident_resolution.router)
 app.include_router(try_ticket.router)
+app.include_router(kb_api.router)
 
 
 @app.get("/health")
@@ -199,6 +203,7 @@ def on_startup() -> None:
         kb_categories.load(conn)
     finally:
         conn.close()
+    kb_runs.recover_interrupted()
     check_kb()
     runtime.set_graph(graph.build_graph())
 

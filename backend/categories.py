@@ -31,7 +31,7 @@ DEFAULT_CATEGORIES = (
     ("OTHER", "Other", "Anything else"),
 )
 NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,40}$")
-STATUSES = ("proposed", "confirmed")
+STATUSES = ("proposed", "confirmed", "rejected", "merged")
 
 _cache: list[dict] | None = None
 
@@ -110,4 +110,31 @@ def add(conn, name: str, label: str, description: str = "", *, status: str = "co
         "VALUES (?, ?, ?, ?, ?, ?)",
         (name, label.strip() or name, description.strip(), status, source, utcnow().isoformat()),
     )
+    load(conn)
+
+
+def all_rows(conn) -> list[dict]:
+    """Every category with its status (the reviewer's list)."""
+    return [dict(row) for row in conn.execute(
+        "SELECT name, label, description, status, source, created_at, confirmed_by, confirmed_at, merged_into "
+        "FROM kb_categories ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, name")]
+
+
+def decide(conn, name: str, status: str, actor: str, *, merged_into: str | None = None) -> None:
+    """A proposed category confirmed, rejected or merged into a confirmed
+    one. The caller commits; the cache is reloaded from `conn`."""
+    if status not in ("confirmed", "rejected", "merged"):
+        raise ValueError(f"Unknown decision {status!r}")
+    row = conn.execute("SELECT status FROM kb_categories WHERE name = ?", (name,)).fetchone()
+    if row is None:
+        raise LookupError(name)
+    if row["status"] != "proposed":
+        raise ValueError("Only a proposed category can be decided")
+    if status == "merged":
+        target = conn.execute("SELECT status FROM kb_categories WHERE name = ?", (merged_into,)).fetchone()
+        if target is None or target["status"] != "confirmed":
+            raise ValueError("A category can only be merged into a confirmed one")
+    conn.execute(
+        "UPDATE kb_categories SET status = ?, confirmed_by = ?, confirmed_at = ?, merged_into = ? WHERE name = ?",
+        (status, actor, utcnow().isoformat(), merged_into if status == "merged" else None, name))
     load(conn)

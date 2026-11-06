@@ -130,8 +130,21 @@ class SLASettings(BaseModel):
     low: SLATarget = SLATarget(first_response_minutes=8 * 60, resolution_minutes=72 * 60)
 
 
+class KBSettings(BaseModel):
+    """The KB ingester's hard caps (kb_ingester/runs.py). A run is never
+    given more model calls than both caps leave; it stops cleanly when
+    they are used up."""
+
+    model_calls_per_run: int = Field(default=60, ge=2, le=1000)
+    model_calls_per_day: int = Field(default=300, ge=2, le=10000)
+    runs_per_hour: int = Field(default=10, ge=1, le=100)
+    # Chunk text is purged once all its drafts are decided, or after this.
+    chunk_retention_days: int = Field(default=30, ge=1, le=365)
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "product": ProductSettings,
+    "kb": KBSettings,
     "routing": RoutingSettings,
     "incidents": IncidentSettings,
     "statuses": StatusLabels,
@@ -139,6 +152,10 @@ SECTIONS: dict[str, type[BaseModel]] = {
 }
 
 _ENV = {
+    "kb": {
+        "model_calls_per_run": "KB_MODEL_CALLS_PER_RUN",
+        "model_calls_per_day": "KB_MODEL_CALLS_PER_DAY",
+    },
     "incidents": {
         "window_hours": "INCIDENT_WINDOW_HOURS",
         "min_tickets": "INCIDENT_MIN_TICKETS",

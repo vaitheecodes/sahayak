@@ -627,7 +627,7 @@ def admin_get_settings(admin_id: str = Depends(_admin)):
 
 @router.put("/api/admin/settings/{section}")
 def admin_save_settings(
-    section: Literal["product", "routing", "incidents", "statuses", "sla"], values: dict, admin_id: str = Depends(_admin)
+    section: Literal["product", "kb", "routing", "incidents", "statuses", "sla"], values: dict, admin_id: str = Depends(_admin)
 ):
     """Save a whole section (validated). Applies to the next message,
     correlation run or page load."""
@@ -650,7 +650,7 @@ def admin_save_settings(
 
 
 @router.delete("/api/admin/settings/{section}")
-def admin_reset_settings(section: Literal["product", "routing", "incidents", "statuses", "sla"], admin_id: str = Depends(_admin)):
+def admin_reset_settings(section: Literal["product", "kb", "routing", "incidents", "statuses", "sla"], admin_id: str = Depends(_admin)):
     """Back to the environment/default values."""
     conn = db.get_connection()
     try:

@@ -42,7 +42,7 @@ KINDS = ("how-to", "troubleshooting")
 # ticket is raised in the same turn (graph.generate_response).
 HANDLING = ("answer", "escalate_with_info")
 TERM_KINDS = ("module", "variant", "platform", "integration", "edition")
-TERM_STATUSES = ("proposed", "confirmed", "rejected")
+TERM_STATUSES = ("proposed", "confirmed", "rejected", "merged")
 LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ()/+.&'-]{0,40}$")
 MAX_QUESTIONS = 10
 MAX_STEPS = 20
@@ -136,9 +136,10 @@ def term_problems(term: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 # Terms
 # ---------------------------------------------------------------------------
-def _term_ids(conn) -> dict[str, int]:
+def _term_ids(conn, *, include_proposed: bool = False) -> dict[str, int]:
+    statuses = "('confirmed', 'proposed')" if include_proposed else "('confirmed')"
     return {row["label"]: row["term_id"] for row in conn.execute(
-        "SELECT term_id, label FROM kb_terms WHERE status = 'confirmed'")}
+        f"SELECT term_id, label FROM kb_terms WHERE status IN {statuses}")}
 
 
 def confirmed_terms(conn) -> list[dict]:
@@ -186,13 +187,24 @@ def next_entry_id(conn) -> str:
     return f"KB-{max(numbers, default=0) + 1:04d}"
 
 
-def save_entry(conn, entry: dict, *, status: str, actor: str) -> str:
+# Where a drafted entry came from (kb_ingester/runs.py); kept as they are
+# when an entry is edited or approved.
+DRAFT_FIELDS = ("document_id", "chunk_id", "chunk_hash", "run_id", "duplicate_of", "duplicate_score",
+                "draft_notes")
+
+
+def save_entry(conn, entry: dict, *, status: str, actor: str, draft: dict | None = None) -> str:
     """Insert an entry (pack format), or replace the one with its
     kb_entry_id, with its questions, steps and terms. Raises ValueError
-    for an invalid entry. The caller commits, then calls changed()."""
+    for an invalid entry. The caller commits, then calls changed().
+
+    A draft may apply to proposed terms too (shown once confirmed); an
+    approved entry only to confirmed ones. Steps may carry quote_offset
+    and support_check (the ingester's checks). `draft`: DRAFT_FIELDS for
+    a new entry from the ingester."""
     if status not in ENTRY_STATUSES:
         raise ValueError(f"Unknown entry status {status!r}")
-    term_ids = _term_ids(conn)
+    term_ids = _term_ids(conn, include_proposed=status == "draft")
     problems = entry_problems(entry, approved=status == "approved", known_terms=set(term_ids))
     if problems:
         raise ValueError(f"{entry.get('kb_entry_id') or 'entry'}: {'; '.join(problems)}")
@@ -212,18 +224,23 @@ def save_entry(conn, entry: dict, *, status: str, actor: str) -> str:
         for table in ("kb_entry_questions", "kb_entry_steps", "kb_entry_terms"):
             conn.execute(f"DELETE FROM {table} WHERE entry_id = ?", (entry_id,))
     else:
+        draft = {k: v for k, v in (draft or {}).items() if k in DRAFT_FIELDS}
+        if isinstance(draft.get("draft_notes"), dict):
+            draft["draft_notes"] = json.dumps(draft["draft_notes"])
+        columns = "".join(f", {k}" for k in draft)
         conn.execute(
             "INSERT INTO kb_entries (status, title, answer, kind, handling, collect, category, source_url, "
-            "kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, reviewed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (*values, entry_id, actor, now, actor, now, *reviewed),
+            f"kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, reviewed_at{columns}) "
+            f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{', ?' * len(draft)})",
+            (*values, entry_id, actor, now, actor, now, *reviewed, *draft.values()),
         )
     questions = [q.strip() for q in entry["questions"] if q.strip()]
     conn.executemany("INSERT INTO kb_entry_questions (entry_id, ordinal, text) VALUES (?, ?, ?)",
                      [(entry_id, i, q) for i, q in enumerate(questions, start=1)])
     conn.executemany(
-        "INSERT INTO kb_entry_steps (entry_id, ordinal, text, quote) VALUES (?, ?, ?, ?)",
-        [(entry_id, i, s["text"].strip(), s["quote"].strip())
+        "INSERT INTO kb_entry_steps (entry_id, ordinal, text, quote, quote_offset, support_check) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [(entry_id, i, s["text"].strip(), s["quote"].strip(), s.get("quote_offset"), s.get("support_check"))
          for i, s in enumerate(entry.get("steps") or [], start=1)])
     conn.executemany("INSERT INTO kb_entry_terms (entry_id, term_id) VALUES (?, ?)",
                      [(entry_id, term_ids[t]) for t in sorted(set(entry.get("applies_to") or []))])
