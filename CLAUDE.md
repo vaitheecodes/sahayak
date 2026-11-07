@@ -59,13 +59,25 @@ review. Module map in `kb_ingester/__init__.py`.
   (`tests/kb_ingest_helpers.FakeWeb`).
 - **Clean / chunk**: bs4 `html.parser` (no lxml); nav, aside, forms,
   cookie/consent/share widgets, hidden elements and heading permalinks
-  go; h1-h3 become `#` lines; chunks are heading sections of 300-1,200
-  words (small ones merged, long ones split at blank lines), max 40 per
-  page.
+  go; h1-h3 become `#` lines; each list item is ONE `N. ` / `- ` line
+  (its paragraphs joined, nested lists indented two spaces), and the
+  " ," a removed inline icon leaves is closed up; chunks are heading
+  sections of 300-1,200 words (small ones merged, long ones split at
+  blank lines), max 40 per page.
+- **Numbered procedures** (`steps.py`): runs of 2+ consecutive `N. `
+  lines are read by code and passed in an `ordered_steps` block. The
+  model rewrites each item one for one (`procedure` field, offered only
+  with the section's procedure numbers); the operation's check enforces
+  one step per item in order (a procedure split over several entries is
+  merged back), retried once; each step's quote is set to the original
+  item. The entry records `procedure_steps`; fewer kept steps flag it
+  "incomplete" (X of N), and approving it needs `acknowledge_incomplete`
+  (audited). At most 6 entries per section (extras trimmed, counted).
 - **Drafting** (`drafting.py`, AI op `ai_service/draft_kb_entries.py`):
   the chunk is a `<source_chunk>` data block (closing tags escaped), the
-  call has no tools. Code then checks: each step's quote must be a
-  passage of the chunk (normalised, 15-300 chars); the remaining steps go
+  call has no tools. Code then checks: each other step's quote must be a
+  passage of the chunk (normalised: case, whitespace, spacing around
+  punctuation, doubled backslashes; 15-500 chars); the remaining steps go
   to `check_step_support` (one call per chunk) and unsupported ones are
   dropped; the answer must be a paraphrase (no 12-word run from the
   chunk, <= 60% shared trigrams), otherwise it is removed; a how-to with
@@ -100,18 +112,31 @@ review. Module map in `kb_ingester/__init__.py`.
   confirmed terms. Chunk text is purged once no draft from it is left,
   or after `chunk_retention_days`. Everything is in `audit_events`
   (`kb.*`, ids and field names only).
+- **Model per operation**: app_settings `ai_models` (admin Settings ->
+  AI models) sets a Bedrock model ID for `draft_kb_entries` and
+  `check_step_support` (empty: `BEDROCK_MODEL_ID`, Nova Lite), read by
+  `BedrockBackend.model_id()` under `backends.model_task(<operation>)`.
+- **Licence**: a source's optional `licence_note` (e.g. "CC BY-SA 4.0,
+  Odoo S.A.") is copied onto its entries as `source_licence`, next to
+  `source_url`, and exported in packs (migration `0005_kb_quality.sql`).
+- **Eval**: `scripts/kb_eval.py` drafts the saved fixture pages
+  (`tests/fixtures/kb/pages/`: Python venv, GitHub new repository, Odoo
+  request time off, with their licences and `expected.json`) with the
+  real provider and reports instruction recall, invented steps, quote
+  failures and cost (`--drafting-model` to try another model).
 - **UI**: `/kb/review[/<id>]`, `/kb/sources`, `/kb/terms`,
   `/kb/categories` (`pages/KnowledgeBase.jsx`, `components/kb/`); the
   editor shows each step beside its quote and marks the quotes in the
   source section.
 - Tests: `test_kb_safe_fetch.py` (SSRF), `test_kb_clean_chunk.py`,
-  `test_kb_drafting.py` (checks, injection), `test_kb_ingest_api.py`
-  (runs, caps, review, roles; runs on Postgres too).
+  `test_kb_drafting.py` (checks, procedures, injection),
+  `test_kb_quality.py` (lists, completeness, model setting, licence),
+  `test_kb_ingest_api.py` (runs, caps, review, roles; runs on Postgres too).
 
 ## Knowledge base (`backend/kb_store.py`)
 
 Tables (SQLite in `backend/db.py` SCHEMA + `_ADDED_COLUMNS`, Postgres in
-`migrations/postgres/0003_kb.sql` + `0004_kb_ingest.sql`): `kb_entries` (title, answer, kind,
+`migrations/postgres/0003_kb.sql`, `0004_kb_ingest.sql`, `0005_kb_quality.sql`): `kb_entries` (title, answer, kind,
 handling, collect, category, source_url / document / chunk / chunk_hash,
 stale, supersedes, duplicate_of, status draft|approved|rejected|retired,
 reviewer, version), `kb_entry_questions`, `kb_entry_steps` (text + the

@@ -350,10 +350,10 @@ export const api = {
   kbEntry: (entryId) => request(`/kb/entries/${encodeURIComponent(entryId)}`, { auth: true }),
   kbEditEntry: (entryId, body) =>
     request(`/kb/entries/${encodeURIComponent(entryId)}`, { method: "PATCH", body, auth: true }),
-  kbDecideEntry: (entryId, decision, version, note) =>
+  kbDecideEntry: (entryId, decision, version, note, acknowledgeIncomplete = false) =>
     request(`/kb/entries/${encodeURIComponent(entryId)}/${decision}`, {
       method: "POST",
-      body: { version, note },
+      body: { version, note, acknowledge_incomplete: acknowledgeIncomplete },
       auth: true,
     }),
   kbTerms: (status = "all") => request(`/kb/terms?${query({ status })}`, { auth: true }),

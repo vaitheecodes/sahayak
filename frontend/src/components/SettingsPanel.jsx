@@ -92,6 +92,7 @@ export default function SettingsPanel() {
   const [payload, setPayload] = useState(null);
   const [product, setProduct] = useState(null);
   const [kb, setKb] = useState(null);
+  const [aiModels, setAiModels] = useState(null);
   const [routing, setRouting] = useState(null);
   const [incidents, setIncidents] = useState(null);
   const [statuses, setStatuses] = useState(null);
@@ -101,6 +102,7 @@ export default function SettingsPanel() {
     setPayload(next);
     setProduct(next.sections.product);
     setKb(next.sections.kb);
+    setAiModels(next.sections.ai_models);
     setRouting(next.sections.routing);
     setIncidents(next.sections.incidents);
     setStatuses(next.sections.statuses);
@@ -155,6 +157,20 @@ export default function SettingsPanel() {
             hint="Removed earlier once every draft from it is decided."
             value={kb.chunk_retention_days} onChange={(v) => setKb({ ...kb, chunk_retention_days: v })} />
         </div>
+      </Section>
+
+      <Section
+        title="AI models"
+        description="A Bedrock model ID per operation; empty uses the default (BEDROCK_MODEL_ID, Nova Lite). The AWS role must be allowed to invoke the model you name."
+        section="ai_models"
+        data={aiModels}
+        onSaved={apply}
+      >
+        <TextField label="Knowledge base drafting" value={aiModels.draft_kb_entries} maxLength={200}
+          hint="For example apac.amazon.nova-pro-v1:0 (about 13 times the price of Nova Lite)."
+          onChange={(v) => setAiModels({ ...aiModels, draft_kb_entries: v })} />
+        <TextField label="Knowledge base step check" value={aiModels.check_step_support} maxLength={200}
+          onChange={(v) => setAiModels({ ...aiModels, check_step_support: v })} />
       </Section>
 
       <Section

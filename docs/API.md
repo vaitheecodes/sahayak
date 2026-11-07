@@ -125,15 +125,15 @@ T = technicians and managers, M = managers only. Errors are 400 (invalid),
 | Method & path | Request | Response / notes |
 |---|---|---|
 | `GET /kb/sources` | — | T. `{sources:[{source_id, name, root_url, public_confirmed_by(_name), public_confirmed_at, last_run, entries:{status:n}}], caps:{per_run, per_day, used_today, left_today, calls_per_chunk}}` |
-| `POST /kb/sources` | `{name, url, public_confirmed:true}` | M. 201 `{source_id}`. Without the confirmation 400; private/odd URLs 400; same URL 409. |
+| `POST /kb/sources` | `{name, url, public_confirmed:true, licence_note?}` | M. `licence_note` (≤ 200) is copied onto its entries as `source_licence`. 201 `{source_id}`. Without the confirmation 400; private/odd URLs 400; same URL 409. |
 | `GET /kb/sources/{id}/runs` | — | T. `{runs:[run]}`, newest first |
 | `POST /kb/sources/{id}/estimate` | — | M. Fetches and chunks (no model calls). The run: `status` `estimated` (or `done`/`nothing_to_draft`, `failed`/<fetch reason>), `estimated_model_calls`, `estimate:{pages, chunks, chunks_unchanged, chunks_to_draft, model_calls, caps}`. Replaces an unstarted estimate. |
 | `POST /kb/runs/{id}/start` | `{expected_model_calls}` | M. Must equal the estimate (409 otherwise); 429 when today's cap is used up. Drafting runs in the background. |
 | `GET /kb/runs/{id}` | — | T. `status` estimated / queued / running / done / stopped / failed / cancelled, `stop_reason` (run_cap, daily_cap, ai_unavailable, interrupted, ...), counts, `model_calls`/`model_call_cap`, `errors:{code:n}` |
-| `GET /kb/entries?status=draft\|approved\|rejected\|all&flag=duplicate\|stale\|injection\|answer_removed&source_id=` | — | T. `{entries:[{kb_entry_id, title, status, category, kind, step_count, flags, duplicate_of, duplicate_score, source_name, version}]}` |
+| `GET /kb/entries?status=draft\|approved\|rejected\|all&flag=incomplete\|duplicate\|stale\|injection\|answer_removed&source_id=` | — | T. `{entries:[{kb_entry_id, title, status, category, kind, step_count, flags, completeness:{kept, expected}\|null, duplicate_of, duplicate_score, source_name, version}]}` |
 | `GET /kb/entries/{id}` | — | T. Pack fields + `steps[{text, quote, quote_offset, support_check}]`, `version`, `flags`, `notes`, `chunk{heading_path, text\|null, purged_at, flagged_injection}`, `source`, `duplicate`, `terms[{label, kind, status}]` |
 | `PATCH /kb/entries/{id}` | `{version, title?, category?, kind?, questions?, answer?, steps?[{text, quote}], applies_to?}` | T. Drafts only; each quote must be in the chunk while it is kept. Returns the entry + `changed` |
-| `POST /kb/entries/{id}/approve` | `{version, note?}` | M. Same validation as an import (confirmed terms only) |
+| `POST /kb/entries/{id}/approve` | `{version, note?, acknowledge_incomplete?}` | M. Same validation as an import (confirmed terms only). An entry flagged incomplete (fewer steps than its page's numbered list) is 409 unless `acknowledge_incomplete: true`. |
 | `POST /kb/entries/{id}/reject` | `{version, note?}` | M |
 | `GET /kb/terms?status=` | — | T. `{terms:[{term_id, label, kind, aliases, status, merged_into, evidence_quote, evidence_count, entry_count}]}` |
 | `POST /kb/terms` | `{label, kind, aliases?}` | T. Proposed; 409 if the label exists (any case) |
@@ -177,8 +177,8 @@ and the account must change it at first sign-in.
 | `GET /admin/departments` | — | `{departments:[{department_id, name, categories, manager_ids}], categories}` |
 | `POST /admin/departments` · `PUT /admin/departments/{id}` | `{name, categories}` | a category may belong to one department only |
 | `DELETE /admin/departments/{id}` | — | its managers are left without a department |
-| `GET /admin/settings` | — | `{sections:{product, kb, routing, incidents, statuses, sla}, defaults, categories, language_tags}` |
-| `PUT /admin/settings/{product\|kb\|routing\|incidents\|statuses\|sla}` | the whole section as JSON | validated; 422 with reasons |
+| `GET /admin/settings` | — | `{sections:{product, kb, ai_models, routing, incidents, statuses, sla}, defaults, categories, language_tags}` |
+| `PUT /admin/settings/{product\|kb\|ai_models\|routing\|incidents\|statuses\|sla}` | the whole section as JSON | validated; 422 with reasons |
 | `DELETE /admin/settings/{section}` | — | back to env/default values |
 | `GET /admin/audit?entity=&entity_id=&action=&actor_id=&since=&until=&limit=&offset=` | — | `{total, events:[{id, actor_id, actor_name, action, entity, entity_id, detail, at}]}`; `action` is a prefix match |
 | `GET /admin/chats/{session_id}` | — | Chat state (status, categories, route, clarification count, escalated ticket), `message_counts` by role, and `ai_failures:[{at, kind, code, attempts, latency_ms, operation, outcome}]`. No message text. 404 unknown chat |

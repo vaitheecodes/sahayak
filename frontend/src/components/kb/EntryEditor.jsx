@@ -51,6 +51,7 @@ export default function EntryEditor({ entryId, isManager }) {
   const [categories, setCategories] = useState([]);
   const [terms, setTerms] = useState([]);
   const [note, setNote] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
@@ -96,7 +97,7 @@ export default function EntryEditor({ entryId, isManager }) {
 
   const save = () => run("save", () => api.kbEditEntry(entryId, { version: entry.version, ...pending }), "Saved.");
   const decide = (decision) =>
-    run(decision, () => api.kbDecideEntry(entryId, decision, entry.version, note),
+    run(decision, () => api.kbDecideEntry(entryId, decision, entry.version, note, acknowledged),
       decision === "approve" ? "Approved: the bot can use this entry now." : "Rejected.");
 
   return (
@@ -111,7 +112,9 @@ export default function EntryEditor({ entryId, isManager }) {
         </Badge>
         {entry.flags.map((f) => (
           <Badge key={f} tone={FLAGS[f]?.[0]}>
-            {FLAGS[f]?.[1] || f}
+            {f === "incomplete" && entry.completeness
+              ? `${FLAGS[f][1]} (${entry.completeness.kept} of ${entry.completeness.expected})`
+              : FLAGS[f]?.[1] || f}
           </Badge>
         ))}
         <span className="ml-auto text-sm text-muted-fg">
@@ -164,6 +167,20 @@ export default function EntryEditor({ entryId, isManager }) {
             </fieldset>
 
             <div className="mt-6 flex flex-col gap-3 border-t border-rule pt-4">
+              {editable && isManager && entry.completeness && (
+                <label className="flex items-start gap-2 text-base">
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4"
+                    checked={acknowledged}
+                    onChange={(e) => setAcknowledged(e.target.checked)}
+                  />
+                  <span>
+                    I checked the page: the {entry.completeness.expected - entry.completeness.kept} missing step(s) of
+                    its list aren't needed for this entry.
+                  </span>
+                </label>
+              )}
               {editable && isManager && (
                 <Field label="Review note (optional)" htmlFor={ids.note}>
                   <Input id={ids.note} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
@@ -172,7 +189,11 @@ export default function EntryEditor({ entryId, isManager }) {
               {editable ? (
                 <div className="flex flex-wrap gap-2">
                   {isManager && (
-                    <Button onClick={() => decide("approve")} disabled={!!busy || dirty} title={dirty ? "Save your changes first" : undefined}>
+                    <Button
+                      onClick={() => decide("approve")}
+                      disabled={!!busy || dirty || (entry.completeness && !acknowledged)}
+                      title={dirty ? "Save your changes first" : undefined}
+                    >
                       <Check aria-hidden="true" />
                       {busy === "approve" ? "Approving…" : "Approve"}
                     </Button>
@@ -211,6 +232,15 @@ function Notices({ entry }) {
   const signals = [...(notes.chunk_signals || []), ...(notes.output_signals || [])];
   return (
     <>
+      {entry.completeness && (
+        <Alert
+          tone="warning"
+          title={`Possibly incomplete: ${entry.completeness.kept} of ${entry.completeness.expected} steps of the page's numbered list`}
+        >
+          Steps whose rewrite the check couldn't confirm were dropped. Add them back from the source section (each
+          with its item as the quote), or confirm below that they aren't needed.
+        </Alert>
+      )}
       {entry.duplicate && (
         <Alert tone="warning" title={`Possible duplicate of ${entry.duplicate.kb_entry_id} (similarity ${entry.duplicate.score})`}>
           <Link to={`/kb/review/${entry.duplicate.kb_entry_id}`} className="underline underline-offset-4">
@@ -376,6 +406,9 @@ function SourceSection({ entry, steps }) {
             {entry.source.name}: confirmed public by {entry.source.public_confirmed_by_name} on{" "}
             {formatDateTime(entry.source.public_confirmed_at)}
           </p>
+        )}
+        {entry.source_licence && (
+          <p className="mt-0 mb-3 text-sm text-muted-fg">Licence: {entry.source_licence} (keep the source link)</p>
         )}
         {chunk?.text ? (
           <pre className="m-0 max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-raised p-3 font-mono text-sm leading-relaxed">

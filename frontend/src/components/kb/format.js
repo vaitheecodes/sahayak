@@ -40,6 +40,7 @@ const REASONS = {
   term_unsupported: "Term without evidence",
   invalid_entry: "Invalid entry",
   chunks_capped: "Sections over the page cap",
+  entries_over_cap: "Entries over the 6 per section",
 };
 
 export function reasonLabel(code) {
@@ -50,6 +51,7 @@ export function reasonLabel(code) {
 }
 
 export const FLAGS = {
+  incomplete: ["warning", "Possibly incomplete"],
   duplicate: ["warning", "Possible duplicate"],
   stale: ["warning", "Source changed"],
   injection: ["negative", "Suspicious text"],

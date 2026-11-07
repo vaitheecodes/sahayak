@@ -105,7 +105,11 @@ export default function ReviewQueue() {
                     <div className="flex flex-wrap gap-1">
                       {e.flags.map((f) => (
                         <Badge key={f} tone={FLAGS[f]?.[0]}>
-                          {f === "duplicate" ? `${FLAGS[f][1]} of ${e.duplicate_of}` : FLAGS[f]?.[1] || f}
+                          {f === "duplicate"
+                            ? `${FLAGS[f][1]} of ${e.duplicate_of}`
+                            : f === "incomplete" && e.completeness
+                              ? `${FLAGS[f][1]} (${e.completeness.kept} of ${e.completeness.expected})`
+                              : FLAGS[f]?.[1] || f}
                         </Badge>
                       ))}
                     </div>

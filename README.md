@@ -509,7 +509,13 @@ sidebar (the admin doesn't review the KB).
 
 Every step of a draft must quote a passage of its page, and a second
 model call checks the passage supports it; the answer must be in the
-model's own words. Pages are never stored: only a hash, the section text
+model's own words. A numbered list on the page is read by code and
+rewritten one step per item; an entry that ends up with fewer steps than
+its list is marked "possibly incomplete (X of N)" and needs an explicit
+confirmation to approve. A source can carry a licence note (for example
+CC BY-SA 4.0), kept on its entries with the source link. The drafting
+model can be changed per operation (admin Settings -> AI models), and
+`scripts/kb_eval.py` measures drafting quality on saved pages. Pages are never stored: only a hash, the section text
 until its drafts are decided (30 days at most), and the short quotes.
 
 A reviewed KB moves between environments as a JSON pack (format: the

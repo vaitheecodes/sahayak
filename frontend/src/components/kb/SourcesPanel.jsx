@@ -65,18 +65,25 @@ function AddSource({ onAdded }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [licence, setLicence] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const ids = { name: useId(), url: useId(), confirm: useId() };
+  const ids = { name: useId(), url: useId(), confirm: useId(), licence: useId() };
 
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
-      await api.kbCreateSource({ name: name.trim(), url: url.trim(), public_confirmed: confirmed });
+      await api.kbCreateSource({
+        name: name.trim(),
+        url: url.trim(),
+        public_confirmed: confirmed,
+        licence_note: licence.trim(),
+      });
       setName("");
       setUrl("");
+      setLicence("");
       setConfirmed(false);
       onAdded();
     } catch (err) {
@@ -111,6 +118,13 @@ function AddSource({ onAdded }) {
               />
             </Field>
           </div>
+          <Field
+            label="Licence or attribution (optional)"
+            htmlFor={ids.licence}
+            hint="For example: CC BY-SA 4.0, Example S.A. It is kept on every entry drafted from this source."
+          >
+            <Input id={ids.licence} value={licence} maxLength={200} onChange={(e) => setLicence(e.target.value)} />
+          </Field>
           <label htmlFor={ids.confirm} className="flex items-start gap-2 text-base">
             <input
               id={ids.confirm}
@@ -185,6 +199,7 @@ function SourceCard({ source, isManager, onChange }) {
           </CardDescription>
           <p className="mt-1 text-sm text-muted-fg">
             Confirmed public by {source.public_confirmed_by_name} on {formatDateTime(source.public_confirmed_at)}
+            {source.licence_note && ` · Licence: ${source.licence_note}`}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
