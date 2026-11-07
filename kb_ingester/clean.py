@@ -179,6 +179,11 @@ def plain_to_text(body: bytes, charset: str | None = None) -> CleanDocument:
 
 
 def to_text(body: bytes, content_type: str, charset: str | None = None) -> CleanDocument:
+    """Raises files.DocumentProblem for a PDF without extractable text."""
     if content_type in ("text/html", "application/xhtml+xml"):
         return html_to_text(body, charset)
+    if content_type == "application/pdf":
+        from kb_ingester.files import pdf_to_text  # files imports this module
+
+        return pdf_to_text(body)
     return plain_to_text(body, charset)

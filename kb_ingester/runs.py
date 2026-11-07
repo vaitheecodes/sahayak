@@ -40,11 +40,12 @@ from backend.timeutil import utcnow
 from kb_ingester import chunking, clean, dedupe
 from kb_ingester.drafting import CALLS_PER_CHUNK, Budget, draft_chunk
 from kb_ingester.safe_fetch import FetchError, SafeFetcher, address_problem, check_url
+from kb_ingester.files import DocumentProblem
 from kb_ingester.sources import RawDocument, UrlSource
 
 logger = logging.getLogger(__name__)
 
-SOURCE_KINDS = ("url",)
+SOURCE_KINDS = ("url", "file", "text")
 ACTIVE = ("queued", "running")
 FINISHED = ("done", "stopped", "failed", "cancelled")
 STEP_DROPS = ("quote_missing", "quote_length", "quote_not_in_source", "not_supported")
@@ -82,35 +83,42 @@ def _is_address(host: str) -> bool:
     return True
 
 
-def create_source(conn, *, name: str, url: str, public_confirmed: bool, actor: str,
-                  licence_note: str = "") -> int:
-    """licence_note: the content's licence / attribution, if it has one
-    (e.g. "CC BY-SA 4.0, Odoo S.A."); copied onto every entry drafted from
-    the source, next to the source URL."""
+def create_source(conn, *, name: str, url: str | None = None, public_confirmed: bool, actor: str,
+                  licence_note: str = "", kind: str = "url") -> int:
+    """kind: url (a web page at `url`), file (an uploaded TXT/MD/PDF) or
+    text (pasted text); file and text sources get their content with each
+    estimate (files.py). licence_note: the content's licence / attribution,
+    if it has one (e.g. "CC BY-SA 4.0, Odoo S.A."); copied onto every entry
+    drafted from the source, next to the source URL."""
+    if kind not in SOURCE_KINDS:
+        raise RunError("Unknown source kind")
     if public_confirmed is not True:
         raise RunError("Confirm that this content is public or that you are allowed to use it")
     name = (name or "").strip()
     if not name or len(name) > 120:
         raise RunError("Name the source (at most 120 characters)")
-    try:
-        target = check_url(url)
-        literal = target.host.strip("[]")
-        if _is_address(literal) and address_problem(literal):
-            raise FetchError(address_problem(literal))
-    except FetchError as exc:
-        raise RunError(f"This URL can't be used ({exc.code})") from None
-    url = url.strip()
+    if kind == "url":
+        try:
+            target = check_url(url)
+            literal = target.host.strip("[]")
+            if _is_address(literal) and address_problem(literal):
+                raise FetchError(address_problem(literal))
+        except FetchError as exc:
+            raise RunError(f"This URL can't be used ({exc.code})") from None
+        url = url.strip()
+    else:
+        url = None
     licence_note = (licence_note or "").strip()
     if len(licence_note) > 200:
         raise RunError("The licence note can be at most 200 characters")
-    if conn.execute("SELECT 1 FROM kb_sources WHERE root_url = ? AND active = 1", (url,)).fetchone():
+    if url and conn.execute("SELECT 1 FROM kb_sources WHERE root_url = ? AND active = 1", (url,)).fetchone():
         raise RunError("This URL is already a source", 409)
     now = _now()
     source_id = conn.execute(
         "INSERT INTO kb_sources (kind, name, root_url, config, public_confirmed_by, public_confirmed_at, "
-        "created_by, created_at, licence_note) VALUES ('url', ?, ?, '{}', ?, ?, ?, ?, ?) RETURNING source_id",
-        (name, url, actor, now, actor, now, licence_note or None)).fetchone()["source_id"]
-    audit.record(conn, actor, "kb.source.create", "kb_source", str(source_id), kind="url")
+        "created_by, created_at, licence_note) VALUES (?, ?, ?, '{}', ?, ?, ?, ?, ?) RETURNING source_id",
+        (kind, name, url, actor, now, actor, now, licence_note or None)).fetchone()["source_id"]
+    audit.record(conn, actor, "kb.source.create", "kb_source", str(source_id), kind=kind)
     return source_id
 
 
@@ -211,11 +219,19 @@ def _document(conn, source_id: int, doc: RawDocument) -> dict:
         (source_id, doc.location)).fetchone())
 
 
-def estimate(source_id: int, actor: str) -> dict:
-    """Fetch and chunk the source (no model calls); returns the run."""
+def estimate(source_id: int, actor: str, upload: RawDocument | None = None, filename: str | None = None) -> dict:
+    """Fetch (a web page) or take (`upload`: a file or pasted text) the
+    source's content and chunk it, with no model calls; returns the run."""
     conn = db.get_connection()
     try:
         source = _check_can_run(conn, source_id, actor)
+        if source["kind"] == "url" and upload is not None:
+            raise RunError("A web page source is read from its URL")
+        if source["kind"] != "url" and upload is None:
+            raise RunError("Upload the file or paste the text again to run this source: its content isn't kept")
+        if filename:
+            config = {**json.loads(source.get("config") or "{}"), "filename": filename}
+            conn.execute("UPDATE kb_sources SET config = ? WHERE source_id = ?", (json.dumps(config), source_id))
         conn.execute("UPDATE kb_ingest_runs SET status = 'cancelled', finished_at = ?, stop_reason = 'replaced' "
                      "WHERE source_id = ? AND status = 'estimated'", (_now(), source_id))
         conn.commit()
@@ -223,7 +239,7 @@ def estimate(source_id: int, actor: str) -> dict:
         conn.close()
 
     # The network part holds no database connection.
-    documents = list(UrlSource(source["root_url"], fetcher_factory()).documents())
+    documents = [upload] if upload is not None else list(UrlSource(source["root_url"], fetcher_factory()).documents())
 
     conn = db.get_connection()
     try:
@@ -242,8 +258,14 @@ def estimate(source_id: int, actor: str) -> dict:
                              "miss_count = kb_documents.miss_count + 1",
                              (source_id, doc.location, doc.status))
                 continue
+            try:
+                cleaned = clean.to_text(doc.body, doc.content_type, doc.charset)
+            except DocumentProblem as exc:
+                # e.g. a scanned PDF: no text to draft from (no OCR).
+                errors[exc.code] += 1
+                totals["pages_skipped"] += 1
+                continue
             totals["pages"] += 1
-            cleaned = clean.to_text(doc.body, doc.content_type, doc.charset)
             new_hash = chunking.content_hash(cleaned.text)
             document = _document(conn, source_id, doc)
             conn.execute("UPDATE kb_documents SET url = ?, title = ?, http_status = 200, etag = ?, last_modified = ?, "

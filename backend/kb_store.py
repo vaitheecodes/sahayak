@@ -35,9 +35,10 @@ from backend.timeutil import utcnow
 
 ID_PATTERN = re.compile(r"^KB-\d{4,6}$")
 ENTRY_STATUSES = ("draft", "approved", "rejected", "retired")
-# "how-to": doing a task; "troubleshooting": fixing a fault. Beats the
-# question-wording guess (request_kind) in retrieval.
-KINDS = ("how-to", "troubleshooting")
+# "how-to": doing a task; "troubleshooting": fixing a fault; "reference":
+# what a table or parameter list says (never grounds a how-to answer). Beats
+# the question-wording guess (request_kind) in retrieval.
+KINDS = ("how-to", "troubleshooting", "reference")
 # "escalate_with_info": the reply lists what support needs, and the
 # ticket is raised in the same turn (graph.generate_response).
 HANDLING = ("answer", "escalate_with_info")

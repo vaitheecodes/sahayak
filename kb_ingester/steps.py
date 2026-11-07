@@ -36,3 +36,19 @@ def ordered_lists(text: str) -> list[list[str]]:
         elif current is not None and line.strip():
             current = None
     return [items for items in lists if len(items) >= 2]
+
+
+# "a | b | c" rows (clean.py renders tables so) and parameter lines such as
+# "- `name`: ..." or "- name (string): ...".
+_TABLE_ROW = re.compile(r"^[^|]+(?: \| [^|]*)+$")
+_PARAMETER = re.compile(
+    r"^\s*[-*+]\s+(?:`[^`]+`|[\w.\-\[\]]+\s*\((?:string|str|integer|int|number|float|bool|boolean|array|list|"
+    r"object|dict|optional|required)\b[^)]*\))", re.IGNORECASE)
+
+
+def is_reference(text: str) -> bool:
+    """Mostly a table or a parameter list (at least 3 such lines and 40%
+    of the section's lines): reference material, not a procedure."""
+    lines = [line for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    rows = sum(1 for line in lines if _TABLE_ROW.match(line) or _PARAMETER.match(line))
+    return rows >= 3 and rows >= 0.4 * len(lines)

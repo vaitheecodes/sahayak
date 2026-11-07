@@ -67,6 +67,9 @@ ALLOWED_ORIGINS = [
 # its body is read, and one declaring no length (chunked) too.
 MAX_UPLOAD_REQUEST_BYTES = 55 * 1024 * 1024
 _ATTACHMENT_UPLOAD_PATH = re.compile(r"^/api/tickets/[^/]+/attachments/?$")
+# KB source uploads: one file of at most 10 MB (kb_ingester/files.py) plus the form.
+MAX_KB_UPLOAD_REQUEST_BYTES = 11 * 1024 * 1024
+_KB_UPLOAD_PATH = re.compile(r"^/api/kb/sources/(?:upload|\d+/upload)/?$")
 
 
 class _UploadSizeLimit:
@@ -74,13 +77,18 @@ class _UploadSizeLimit:
         self.app = asgi_app
 
     async def __call__(self, scope, receive, send):
-        if (scope["type"] == "http" and scope["method"] == "POST"
-                and _ATTACHMENT_UPLOAD_PATH.match(scope["path"])):
+        limit = None
+        if scope["type"] == "http" and scope["method"] == "POST":
+            if _ATTACHMENT_UPLOAD_PATH.match(scope["path"]):
+                limit = (MAX_UPLOAD_REQUEST_BYTES, "Upload too large (at most 5 files of 10 MB)")
+            elif _KB_UPLOAD_PATH.match(scope["path"]):
+                limit = (MAX_KB_UPLOAD_REQUEST_BYTES, "Upload too large (at most 10 MB)")
+        if limit:
             length = dict(scope.get("headers", [])).get(b"content-length")
             if length is None:
                 refusal = (411, "Content-Length required for uploads")
-            elif not length.isdigit() or int(length) > MAX_UPLOAD_REQUEST_BYTES:
-                refusal = (413, "Upload too large (at most 5 files of 10 MB)")
+            elif not length.isdigit() or int(length) > limit[0]:
+                refusal = (413, limit[1])
             else:
                 refusal = None
             if refusal:

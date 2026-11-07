@@ -3,7 +3,8 @@
 Roles (the admin is not a KB reviewer and gets 403 on every one):
 
   technicians + managers   read everything; edit drafts; propose terms
-  managers only            add sources, estimate and start runs, approve
+  managers only            add sources (a web page, an uploaded TXT/MD/PDF
+                           or pasted text), estimate and start runs, approve
                            and reject entries, confirm / reject / merge
                            terms and categories
 """
@@ -12,11 +13,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from backend import auth, categories, db, kb_store
-from kb_ingester import review, runs
+from kb_ingester import files, review, runs
 
 router = APIRouter(prefix="/api/kb")
 
@@ -76,6 +77,98 @@ def create_source(body: SourceIn, manager_id: str = Depends(_manager)):
         raise _http(exc) from None
 
 
+class TextSourceIn(BaseModel):
+    name: str = Field(max_length=120)
+    text: str = Field(max_length=files.MAX_TEXT_CHARS)
+    public_confirmed: bool = False
+    licence_note: str = Field(default="", max_length=200)
+
+
+class TextVersionIn(BaseModel):
+    text: str = Field(max_length=files.MAX_TEXT_CHARS)
+
+
+def _problem(exc: files.DocumentProblem) -> HTTPException:
+    messages = {
+        "unsupported_type": "Upload a .txt, .md or .pdf file",
+        "too_large": f"At most {files.MAX_FILE_BYTES // (1024 * 1024)} MB for a file, "
+                     f"{files.MAX_TEXT_CHARS:,} characters of text",
+        "empty": "The file or text is empty",
+        "not_text": "This file isn't UTF-8 text",
+        "not_pdf": "This file isn't a PDF",
+    }
+    return HTTPException(status_code=413 if exc.code == "too_large" else 400,
+                         detail=messages.get(exc.code, exc.code))
+
+
+async def _read_upload(file: UploadFile) -> tuple[str, bytes]:
+    data = await file.read(files.MAX_FILE_BYTES + 1)
+    if len(data) > files.MAX_FILE_BYTES:
+        raise _problem(files.DocumentProblem("too_large"))
+    return files.safe_filename(file.filename), data
+
+
+def _new_source_with_estimate(manager_id: str, *, kind: str, name: str, public_confirmed: bool,
+                              licence_note: str, document, filename: str | None = None) -> dict:
+    try:
+        with _Conn() as conn:
+            source_id = runs.create_source(conn, kind=kind, name=name, public_confirmed=public_confirmed,
+                                           actor=manager_id, licence_note=licence_note)
+        return {"source_id": source_id,
+                "run": runs.estimate(source_id, manager_id, upload=document, filename=filename)}
+    except runs.RunError as exc:
+        raise _http(exc) from None
+
+
+@router.post("/sources/upload", status_code=201)
+async def upload_source(name: str = Form(..., max_length=120), public_confirmed: bool = Form(False),
+                        licence_note: str = Form("", max_length=200), file: UploadFile = File(...),
+                        manager_id: str = Depends(_manager)):
+    """A TXT, MD or PDF file as a new source; its estimate comes back."""
+    filename, data = await _read_upload(file)
+    try:
+        document = files.file_document(filename, data)
+    except files.DocumentProblem as exc:
+        raise _problem(exc) from None
+    return _new_source_with_estimate(manager_id, kind="file", name=name, public_confirmed=public_confirmed,
+                                     licence_note=licence_note, document=document, filename=filename)
+
+
+@router.post("/sources/text", status_code=201)
+def text_source(body: TextSourceIn, manager_id: str = Depends(_manager)):
+    """Pasted text (Markdown headings are used) as a new source."""
+    try:
+        document = files.text_document(body.text)
+    except files.DocumentProblem as exc:
+        raise _problem(exc) from None
+    return _new_source_with_estimate(manager_id, kind="text", name=body.name,
+                                     public_confirmed=body.public_confirmed, licence_note=body.licence_note,
+                                     document=document)
+
+
+@router.post("/sources/{source_id}/upload")
+async def upload_version(source_id: int, file: UploadFile = File(...), manager_id: str = Depends(_manager)):
+    """A new version of a file source: estimated like a re-fetched page."""
+    filename, data = await _read_upload(file)
+    try:
+        document = files.file_document(filename, data)
+        return runs.estimate(source_id, manager_id, upload=document, filename=filename)
+    except files.DocumentProblem as exc:
+        raise _problem(exc) from None
+    except runs.RunError as exc:
+        raise _http(exc) from None
+
+
+@router.post("/sources/{source_id}/text")
+def text_version(source_id: int, body: TextVersionIn, manager_id: str = Depends(_manager)):
+    try:
+        return runs.estimate(source_id, manager_id, upload=files.text_document(body.text))
+    except files.DocumentProblem as exc:
+        raise _problem(exc) from None
+    except runs.RunError as exc:
+        raise _http(exc) from None
+
+
 @router.get("/sources/{source_id}/runs")
 def source_runs(source_id: int, _: str = Depends(_staff)):
     with _Conn() as conn:
@@ -122,7 +215,7 @@ class EntryEdit(BaseModel):
     version: int
     title: str | None = Field(default=None, max_length=120)
     category: str | None = None
-    kind: Literal["how-to", "troubleshooting"] | None = None
+    kind: Literal["how-to", "troubleshooting", "reference"] | None = None
     questions: list[str] | None = Field(default=None, max_length=kb_store.MAX_QUESTIONS)
     answer: str | None = Field(default=None, max_length=1500)
     steps: list[StepIn] | None = Field(default=None, max_length=kb_store.MAX_STEPS)

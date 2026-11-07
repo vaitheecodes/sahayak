@@ -139,13 +139,14 @@ def entry_detail(conn, entry_id: str) -> dict:
         chunk = dict(c) if c else None
     source = None
     if row.get("document_id"):
-        s = conn.execute("SELECT s.source_id, s.name, s.public_confirmed_by, s.public_confirmed_at, s.licence_note, "
-                         "d.url, d.title "
+        s = conn.execute("SELECT s.source_id, s.kind, s.config, s.name, s.public_confirmed_by, s.public_confirmed_at, "
+                         "s.licence_note, d.url, d.title "
                          "FROM kb_documents d JOIN kb_sources s ON s.source_id = d.source_id WHERE d.document_id = ?",
                          (row["document_id"],)).fetchone()
         source = dict(s) if s else None
         if source:
             source["public_confirmed_by_name"] = staff_name(conn, source["public_confirmed_by"])
+            source["filename"] = json.loads(source.pop("config") or "{}").get("filename")
     duplicate = None
     if row.get("duplicate_of"):
         d = conn.execute("SELECT kb_entry_id, title, status FROM kb_entries WHERE kb_entry_id = ?",

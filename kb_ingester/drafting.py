@@ -31,13 +31,23 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from backend import categories, kb_store
+from backend.ai_service import AIError, backends, provider
 from backend.ai_service import draft_kb_entries as op
 from backend.ai_service.schemas import DraftInput, StepToCheck
 from kb_ingester import checks
-from kb_ingester.steps import ordered_lists
+from kb_ingester.steps import is_reference, ordered_lists
 
 # Drafting plus the step-support check: the most one chunk can cost.
 CALLS_PER_CHUNK = 2
+
+
+def _drafting_model_differs() -> bool:
+    """Bedrock only: other providers have one model."""
+    if provider.provider_name() != "bedrock":
+        return False
+    with backends.model_task("draft_kb_entries"):
+        drafting = backends.BedrockBackend.model_id()
+    return drafting != backends.BedrockBackend.model_id()
 
 
 class CapReached(Exception):
@@ -89,6 +99,10 @@ def _terms(result, chunk_text: str, known: dict[str, str], dropped: Counter) -> 
         if checks.quote_problem(proposal["evidence_quote"], chunk_text) or kb_store.term_problems(proposal):
             dropped["term_unsupported"] += 1
             continue
+        problem = checks.term_label_problem(label, chunk_text)
+        if problem:
+            dropped[problem] += 1
+            continue
         terms.append(proposal)
     return terms
 
@@ -97,12 +111,25 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
                 known_terms: list[dict], budget: Budget) -> ChunkResult:
     """known_terms: confirmed and proposed terms ({label, kind, aliases})."""
     out = ChunkResult(signals=checks.injection_signals(chunk_text))
-    procedures = ordered_lists(chunk_text)[:op.MAX_PROCEDURES]
+    reference = is_reference(chunk_text)
+    procedures = [] if reference else ordered_lists(chunk_text)[:op.MAX_PROCEDURES]
+    data = DraftInput(chunk_text=chunk_text, heading_path=heading_path, page_title=page_title,
+                      known_terms=known_terms, procedures=procedures, reference=reference)
     budget.spend()
     out.calls += 1
-    drafted = op.draft_kb_entries(DraftInput(chunk_text=chunk_text, heading_path=heading_path,
-                                             page_title=page_title, known_terms=known_terms,
-                                             procedures=procedures))
+    try:
+        drafted = op.draft_kb_entries(data)
+    except AIError as exc:
+        # The drafting model (Nova Pro by default) failed to answer, e.g. not
+        # allowed or throttled: once more on the default model, budget allowing.
+        failure = exc.failure
+        if (failure is None or failure.kind == "parse_schema" or not _drafting_model_differs()
+                or budget.left < CALLS_PER_CHUNK):
+            raise
+        out.dropped["drafting_model_fallback"] += 1
+        budget.spend()
+        out.calls += 1
+        drafted = op.draft_kb_entries(data, default_model=True)
 
     known = {t["label"].lower(): t["label"] for t in known_terms}
     out.terms = _terms(drafted, chunk_text, known, out.dropped)
@@ -114,8 +141,19 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
     ordered = sorted(drafted.entries, key=lambda d: (d.procedure is None or not procedures))
     if len(ordered) > op.MAX_ENTRIES:
         out.dropped["entries_over_cap"] += len(ordered) - op.MAX_ENTRIES
-    entries = []
+    kept_drafts = []
     for draft in ordered[:op.MAX_ENTRIES]:
+        # Still failing after the operation's one retry (op._check):
+        if op.one_template(draft.questions):
+            out.dropped["questions_one_template"] += 1
+        elif reference and draft.kind == "how-to":
+            out.dropped["reference_howto"] += 1
+        elif reference and kept_drafts:
+            out.dropped["reference_extra"] += 1
+        else:
+            kept_drafts.append(draft)
+    entries = []
+    for draft in kept_drafts:
         steps = []
         # A section without procedures ignores a stray procedure number.
         procedure = draft.procedure if procedures else None
@@ -125,14 +163,19 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             steps = [{"text": step.text.strip(), "quote": item, "quote_offset": checks.quote_offset(item, chunk_text)}
                      for step, item in zip(draft.steps, items)]
         for step in draft.steps if procedure is None else []:
-            problem = checks.quote_problem(step.quote, chunk_text)
+            problem = checks.quote_problem(step.quote, chunk_text) or checks.lead_in_problem(step.quote, chunk_text)
             if problem:
                 out.dropped[problem] += 1
                 continue
             steps.append({"text": step.text.strip(), "quote": step.quote.strip(),
                           "quote_offset": checks.quote_offset(step.quote, chunk_text)})
+        if draft.kind == "reference" and steps:
+            out.dropped["reference_steps"] += len(steps)
+            steps = []
         answer, notes = draft.answer.strip(), []
         problem = checks.answer_problem(answer, chunk_text) if answer else None
+        if not problem and answer and op.vacuous_answer(answer):
+            problem = "answer_vacuous"
         if problem:
             out.dropped[problem] += 1
             notes.append(problem)

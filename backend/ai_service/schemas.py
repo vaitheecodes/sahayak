@@ -330,6 +330,8 @@ class DraftInput(BaseModel):
     known_terms: list[dict] = []  # {label, kind, aliases}
     # The section's numbered procedures, read by code (kb_ingester/steps.py).
     procedures: list[list[str]] = []
+    # Code found a reference table or parameter list (steps.is_reference).
+    reference: bool = False
 
 
 class DraftStep(BaseModel):
@@ -345,7 +347,7 @@ class DraftEntry(BaseModel):
     title: str = _text(120)
     questions: list[_Short] = Field(min_length=1, max_length=6)
     answer: str = Field(default="", max_length=1500)
-    kind: Literal["how-to", "troubleshooting"]
+    kind: Literal["how-to", "troubleshooting", "reference"]
     # Set when the entry rewrites procedure N of the ordered_steps block:
     # then it has exactly one step per item, in order.
     procedure: int | None = Field(default=None, ge=1, le=20)

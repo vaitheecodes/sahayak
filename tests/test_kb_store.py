@@ -79,7 +79,7 @@ def test_an_invalid_entry_imports_nothing(conn):
     ({"applies_to": ["Kubernetes"]}, "applies_to names 1 term(s) that aren't confirmed"),
     ({"steps": [{"text": "Open Leave."}]}, "step 1 needs the passage it is backed by (quote)"),
     ({"questions": []}, "questions needs at least one item"),
-    ({"kind": "faq"}, "kind must be one of how-to, troubleshooting"),
+    ({"kind": "faq"}, "kind must be one of how-to, troubleshooting, reference"),
     ({"handling": "auto"}, "handling must be one of answer, escalate_with_info"),
     ({"kb_entry_id": "KB-N0001"}, "kb_entry_id must look like KB-0001"),
     ({"answer": "", "steps": []}, "an approved entry needs an answer or steps"),

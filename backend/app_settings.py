@@ -145,13 +145,20 @@ class KBSettings(BaseModel):
 _MODEL_ID = r"^$|^[A-Za-z0-9][A-Za-z0-9.:_/-]{2,199}$"
 
 
+# KB drafting covered numbered procedures and forms best, and invented
+# least, with Nova Pro (scripts/kb_eval.py); its step check stays on Lite.
+DEFAULT_DRAFTING_MODEL = "apac.amazon.nova-pro-v1:0"
+
+
 class AIModelSettings(BaseModel):
     """A Bedrock model ID per operation (empty: BEDROCK_MODEL_ID, Nova Lite
     by default). Read by backends.BedrockBackend.model_id for calls made
     under backends.model_task(<operation>). The AWS role must be allowed to
-    invoke the model (bedrock:InvokeModel on its profile and foundation model)."""
+    invoke the model (bedrock:InvokeModel on its profile and foundation
+    model); when drafting's model fails, kb_ingester/drafting.py retries the
+    section once on the default model."""
 
-    draft_kb_entries: str = Field(default="", pattern=_MODEL_ID)
+    draft_kb_entries: str = Field(default=DEFAULT_DRAFTING_MODEL, pattern=_MODEL_ID)
     check_step_support: str = Field(default="", pattern=_MODEL_ID)
 
 

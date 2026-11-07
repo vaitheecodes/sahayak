@@ -125,3 +125,46 @@ def output_signals(fields: list[str], chunk_text: str) -> list[str]:
     if any(normalize(link).rstrip(".,;") not in source for link in _LINK.findall(joined)):
         signals.append("unknown_link")
     return signals
+
+
+def lead_in_problem(quote: str, chunk_text: str) -> str | None:
+    """A quote ending with a colon ("On Windows, run:") only introduces the
+    instruction; the command, value or list after it is the instruction.
+    "quote_lead_in" when the section continues after such a quote."""
+    if not quote.rstrip().endswith(":"):
+        return None
+    norm = normalize(quote).strip(" .\"'")
+    source = normalize(chunk_text)
+    at = source.find(norm)
+    if at < 0:
+        return None  # quote_problem reports it
+    return "quote_lead_in" if source[at + len(norm):].strip() else None
+
+
+# Words too generic to be a product term on their own.
+GENERIC_WORDS = frozenset("""
+    account accounts admin app application apps attachment button buttons calendar dashboard data date dates
+    description details document documents email feature features field fields file files form forms help
+    home link links list menu name option options page pages password profile query report reports request
+    requests search setting settings status tab table type url user users value values view window
+""".split())
+_FILE_OR_PATH = re.compile(r"[/\\]|^\.|\.[A-Za-z0-9]{1,5}$|^[\w-]+\.[\w-]+$")
+_URL_BITS = re.compile(r"://|^www\.|[?=&#%]|\burl\b|\bquery\b|\bendpoint\b|\bparam", re.IGNORECASE)
+
+
+def term_label_problem(label: str, chunk_text: str) -> str | None:
+    """Why a proposed term isn't a product term (None: it may be one):
+    term_field_label (the label of a "Field: ..." line), term_file (a file
+    name or path), term_url (a URL or a part of one), term_generic (a single
+    generic or lower-case word, e.g. "dates", "tutorial-env")."""
+    label = label.strip()
+    if re.search(rf"(?im)^\s*(?:[-*+]\s+|\d+\.\s+)?{re.escape(label)}\s*(?:\([^)]*\))?\s*:", chunk_text):
+        return "term_field_label"
+    if _URL_BITS.search(label):
+        return "term_url"
+    if _FILE_OR_PATH.search(label):
+        return "term_file"
+    words = label.split()
+    if len(words) == 1 and (label.lower() in GENERIC_WORDS or label == label.lower()):
+        return "term_generic"
+    return None
