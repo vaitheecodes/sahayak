@@ -328,12 +328,17 @@ class DraftInput(BaseModel):
     heading_path: str = ""
     page_title: str = ""
     known_terms: list[dict] = []  # {label, kind, aliases}
+    # The section's numbered procedures, read by code (kb_ingester/steps.py).
+    procedures: list[list[str]] = []
 
 
 class DraftStep(BaseModel):
     text: str = _text(400)
-    # Empty or not a passage of the chunk: the step is dropped by code.
-    quote: str = Field(default="", max_length=400)
+    # Empty or not a passage of the chunk: the step is dropped by code. For
+    # a procedure's steps code sets it to the item rewritten (models often
+    # copy the item, which can be long: a loose cap, the 500 is checked by
+    # kb_ingester/checks.py).
+    quote: str = Field(default="", max_length=4000)
 
 
 class DraftEntry(BaseModel):
@@ -341,7 +346,10 @@ class DraftEntry(BaseModel):
     questions: list[_Short] = Field(min_length=1, max_length=6)
     answer: str = Field(default="", max_length=1500)
     kind: Literal["how-to", "troubleshooting"]
-    steps: list[DraftStep] = _items(12)
+    # Set when the entry rewrites procedure N of the ordered_steps block:
+    # then it has exactly one step per item, in order.
+    procedure: int | None = Field(default=None, ge=1, le=20)
+    steps: list[DraftStep] = _items(40)
     applies_to: list[_Label] = _items(5)
     category: Category
     new_category: str | None = Field(default=None, max_length=41)
@@ -363,8 +371,9 @@ class ProposedCategory(BaseModel):
 
 
 class DraftedEntries(BaseModel):
-    entries: list[DraftEntry] = _items(4)
-    proposed_terms: list[ProposedTerm] = _items(8)
+    entries: list[DraftEntry] = _items(12)  # 6 asked for; extras trimmed by code
+    # Required (may be empty): models left it out when it was optional.
+    proposed_terms: list[ProposedTerm] = Field(max_length=8)
     proposed_categories: list[ProposedCategory] = _items(2)
 
 

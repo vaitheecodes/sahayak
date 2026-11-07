@@ -1,10 +1,14 @@
 """One chunk -> checked draft entries, proposed terms and categories.
 
   1. The chunk is checked for prompt-injection phrasing (flagged, never
-     acted on).
-  2. draft_kb_entries drafts entries (one model call).
-  3. Code checks every step's quote against the chunk; a step without a
-     real passage is dropped (quote_missing / quote_length /
+     acted on), and its numbered procedures are read by code (steps.py).
+  2. draft_kb_entries drafts entries (one model call). A procedure's entry
+     rewrites its items one for one (count and order enforced by the
+     operation); each step's quote is set here to the original item, and
+     the entry records how many steps its list has (procedure_steps), so a
+     reviewer sees "possibly incomplete (X of N)" when some are dropped.
+  3. Code checks every other step's quote against the chunk; a step
+     without a real passage is dropped (quote_missing / quote_length /
      quote_not_in_source).
   4. The answer must be a paraphrase (checks.answer_problem); one that
      isn't is removed (the entry stays if it still has steps).
@@ -30,6 +34,7 @@ from backend import categories, kb_store
 from backend.ai_service import draft_kb_entries as op
 from backend.ai_service.schemas import DraftInput, StepToCheck
 from kb_ingester import checks
+from kb_ingester.steps import ordered_lists
 
 # Drafting plus the step-support check: the most one chunk can cost.
 CALLS_PER_CHUNK = 2
@@ -92,10 +97,12 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
                 known_terms: list[dict], budget: Budget) -> ChunkResult:
     """known_terms: confirmed and proposed terms ({label, kind, aliases})."""
     out = ChunkResult(signals=checks.injection_signals(chunk_text))
+    procedures = ordered_lists(chunk_text)[:op.MAX_PROCEDURES]
     budget.spend()
     out.calls += 1
     drafted = op.draft_kb_entries(DraftInput(chunk_text=chunk_text, heading_path=heading_path,
-                                             page_title=page_title, known_terms=known_terms))
+                                             page_title=page_title, known_terms=known_terms,
+                                             procedures=procedures))
 
     known = {t["label"].lower(): t["label"] for t in known_terms}
     out.terms = _terms(drafted, chunk_text, known, out.dropped)
@@ -103,10 +110,21 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
     proposed_categories = {c.name: c for c in drafted.proposed_categories
                            if not categories.problem(c.name) and c.name not in categories.names()}
 
+    # Procedures' entries first, then the rest, up to MAX_ENTRIES.
+    ordered = sorted(drafted.entries, key=lambda d: (d.procedure is None or not procedures))
+    if len(ordered) > op.MAX_ENTRIES:
+        out.dropped["entries_over_cap"] += len(ordered) - op.MAX_ENTRIES
     entries = []
-    for draft in drafted.entries:
+    for draft in ordered[:op.MAX_ENTRIES]:
         steps = []
-        for step in draft.steps:
+        # A section without procedures ignores a stray procedure number.
+        procedure = draft.procedure if procedures else None
+        if procedure is not None:
+            # The operation checked one step per item, in order.
+            items = procedures[procedure - 1]
+            steps = [{"text": step.text.strip(), "quote": item, "quote_offset": checks.quote_offset(item, chunk_text)}
+                     for step, item in zip(draft.steps, items)]
+        for step in draft.steps if procedure is None else []:
             problem = checks.quote_problem(step.quote, chunk_text)
             if problem:
                 out.dropped[problem] += 1
@@ -119,7 +137,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             out.dropped[problem] += 1
             notes.append(problem)
             answer = ""
-        entries.append({"draft": draft, "steps": steps, "answer": answer, "notes": notes})
+        entries.append({"draft": draft, "steps": steps, "answer": answer, "notes": notes,
+                        "procedure_steps": len(procedures[procedure - 1]) if procedure else None})
 
     to_check = [StepToCheck(id=n, step=s["text"], quote=s["quote"])
                 for n, s in enumerate((s for e in entries for s in e["steps"]), start=1)]
@@ -160,7 +179,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             "applies_to": sorted({labels[t.strip().lower()] for t in draft.applies_to
                                   if t.strip().lower() in labels}),
             "notes": {"removed": e["notes"], "output_signals": signals,
-                      **({"proposed_category": new_category} if new_category else {})},
+                      **({"proposed_category": new_category} if new_category else {}),
+                      **({"procedure_steps": e["procedure_steps"]} if e["procedure_steps"] else {})},
         })
     out.categories = [{"name": c.name, "label": c.label.strip(), "description": c.description.strip()}
                       for name, c in proposed_categories.items() if name in used_categories]

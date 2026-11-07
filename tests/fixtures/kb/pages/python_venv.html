@@ -1,0 +1,184 @@
+<!-- Source: https://docs.python.org/3/tutorial/venv.html (main content, retrieved 2026-11-07). Licence: Python Software Foundation License; documentation copyright Python Software Foundation. Test fixture for the KB ingester eval. -->
+<div class="body" role="main">
+<section id="virtual-environments-and-packages">
+<span id="tut-venv"></span><h1><span class="section-number">12. </span>Virtual Environments and Packages<a class="headerlink" href="#virtual-environments-and-packages" title="Link to this heading">¶</a></h1>
+<section id="introduction">
+<h2><span class="section-number">12.1. </span>Introduction<a class="headerlink" href="#introduction" title="Link to this heading">¶</a></h2>
+<p>Python applications will often use packages and modules that don’t
+come as part of the standard library.  Applications will sometimes
+need a specific version of a library, because the application may
+require that a particular bug has been fixed or the application may be
+written using an obsolete version of the library’s interface.</p>
+<p>This means it may not be possible for one Python installation to meet
+the requirements of every application.  If application A needs version
+1.0 of a particular module but application B needs version 2.0, then
+the requirements are in conflict and installing either version 1.0 or 2.0
+will leave one application unable to run.</p>
+<p>The solution for this problem is to create a <a class="reference internal" href="../glossary.html#term-virtual-environment"><span class="xref std std-term">virtual environment</span></a>, a
+self-contained directory tree that contains a Python installation for a
+particular version of Python, plus a number of additional packages.</p>
+<p>Different applications can then use different virtual environments.
+To resolve the earlier example of conflicting requirements,
+application A can have its own virtual environment with version 1.0
+installed while application B has another virtual environment with version 2.0.
+If application B requires a library be upgraded to version 3.0, this will
+not affect application A’s environment.</p>
+</section>
+<section id="creating-virtual-environments">
+<h2><span class="section-number">12.2. </span>Creating Virtual Environments<a class="headerlink" href="#creating-virtual-environments" title="Link to this heading">¶</a></h2>
+<p>The module used to create and manage virtual environments is called
+<a class="reference internal" href="../library/venv.html#module-venv" title="venv: Creation of virtual environments."><code class="xref py py-mod docutils literal notranslate"><span class="pre">venv</span></code></a>.  <code class="xref py py-mod docutils literal notranslate"><span class="pre">venv</span></code> will install the Python version from which
+the command was run (as reported by the <a class="reference internal" href="../using/cmdline.html#cmdoption-version"><code class="xref std std-option docutils literal notranslate"><span class="pre">--version</span></code></a> option).
+For instance, executing the command with <code class="docutils literal notranslate"><span class="pre">python3.12</span></code> will install
+version 3.12.</p>
+<p>To create a virtual environment, decide upon a directory where you want to
+place it, and run the <a class="reference internal" href="../library/venv.html#module-venv" title="venv: Creation of virtual environments."><code class="xref py py-mod docutils literal notranslate"><span class="pre">venv</span></code></a> module as a script with the directory path:</p>
+<div class="highlight-python3 notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">venv</span> <span class="n">tutorial</span><span class="o">-</span><span class="n">env</span>
+</pre></div>
+</div>
+<p>This will create the <code class="docutils literal notranslate"><span class="pre">tutorial-env</span></code> directory if it doesn’t exist,
+and also create directories inside it containing a copy of the Python
+interpreter and various supporting files.</p>
+<p>A common directory location for a virtual environment is <code class="docutils literal notranslate"><span class="pre">.venv</span></code>.
+This name keeps the directory typically hidden in your shell and thus
+out of the way while giving it a name that explains why the directory
+exists. It also prevents clashing with <code class="docutils literal notranslate"><span class="pre">.env</span></code> environment variable
+definition files that some tooling supports.</p>
+<p>Once you’ve created a virtual environment, you may activate it.</p>
+<p>On Windows, run:</p>
+<div class="highlight-python3 notranslate"><div class="highlight"><pre><span></span><span class="n">tutorial</span><span class="o">-</span><span class="n">env</span>\<span class="n">Scripts</span>\<span class="n">activate</span>
+</pre></div>
+</div>
+<p>On Unix or MacOS, run:</p>
+<div class="highlight-python3 notranslate"><div class="highlight"><pre><span></span><span class="n">source</span> <span class="n">tutorial</span><span class="o">-</span><span class="n">env</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
+</pre></div>
+</div>
+<p>(This script is written for the bash shell.  If you use the
+<strong class="program">csh</strong> or <strong class="program">fish</strong> shells, there are alternate
+<code class="docutils literal notranslate"><span class="pre">activate.csh</span></code> and <code class="docutils literal notranslate"><span class="pre">activate.fish</span></code> scripts you should use
+instead.)</p>
+<p>Activating the virtual environment will change your shell’s prompt to show what
+virtual environment you’re using, and modify the environment so that running
+<code class="docutils literal notranslate"><span class="pre">python</span></code> will get you that particular version and installation of Python.
+For example:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nb">source</span><span class="w"> </span>~/envs/tutorial-env/bin/activate
+<span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python
+<span class="go">Python 3.5.1 (default, May  6 2016, 10:59:36)</span>
+<span class="go">  ...</span>
+<span class="go">&gt;&gt;&gt; import sys</span>
+<span class="go">&gt;&gt;&gt; sys.path</span>
+<span class="go">['', '/usr/local/lib/python35.zip', ...,</span>
+<span class="go">'~/envs/tutorial-env/lib/python3.5/site-packages']</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>Note that the activated virtual environment does not alter the <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> variable in any way.
+This may lead to unexpected results if the path includes references to code which is incompatible with
+the Python version the virtual environment is using. The best practice is to <code class="docutils literal notranslate"><span class="pre">unset</span> <span class="pre">PYTHONPATH</span></code>
+in bash or the equivalent for the shell you are using.</p>
+<p>To deactivate a virtual environment, type:</p>
+<div class="highlight-python3 notranslate"><div class="highlight"><pre><span></span><span class="n">deactivate</span>
+</pre></div>
+</div>
+<p>into the terminal.</p>
+</section>
+<section id="managing-packages-with-pip">
+<h2><span class="section-number">12.3. </span>Managing Packages with pip<a class="headerlink" href="#managing-packages-with-pip" title="Link to this heading">¶</a></h2>
+<p>You can install, upgrade, and remove packages using a program called
+<strong class="program">pip</strong>.  By default <code class="docutils literal notranslate"><span class="pre">pip</span></code> will install packages from the <a class="reference external" href="https://pypi.org">Python
+Package Index</a>.  You can browse the Python
+Package Index by going to it in your web browser.</p>
+<p><code class="docutils literal notranslate"><span class="pre">pip</span></code> has a number of subcommands: “install”, “uninstall”,
+“freeze”, etc.  (Consult the <a class="reference internal" href="../installing/index.html#installing-index"><span class="std std-ref">Installing Python modules</span></a> guide for
+complete documentation for <code class="docutils literal notranslate"><span class="pre">pip</span></code>.)</p>
+<p>You can install the latest version of a package by specifying a package’s name:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>novas
+<span class="go">Collecting novas</span>
+<span class="go">  Downloading novas-3.1.1.3.tar.gz (136kB)</span>
+<span class="go">Installing collected packages: novas</span>
+<span class="go">  Running setup.py install for novas</span>
+<span class="go">Successfully installed novas-3.1.1.3</span>
+</pre></div>
+</div>
+<p>You can also install a specific version of a package by giving the
+package name  followed by <code class="docutils literal notranslate"><span class="pre">==</span></code> and the version number:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">requests</span><span class="o">==</span><span class="m">2</span>.6.0
+<span class="go">Collecting requests==2.6.0</span>
+<span class="go">  Using cached requests-2.6.0-py2.py3-none-any.whl</span>
+<span class="go">Installing collected packages: requests</span>
+<span class="go">Successfully installed requests-2.6.0</span>
+</pre></div>
+</div>
+<p>If you re-run this command, <code class="docutils literal notranslate"><span class="pre">pip</span></code> will notice that the requested
+version is already installed and do nothing.  You can supply a
+different version number to get that version, or you can run <code class="docutils literal notranslate"><span class="pre">python</span>
+<span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--upgrade</span></code> to upgrade the package to the latest version:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>requests
+<span class="go">Collecting requests</span>
+<span class="go">Installing collected packages: requests</span>
+<span class="go">  Found existing installation: requests 2.6.0</span>
+<span class="go">    Uninstalling requests-2.6.0:</span>
+<span class="go">      Successfully uninstalled requests-2.6.0</span>
+<span class="go">Successfully installed requests-2.7.0</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">uninstall</span></code> followed by one or more package names will
+remove the packages from the virtual environment.</p>
+<p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">show</span></code> will display information about a particular package:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>show<span class="w"> </span>requests
+<span class="go">---</span>
+<span class="go">Metadata-Version: 2.0</span>
+<span class="go">Name: requests</span>
+<span class="go">Version: 2.7.0</span>
+<span class="go">Summary: Python HTTP for Humans.</span>
+<span class="go">Home-page: http://python-requests.org</span>
+<span class="go">Author: Kenneth Reitz</span>
+<span class="go">Author-email: me@kennethreitz.com</span>
+<span class="go">License: Apache 2.0</span>
+<span class="go">Location: /Users/akuchling/envs/tutorial-env/lib/python3.4/site-packages</span>
+<span class="go">Requires:</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">list</span></code> will display all of the packages installed in
+the virtual environment:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>list
+<span class="go">novas (3.1.1.3)</span>
+<span class="go">numpy (1.9.2)</span>
+<span class="go">pip (7.0.3)</span>
+<span class="go">requests (2.7.0)</span>
+<span class="go">setuptools (16.0)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">freeze</span></code> will produce a similar list of the installed packages,
+but the output uses the format that <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">install</span></code> expects.
+A common convention is to put this list in a <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> file:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>freeze<span class="w"> </span>&gt;<span class="w"> </span>requirements.txt
+<span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>cat<span class="w"> </span>requirements.txt
+<span class="go">novas==3.1.1.3</span>
+<span class="go">numpy==1.9.2</span>
+<span class="go">requests==2.7.0</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> can then be committed to version control and
+shipped as part of an application.  Users can then install all the
+necessary packages with <code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">-r</span></code>:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp gp-VirtualEnv">(tutorial-env)</span> <span class="gp">$ </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<span class="go">Collecting novas==3.1.1.3 (from -r requirements.txt (line 1))</span>
+<span class="go">  ...</span>
+<span class="go">Collecting numpy==1.9.2 (from -r requirements.txt (line 2))</span>
+<span class="go">  ...</span>
+<span class="go">Collecting requests==2.7.0 (from -r requirements.txt (line 3))</span>
+<span class="go">  ...</span>
+<span class="go">Installing collected packages: novas, numpy, requests</span>
+<span class="go">  Running setup.py install for novas</span>
+<span class="go">Successfully installed novas-3.1.1.3 numpy-1.9.2 requests-2.7.0</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">pip</span></code> has many more options.  Consult the <a class="reference internal" href="../installing/index.html#installing-index"><span class="std std-ref">Installing Python modules</span></a>
+guide for complete documentation for <code class="docutils literal notranslate"><span class="pre">pip</span></code>.  When you’ve written
+a package and want to make it available on the Python Package Index,
+consult the <a class="reference external" href="https://packaging.python.org/en/latest/tutorials/packaging-projects/">Python packaging user guide</a>.</p>
+</section>
+</section>
+<div class="clearer"></div>
+</div>

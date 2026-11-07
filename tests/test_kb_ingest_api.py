@@ -172,7 +172,7 @@ def test_a_changed_page_drafts_only_new_chunks_and_flags_stale_entries(client, m
     _run(client, manager, source_id)
     [old] = client.get("/api/kb/entries", headers=manager).json()["entries"]
     web.page("help.example.com", "/leave", http_response(LEAVE_PAGE.replace("left menu", "top bar")))
-    model.drafts = lambda chunk: leave_drafts(chunk.replace("top bar", "left menu")) | {"entries": []}
+    model.drafts = leave_drafts
     run = _run(client, manager, source_id)
     assert run["estimate"]["chunks_to_draft"] == 1 and run["status"] == "done"
     stale = client.get(f"/api/kb/entries/{old['kb_entry_id']}", headers=manager).json()
@@ -198,7 +198,7 @@ def _part_drafts(chunk):
     return {"entries": [{"title": f"Part {part}", "questions": [f"How do I use part {part}?"],
                          "answer": f"Part {part} is where this happens.", "kind": "how-to",
                          "steps": [{"text": f"Open part {part}.", "quote": f"Open part {part} from the menu."}],
-                         "applies_to": [], "category": "USAGE"}]}
+                         "applies_to": [], "category": "USAGE"}], "proposed_terms": []}
 
 
 def test_a_run_stops_cleanly_at_its_cap_and_the_next_run_resumes(client, manager, web, model):

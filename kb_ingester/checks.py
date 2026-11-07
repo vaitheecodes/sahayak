@@ -1,8 +1,8 @@
 """Checks the drafter's output must pass, done by code, never the model.
 
 - quote_offset: a step's quote must be a passage of its chunk (compared
-  after normalising case, whitespace, quote marks and dashes), 15-300
-  characters.
+  after normalising case, whitespace, spacing around punctuation, doubled
+  backslashes, quote marks and dashes), 15-500 characters.
 - answer_problem: the answer must be a paraphrase. It is refused if it
   shares a run of VERBATIM_RUN_WORDS words with the chunk, or if more
   than MAX_TRIGRAM_OVERLAP of its word trigrams appear in the chunk.
@@ -21,7 +21,7 @@ import re
 import unicodedata
 
 MIN_QUOTE_CHARS = 15
-MAX_QUOTE_CHARS = 300
+MAX_QUOTE_CHARS = 500
 VERBATIM_RUN_WORDS = 12
 MAX_TRIGRAM_OVERLAP = 0.6
 
@@ -39,7 +39,12 @@ def normalize(text: str) -> str:
     # Markdown emphasis and list markers aren't part of what a quote says.
     text = re.sub(r"[*_`]+", "", text)
     text = re.sub(r"(?m)^\s*(?:[-+]|\d+\.)\s+", "", text)
-    return " ".join(text.split())
+    # Models double backslashes when they escape a quote for JSON, and
+    # drop or add the space before punctuation ("characters ., -").
+    text = text.replace("\\\\", "\\")
+    text = " ".join(text.split())
+    text = re.sub(r" ([,.;:!?)\]])", r"\1", text)
+    return re.sub(r"([(\[]) ", r"\1", text)
 
 
 def quote_problem(quote: str, chunk_text: str) -> str | None:

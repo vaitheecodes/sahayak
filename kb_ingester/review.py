@@ -11,6 +11,8 @@ may have changed.
   was made on, so two reviewers can't overwrite each other. A step's
   quote must still be a passage of the chunk while the chunk text is
   kept; a step whose text or quote changed loses its model support check.
+- An entry that rewrites a numbered list of N steps but has fewer is
+  flagged "incomplete" (X of N); approving it needs acknowledge_incomplete.
 - Approving runs the same validation as an import (an approved entry may
   only apply to confirmed terms). Approved and rejected entries are no
   longer editable here.
@@ -48,8 +50,19 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 # Entries
 # ---------------------------------------------------------------------------
-def _flags(row: dict, notes: dict) -> list[str]:
+def completeness(notes: dict, step_count: int) -> dict | None:
+    """{"kept": X, "expected": N} when the entry rewrites a numbered list of
+    N steps and has fewer than N now; else None."""
+    expected = notes.get("procedure_steps")
+    if expected and step_count < expected:
+        return {"kept": step_count, "expected": expected}
+    return None
+
+
+def _flags(row: dict, notes: dict, step_count: int | None = None) -> list[str]:
     flags = []
+    if step_count is not None and completeness(notes, step_count):
+        flags.append("incomplete")
     if row.get("duplicate_of"):
         flags.append("duplicate")
     if row.get("stale"):
@@ -86,7 +99,8 @@ def list_entries(conn, *, status: str | None = "draft", flag: str | None = None,
     for row in conn.execute(sql, params):
         row = dict(row)
         notes = json.loads(row.pop("draft_notes") or "{}")
-        row["flags"] = _flags(row, notes)
+        row["flags"] = _flags(row, notes, row["step_count"])
+        row["completeness"] = completeness(notes, row["step_count"])
         row.pop("flagged_injection")
         if flag and flag not in row["flags"]:
             continue
@@ -125,7 +139,8 @@ def entry_detail(conn, entry_id: str) -> dict:
         chunk = dict(c) if c else None
     source = None
     if row.get("document_id"):
-        s = conn.execute("SELECT s.source_id, s.name, s.public_confirmed_by, s.public_confirmed_at, d.url, d.title "
+        s = conn.execute("SELECT s.source_id, s.name, s.public_confirmed_by, s.public_confirmed_at, s.licence_note, "
+                         "d.url, d.title "
                          "FROM kb_documents d JOIN kb_sources s ON s.source_id = d.source_id WHERE d.document_id = ?",
                          (row["document_id"],)).fetchone()
         source = dict(s) if s else None
@@ -145,7 +160,8 @@ def entry_detail(conn, entry_id: str) -> dict:
         "updated_at": row["updated_at"], "reviewed_by": row["reviewed_by"],
         "reviewed_by_name": staff_name(conn, row["reviewed_by"]), "updated_by_name": staff_name(conn, row["updated_by"]),
         "reviewed_at": row["reviewed_at"],
-        "review_note": row["review_note"], "notes": notes, "flags": _flags({**row, **(chunk or {})}, notes),
+        "review_note": row["review_note"], "notes": notes, "flags": _flags({**row, **(chunk or {})}, notes, len(entry["steps"])),
+        "completeness": completeness(notes, len(entry["steps"])),
         "chunk": chunk, "source": source, "duplicate": duplicate, "terms": terms,
     }
 
@@ -176,7 +192,8 @@ def update_draft(conn, entry_id: str, changes: dict, *, version: int, actor: str
         checked = []
         for i, step in enumerate(steps, start=1):
             text, quote = str(step.get("text") or "").strip(), str(step.get("quote") or "").strip()
-            if chunk and chunk["text"] and checks.quote_problem(quote, chunk["text"]):
+            unchanged_quote = any(s["quote"] == quote for s in current["steps"])
+            if chunk and chunk["text"] and not unchanged_quote and checks.quote_problem(quote, chunk["text"]):
                 raise ReviewError(f"Step {i}: the quote must be a passage of the source section "
                                   f"({checks.quote_problem(quote, chunk['text'])})")
             old = before.get((text, quote))
@@ -197,17 +214,26 @@ def _purge_if_decided(conn, row: dict) -> None:
         purge_chunks(conn)
 
 
-def approve(conn, entry_id: str, *, version: int, actor: str, note: str = "") -> None:
+def approve(conn, entry_id: str, *, version: int, actor: str, note: str = "",
+            acknowledge_incomplete: bool = False) -> None:
+    """An entry with fewer steps than the numbered list it rewrites is
+    approved only with acknowledge_incomplete (the reviewer checked that
+    the missing steps aren't needed)."""
     row = _row(conn, entry_id)
     _check_version(row, version)
     entry = _pack(conn, entry_id)
+    notes = json.loads(row.get("draft_notes") or "{}")
+    gap = completeness(notes, len(entry["steps"]))
+    if gap and not acknowledge_incomplete:
+        raise ReviewError(f"Possibly incomplete: {gap['kept']} of {gap['expected']} steps of the page's list. "
+                          "Confirm the missing steps aren't needed to approve it.", 409)
     try:
         kb_store.save_entry(conn, entry, status="approved", actor=actor)
     except ValueError as exc:
         raise ReviewError(str(exc)) from None
     conn.execute("UPDATE kb_entries SET review_note = ? WHERE kb_entry_id = ?", (note.strip()[:500] or None, entry_id))
-    audit.record(conn, actor, "kb.entry.approve", "kb_entry", entry_id, flags=_flags(row, json.loads(
-        row.get("draft_notes") or "{}")))
+    audit.record(conn, actor, "kb.entry.approve", "kb_entry", entry_id,
+                 flags=_flags(row, notes, len(entry["steps"])), **({"acknowledged_incomplete": gap} if gap else {}))
     _purge_if_decided(conn, row)
 
 

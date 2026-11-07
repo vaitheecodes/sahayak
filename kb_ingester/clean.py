@@ -3,8 +3,9 @@
 HTML: scripts, styles, forms, navigation, sidebars, cookie/consent
 banners and share widgets go; the main content (<main>, role=main or
 <article>, else <body>) is rendered block by block: h1-h3 as "#"/"##"/
-"###" lines (what the chunker splits on), h4-h6 as plain lines, list
-items as "- " or "1. ", table rows as "a | b", <pre> kept as-is. Plain
+"###" lines (what the chunker splits on), h4-h6 as plain lines, each
+list item as ONE "- " or "1. " line (nested lists indented two spaces),
+table rows as "a | b", <pre> kept as-is. Plain
 text and Markdown pass through with their line breaks.
 """
 
@@ -31,6 +32,7 @@ _SPACES = re.compile(r"[ \t\r\f\v\u00a0]+")
 # Permalink anchors docs generators add to headings (Sphinx "\u00b6", "#", "\U0001f517").
 _ANCHOR_CLASSES = re.compile(r"(^|[\s_-])(headerlink|anchor|anchorjs-link|heading-anchor|permalink)($|[\s_-])",
                              re.IGNORECASE)
+_STRAY_COMMA = re.compile(r" ,(?=\s|$)")
 _ANCHOR_TAIL = re.compile("[\\s\u00b6#\U0001f517]+$")
 
 
@@ -51,24 +53,52 @@ def _is_noise(tag: Tag) -> bool:
     return bool(names.strip()) and bool(_NOISE_NAMES.search(names))
 
 
+def _one_line(node) -> str:
+    """A block's text as one line (its paragraphs joined by a space)."""
+    inner = _Renderer()
+    inner.walk(node)
+    inner.flush()
+    return " ".join(line for line in inner.lines if line.strip())
+
+
 class _Renderer:
     def __init__(self):
         self.lines: list[str] = []
         self.inline: list[str] = []
-        self.pending = ""  # a list item's "- " / "1. ", for its first line
 
     def flush(self, prefix: str = "") -> None:
         text = _SPACES.sub(" ", "".join(self.inline)).strip()
+        # An inline icon removed from "select <icon>, then" leaves a stray " ,".
+        text = _STRAY_COMMA.sub(",", text)
         self.inline = []
         if text:
-            self.lines.append((prefix or self.pending) + text)
-            self.pending = ""
+            self.lines.append(prefix + text)
 
     def blank(self) -> None:
         if self.lines and self.lines[-1] != "":
             self.lines.append("")
 
-    def walk(self, node, list_kind: str | None = None) -> None:
+    def list_(self, tag: Tag, depth: int = 0) -> None:
+        """Each item on ONE line ("1. ..." / "- ..."), nested lists after
+        it indented two spaces per level, so a numbered procedure stays a
+        run of "N. " lines (kb_ingester/steps.py reads them back)."""
+        try:
+            number = int(tag.get("start") or 1)
+        except ValueError:
+            number = 1
+        for item in tag.find_all("li", recursive=False):
+            nested = [sub for sub in item.find_all(["ul", "ol"]) if sub.find_parent("li") is item]
+            for sub in nested:
+                sub.extract()
+            text = _one_line(item)
+            if text:
+                marker = f"{number}. " if tag.name == "ol" else "- "
+                self.lines.append("  " * depth + marker + text)
+                number += 1
+            for sub in nested:
+                self.list_(sub, depth + 1)
+
+    def walk(self, node) -> None:
         for child in list(node.children):
             if isinstance(child, Comment):
                 continue
@@ -87,21 +117,9 @@ class _Renderer:
                 self.blank()
             elif name in ("ul", "ol"):
                 self.flush()
-                self.walk(child, name)
                 self.blank()
-            elif name == "li":
-                self.flush()
-                index = len([s for s in child.find_previous_siblings("li")]) + 1
-                prefix = f"{index}. " if list_kind == "ol" else "- "
-                nested = [c for c in child.children if isinstance(c, Tag) and c.name in ("ul", "ol")]
-                for sub in nested:
-                    sub.extract()
-                self.pending = prefix
-                self.walk(child, "li")
-                self.flush()
-                self.pending = ""
-                for sub in nested:
-                    self.walk(sub, sub.name)
+                self.list_(child)
+                self.blank()
             elif name == "pre":
                 self.flush()
                 self.blank()
@@ -111,7 +129,7 @@ class _Renderer:
                 self.flush()
                 self.blank()
                 for row in child.find_all("tr"):
-                    cells = [_SPACES.sub(" ", c.get_text(" ")).strip() for c in row.find_all(["th", "td"])]
+                    cells = [_one_line(c) for c in row.find_all(["th", "td"])]
                     if any(cells):
                         self.lines.append(" | ".join(cells))
                 self.blank()
@@ -121,10 +139,9 @@ class _Renderer:
                 self.flush()
                 self.walk(child)
                 self.flush()
-                if list_kind is None:
-                    self.blank()
+                self.blank()
             else:
-                self.walk(child, list_kind)
+                self.walk(child)
 
 
 def html_to_text(body: bytes | str, charset: str | None = None) -> CleanDocument:

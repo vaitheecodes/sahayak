@@ -45,7 +45,7 @@ TERM_KINDS = ("module", "variant", "platform", "integration", "edition")
 TERM_STATUSES = ("proposed", "confirmed", "rejected", "merged")
 LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ()/+.&'-]{0,40}$")
 MAX_QUESTIONS = 10
-MAX_STEPS = 20
+MAX_STEPS = 40
 MAX_COLLECT = 10
 
 
@@ -91,6 +91,9 @@ def entry_problems(entry: dict, *, approved: bool, known_terms: set[str]) -> lis
         problems.append("title is required")
     if entry.get("category") not in categories.names():
         problems.append("category is not a confirmed category")
+    if entry.get("source_licence") is not None and (not isinstance(entry["source_licence"], str)
+                                                    or len(entry["source_licence"]) > 200):
+        problems.append("source_licence must be text of at most 200 characters")
     if entry.get("kind") is not None and entry["kind"] not in KINDS:
         problems.append(f"kind must be one of {', '.join(KINDS)}")
     if (entry.get("handling") or "answer") not in HANDLING:
@@ -213,11 +216,11 @@ def save_entry(conn, entry: dict, *, status: str, actor: str, draft: dict | None
     reviewed = (actor, now) if status in ("approved", "rejected") else (None, None)
     values = (status, entry["title"].strip(), (entry.get("answer") or "").strip(), entry.get("kind"),
               entry.get("handling") or "answer", json.dumps([c.strip() for c in entry.get("collect") or []]),
-              entry["category"], entry.get("source_url"))
+              entry["category"], entry.get("source_url"), entry.get("source_licence"))
     if conn.execute("SELECT 1 FROM kb_entries WHERE kb_entry_id = ?", (entry_id,)).fetchone():
         conn.execute(
             "UPDATE kb_entries SET status = ?, title = ?, answer = ?, kind = ?, handling = ?, collect = ?, "
-            "category = ?, source_url = ?, updated_by = ?, updated_at = ?, reviewed_by = ?, reviewed_at = ?, "
+            "category = ?, source_url = ?, source_licence = ?, updated_by = ?, updated_at = ?, reviewed_by = ?, reviewed_at = ?, "
             "version = version + 1 WHERE kb_entry_id = ?",
             (*values, actor, now, *reviewed, entry_id),
         )
@@ -230,8 +233,8 @@ def save_entry(conn, entry: dict, *, status: str, actor: str, draft: dict | None
         columns = "".join(f", {k}" for k in draft)
         conn.execute(
             "INSERT INTO kb_entries (status, title, answer, kind, handling, collect, category, source_url, "
-            f"kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, reviewed_at{columns}) "
-            f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{', ?' * len(draft)})",
+            f"source_licence, kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, reviewed_at"
+            f"{columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{', ?' * len(draft)})",
             (*values, entry_id, actor, now, actor, now, *reviewed, *draft.values()),
         )
     questions = [q.strip() for q in entry["questions"] if q.strip()]
@@ -269,6 +272,7 @@ def _entries(conn, where: str = "", params: tuple = ()) -> list[dict]:
         "collect": json.loads(row["collect"]), "questions": questions.get(row["kb_entry_id"], []),
         "answer": row["answer"], "steps": steps.get(row["kb_entry_id"], []),
         "applies_to": terms.get(row["kb_entry_id"], []), "source_url": row["source_url"],
+        **({"source_licence": row["source_licence"]} if row["source_licence"] else {}),
     } for row in rows]
 
 

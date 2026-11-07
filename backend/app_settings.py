@@ -142,9 +142,23 @@ class KBSettings(BaseModel):
     chunk_retention_days: int = Field(default=30, ge=1, le=365)
 
 
+_MODEL_ID = r"^$|^[A-Za-z0-9][A-Za-z0-9.:_/-]{2,199}$"
+
+
+class AIModelSettings(BaseModel):
+    """A Bedrock model ID per operation (empty: BEDROCK_MODEL_ID, Nova Lite
+    by default). Read by backends.BedrockBackend.model_id for calls made
+    under backends.model_task(<operation>). The AWS role must be allowed to
+    invoke the model (bedrock:InvokeModel on its profile and foundation model)."""
+
+    draft_kb_entries: str = Field(default="", pattern=_MODEL_ID)
+    check_step_support: str = Field(default="", pattern=_MODEL_ID)
+
+
 SECTIONS: dict[str, type[BaseModel]] = {
     "product": ProductSettings,
     "kb": KBSettings,
+    "ai_models": AIModelSettings,
     "routing": RoutingSettings,
     "incidents": IncidentSettings,
     "statuses": StatusLabels,

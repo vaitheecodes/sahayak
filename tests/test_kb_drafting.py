@@ -1,6 +1,10 @@
 """draft_kb_entries and the checks around it (kb_ingester/drafting.py,
-checks.py, backend/ai_service/draft_kb_entries.py). The model is scripted
-(tests/kb_ingest_helpers.ScriptedModel); nothing reaches a provider.
+checks.py, steps.py, backend/ai_service/draft_kb_entries.py). The model is
+scripted (tests/kb_ingest_helpers.ScriptedModel); nothing reaches a provider.
+
+- A numbered list is read by code; the model rewrites it one step per
+  item (count enforced, retried once), each step quoting its item, and
+  the entry records the list's length for the completeness flag.
 
 - A step survives only with a quote that is a passage of the chunk AND
   the second model check saying the quote supports it.
@@ -26,9 +30,9 @@ Your manager gets a notification and approves or declines the request.
 
 ## Steps
 
-1. Open the Leave module from the left menu.
-2. Click Apply Leave and choose the leave type.
-3. Pick the start and end dates, then click Submit."""
+Open the Leave module from the left menu.
+Click Apply Leave and choose the leave type.
+Pick the start and end dates, then click Submit."""
 
 
 def _draft(monkeypatch, drafts, *, supported=None, chunk=CHUNK, known_terms=(), cap=10):
@@ -59,7 +63,7 @@ def test_a_good_draft_keeps_its_steps_and_costs_two_calls(monkeypatch):
     ("", "quote_missing"),
     ("Open it", "quote_length"),
     ("Open the Payroll module from the top bar.", "quote_not_in_source"),
-    ("x" * 350, "quote_length"),
+    ("x" * 550, "quote_length"),
 ])
 def test_a_step_without_a_real_passage_is_dropped(monkeypatch, quote, code):
     steps = leave_drafts(CHUNK)["entries"][0]["steps"]
@@ -70,7 +74,7 @@ def test_a_step_without_a_real_passage_is_dropped(monkeypatch, quote, code):
 
 def test_quotes_match_across_case_whitespace_quote_marks_and_list_markers():
     assert checks.quote_problem("click  APPLY leave and choose the leave type", CHUNK) is None
-    assert checks.quote_problem("2. Click Apply Leave and choose the leave type.", CHUNK) is None
+    assert checks.quote_problem("- Click Apply Leave and choose the leave type.", CHUNK) is None
     assert checks.quote_problem("Click “Save” now", 'Click "Save" now please') is None
 
 
@@ -227,3 +231,158 @@ def test_the_prompt_lists_categories_and_the_product(monkeypatch):
     assert "Brightdesk HR (an HR system)" in system
     assert "- USAGE: Using the product" in block("categories", user)
     assert block("page", user) == "Title: Leave\nSection: Apply for leave"
+
+
+# ---------------------------------------------------------------------------
+# Quote normalisation
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("quote, chunk", [
+    ("select, then click New repository", "In the upper-right corner, select , then click New repository."),
+    ("only contain digits, and the characters., -, and _", "can only contain digits, and the characters ., -, and _."),
+    ("On Windows, run tutorial-env\\\\Scripts\\\\activate", "On Windows, run tutorial-env\\Scripts\\activate"),
+    ("Open the menu ( top left ) and pick Leave", "Open the menu (top left) and pick Leave."),
+])
+def test_quotes_ignore_spacing_around_punctuation_and_doubled_backslashes(quote, chunk):
+    assert checks.quote_problem(quote, chunk) is None
+
+
+def test_quotes_may_be_up_to_500_characters():
+    sentence = "word " * 95
+    assert checks.quote_problem(sentence, sentence) is None
+    assert checks.quote_problem("word " * 110, "word " * 110) == "quote_length"
+
+
+# ---------------------------------------------------------------------------
+# Numbered procedures
+# ---------------------------------------------------------------------------
+NUMBERED = """# Apply for leave
+
+Your manager approves each request.
+
+1. Open the Leave module from the left menu.
+2. Click Apply Leave and choose the leave type.
+  - Casual leave needs no document.
+3. Pick the start and end dates, then click Submit."""
+
+
+def _procedure(n_steps, **extra):
+    entry = {"title": "Apply for leave", "questions": ["how do I book leave?", "can't find apply leave", "leave?"],
+             "answer": "Your manager approves it after you send it.", "kind": "how-to", "procedure": 1,
+             "steps": [{"text": f"Step {i} in my words."} for i in range(1, n_steps + 1)], "category": "USAGE",
+             **extra}
+    return {"entries": [entry], "proposed_terms": [], "proposed_categories": []}
+
+
+def _draft_numbered(monkeypatch, replies, supported=None):
+    queue = list(replies)
+    model = ScriptedModel(lambda chunk: queue.pop(0) if len(queue) > 1 else queue[0], supported).install(monkeypatch)
+    budget = Budget(10)
+    result = draft_chunk(NUMBERED, heading_path="Apply for leave", page_title="Leave", source_url="https://h/x",
+                         known_terms=[], budget=budget)
+    return result, model
+
+
+def test_a_numbered_list_is_rewritten_one_step_per_item_quoting_each_item(monkeypatch):
+    result, model = _draft_numbered(monkeypatch, [_procedure(3)])
+    [entry] = result.entries
+    assert [s["text"] for s in entry["steps"]] == ["Step 1 in my words.", "Step 2 in my words.", "Step 3 in my words."]
+    assert [s["quote"] for s in entry["steps"]] == [
+        "Open the Leave module from the left menu.",
+        "Click Apply Leave and choose the leave type.\n  - Casual leave needs no document.",
+        "Pick the start and end dates, then click Submit."]
+    assert all(s["quote_offset"] is not None and s["support_check"] == "supported" for s in entry["steps"])
+    assert entry["notes"]["procedure_steps"] == 3
+    draft_call = model.calls[0]
+    assert block("ordered_steps", draft_call["user"]).startswith(
+        "Procedure 1 (3 steps):\n[1] Open the Leave module from the left menu.\n[2] Click Apply Leave")
+    assert "exactly one entry per procedure" in draft_call["system"]
+    assert "never add generic steps" in draft_call["system"]
+
+
+def test_a_wrong_step_count_is_sent_back_once_with_the_counts(monkeypatch):
+    result, model = _draft_numbered(monkeypatch, [_procedure(2), _procedure(3)])
+    assert len(result.entries[0]["steps"]) == 3
+    assert model.count("draft") == 2
+    assert "procedure 1 needs exactly 3 steps" in model.calls[1]["correction"]
+
+
+@pytest.mark.parametrize("bad", [
+    _procedure(4),
+    {"entries": [], "proposed_terms": [], "proposed_categories": []},
+    _procedure(3, procedure=2),
+    {"entries": _procedure(1)["entries"] * 2, "proposed_terms": []},  # split, but 2 steps of 3
+])
+def test_a_procedure_without_one_step_per_item_fails_after_the_retry(monkeypatch, bad):
+    with pytest.raises(AIError):
+        _draft_numbered(monkeypatch, [bad])
+
+
+def test_an_unsupported_rewrite_is_dropped_and_the_entry_shows_the_gap(monkeypatch):
+    result, _ = _draft_numbered(monkeypatch, [_procedure(3)], supported=lambda step, quote: "2" not in step)
+    [entry] = result.entries
+    assert len(entry["steps"]) == 2 and entry["notes"]["procedure_steps"] == 3
+    assert result.dropped["not_supported"] == 1
+
+
+def test_proposed_terms_are_required_in_the_reply(monkeypatch):
+    reply = _procedure(3)
+    del reply["proposed_terms"]
+    with pytest.raises(AIError):
+        _draft_numbered(monkeypatch, [reply])
+
+
+def test_a_stray_procedure_number_on_a_prose_section_is_ignored(monkeypatch):
+    """Nova Lite numbered its own entries as procedures on a section with
+    no numbered list; that must not fail the reply."""
+    result, _, _ = _draft(monkeypatch, _entry(procedure=2))
+    [entry] = result.entries
+    assert "procedure_steps" not in entry["notes"] and len(entry["steps"]) == 3
+
+
+def test_the_procedure_field_is_offered_only_for_the_sections_procedures():
+    from backend.ai_service import draft_kb_entries as op
+
+    def props(n):
+        return op._schema(n).model_json_schema()["$defs"]["DraftEntry"]["properties"]
+
+    assert "procedure" not in props(0)
+    assert props(2)["procedure"]["anyOf"][0]["enum"] == [1, 2]
+
+
+def test_more_entries_than_asked_for_are_trimmed_not_failed(monkeypatch):
+    many = [{**_entry()["entries"][0], "title": f"Task {i}"} for i in range(8)]
+    result, _, _ = _draft(monkeypatch, {"entries": many, "proposed_terms": []})
+    assert [e["title"] for e in result.entries] == [f"Task {i}" for i in range(6)]
+    assert result.dropped["entries_over_cap"] == 2
+
+
+def test_procedure_entries_are_kept_first_when_trimming(monkeypatch):
+    extra = [{**_procedure(3)["entries"][0], "procedure": None, "title": f"Other {i}",
+              "steps": []} for i in range(7)]
+    reply = _procedure(3)
+    reply["entries"] = extra + reply["entries"]
+    result, _ = _draft_numbered(monkeypatch, [reply])
+    assert result.entries[0]["notes"]["procedure_steps"] == 3
+
+
+def test_a_procedure_step_with_its_long_item_copied_as_the_quote_is_accepted(monkeypatch):
+    reply = _procedure(3)
+    reply["entries"][0]["steps"][1]["quote"] = "x" * 900  # replaced by the item anyway
+    result, _ = _draft_numbered(monkeypatch, [reply])
+    assert result.entries[0]["steps"][1]["quote"].startswith("Click Apply Leave")
+
+
+def test_a_procedure_split_over_entries_in_order_is_merged_back(monkeypatch):
+    one, two = _procedure(1)["entries"][0], _procedure(2)["entries"][0]
+    two = {**two, "title": "Second part", "steps": [{"text": "Step 2 in my words."}, {"text": "Step 3 in my words."}]}
+    result, model = _draft_numbered(monkeypatch, [{"entries": [one, two], "proposed_terms": []}])
+    [entry] = result.entries
+    assert entry["title"] == "Apply for leave" and len(entry["steps"]) == 3
+    assert entry["steps"][2]["quote"] == "Pick the start and end dates, then click Submit."
+    assert model.count("draft") == 1
+
+
+def test_the_model_is_shown_six_entries_at_most():
+    from backend.ai_service import draft_kb_entries as op
+
+    assert op._schema(1).model_json_schema()["properties"]["entries"]["maxItems"] == 6

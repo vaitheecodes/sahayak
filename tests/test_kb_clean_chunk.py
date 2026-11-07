@@ -36,7 +36,7 @@ def test_lists_tables_and_pre_are_rendered():
     <pre>line 1
   line 2</pre><h4>Small heading</h4><p>Text</p></main>"""
     text = html_to_text(html).text
-    assert "## Setup" in text and "- One\n- Two\n1. Sub" in text
+    assert "## Setup" in text and "- One\n- Two\n  1. Sub" in text
     assert "Plan | Users\nBasic | 10" in text
     assert "line 1\n  line 2" in text
     assert "\nSmall heading\n" in text and "#### " not in text
@@ -92,3 +92,19 @@ def test_hashes_ignore_whitespace_but_not_words():
 def test_heading_permalink_anchors_are_dropped():
     html = '<main><h2>Managing <code>pip</code><a class="headerlink" href="#p">¶</a></h2><h3>Setup #</h3></main>'
     assert html_to_text(html.encode()).text == "## Managing pip\n\n### Setup"
+
+
+def test_a_list_item_is_one_line_whatever_its_paragraphs():
+    html = b"""<main><ol start="3"><li><p>Pick the dates.</p><p>Click <b>Apply</b>.</p>
+    <ul><li>Morning</li><li>Afternoon</li></ul></li><li>Click Save.</li></ol></main>"""
+    assert html_to_text(html).text == "3. Pick the dates. Click Apply.\n  - Morning\n  - Afternoon\n4. Click Save."
+
+
+def test_the_comma_left_by_a_removed_icon_is_closed_up():
+    html = b'<main><ol><li>In the corner, select <svg><path/></svg>, then click New.</li></ol></main>'
+    assert html_to_text(html).text == "1. In the corner, select, then click New."
+
+
+def test_table_cells_keep_their_inline_text_together():
+    html = b"<table><tr><td><code>https://</code><code>example.com/new</code></td><td><p>a</p><p>b</p></td></tr></table>"
+    assert html_to_text(html).text == "https://example.com/new | a b"

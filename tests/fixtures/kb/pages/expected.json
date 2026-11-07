@@ -1,0 +1,60 @@
+{
+  "_about": "Expected instructions per fixture page, for scripts/kb_eval.py. Each key is a phrase found (case-insensitive, whitespace-normalised) in exactly one instruction of the page; a drafted step covers it when its quote contains the phrase. ordered_lists: the numbered procedures on the page and their step counts.",
+  "pages": {
+    "python_venv": {
+      "url": "https://docs.python.org/3/tutorial/venv.html",
+      "licence": "Python Software Foundation License",
+      "ordered_lists": [],
+      "instructions": [
+        "decide upon a directory where you want to place it",
+        "python -m venv tutorial-env",
+        "tutorial-env\\scripts\\activate",
+        "source tutorial-env/bin/activate",
+        "activate.csh and activate.fish",
+        "to deactivate a virtual environment, type",
+        "python -m pip install novas",
+        "python -m pip install requests==2.6.0",
+        "python -m pip install --upgrade",
+        "python -m pip uninstall followed by",
+        "python -m pip show will display",
+        "python -m pip list will display",
+        "python -m pip freeze will produce",
+        "python -m pip install -r requirements.txt"
+      ]
+    },
+    "github_new_repository": {
+      "url": "https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-new-repository",
+      "licence": "CC BY 4.0, GitHub, Inc.",
+      "ordered_lists": [11],
+      "instructions": [
+        "in the upper-right corner of any page, select",
+        "select the choose a template dropdown menu",
+        "select include all branches",
+        "use the owner dropdown menu",
+        "type a name for your repository",
+        "choose a repository visibility",
+        "there are a number of optional items you can pre-populate",
+        "select any apps you'd like to use",
+        "enter a prompt for copilot",
+        "click create repository",
+        "to do so, click import code"
+      ]
+    },
+    "odoo_request_time_off": {
+      "url": "https://www.odoo.com/documentation/18.0/applications/hr/time_off/request_time_off.html",
+      "licence": "CC BY-SA 4.0, Odoo S.A.",
+      "ordered_lists": [],
+      "instructions": [
+        "click the new button in the top-left corner",
+        "click save & close to submit the request",
+        "my time off, and clicking new",
+        "time off type: using the drop-down menu",
+        "dates: enter the dates",
+        "half day: if the time off request is for a half day",
+        "custom hours: if the time off requested",
+        "description: enter a description",
+        "supporting document: this field only appears"
+      ]
+    }
+  }
+}

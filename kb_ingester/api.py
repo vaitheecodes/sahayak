@@ -52,6 +52,7 @@ class SourceIn(BaseModel):
     name: str = Field(max_length=120)
     url: str = Field(max_length=2048)
     public_confirmed: bool = False
+    licence_note: str = Field(default="", max_length=200)
 
 
 class StartIn(BaseModel):
@@ -69,7 +70,8 @@ def create_source(body: SourceIn, manager_id: str = Depends(_manager)):
     try:
         with _Conn() as conn:
             return {"source_id": runs.create_source(conn, name=body.name, url=body.url,
-                                                    public_confirmed=body.public_confirmed, actor=manager_id)}
+                                                    public_confirmed=body.public_confirmed, actor=manager_id,
+                                                    licence_note=body.licence_note)}
     except runs.RunError as exc:
         raise _http(exc) from None
 
@@ -111,8 +113,9 @@ def get_run(run_id: int, _: str = Depends(_staff)):
 # Entries
 # ---------------------------------------------------------------------------
 class StepIn(BaseModel):
-    text: str = Field(max_length=400)
-    quote: str = Field(max_length=400)
+    text: str = Field(max_length=1000)
+    # A numbered list's item can be long; other quotes are checked to 500.
+    quote: str = Field(max_length=4000)
 
 
 class EntryEdit(BaseModel):
@@ -129,11 +132,13 @@ class EntryEdit(BaseModel):
 class Decision(BaseModel):
     version: int
     note: str = Field(default="", max_length=500)
+    # Approve only: the reviewer checked an entry flagged "incomplete".
+    acknowledge_incomplete: bool = False
 
 
 @router.get("/entries")
 def list_entries(status: Literal["draft", "approved", "rejected", "retired", "all"] = "draft",
-                 flag: Literal["duplicate", "stale", "injection", "answer_removed"] | None = None,
+                 flag: Literal["duplicate", "stale", "injection", "answer_removed", "incomplete"] | None = None,
                  source_id: int | None = None, _: str = Depends(_staff)):
     with _Conn() as conn:
         return {"entries": review.list_entries(conn, status=status, flag=flag, source_id=source_id)}
@@ -162,10 +167,10 @@ def edit_entry(entry_id: str, body: EntryEdit, staff_id: str = Depends(_staff)):
         raise _http(exc) from None
 
 
-def _decide(entry_id: str, body: Decision, manager_id: str, action) -> dict:
+def _decide(entry_id: str, body: Decision, manager_id: str, action, **extra) -> dict:
     try:
         with _Conn() as conn:
-            action(conn, entry_id, version=body.version, actor=manager_id, note=body.note)
+            action(conn, entry_id, version=body.version, actor=manager_id, note=body.note, **extra)
     except review.ReviewError as exc:
         raise _http(exc) from None
     kb_store.changed()
@@ -175,7 +180,7 @@ def _decide(entry_id: str, body: Decision, manager_id: str, action) -> dict:
 
 @router.post("/entries/{entry_id}/approve")
 def approve_entry(entry_id: str, body: Decision, manager_id: str = Depends(_manager)):
-    return _decide(entry_id, body, manager_id, review.approve)
+    return _decide(entry_id, body, manager_id, review.approve, acknowledge_incomplete=body.acknowledge_incomplete)
 
 
 @router.post("/entries/{entry_id}/reject")

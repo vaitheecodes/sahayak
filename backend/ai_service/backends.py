@@ -419,6 +419,8 @@ def converse_messages(turns) -> list[dict]:
 # customer-facing chat answer runs under a task (chat_response.answer).
 _model_task: contextvars.ContextVar[str | None] = contextvars.ContextVar("bedrock_model_task", default=None)
 TASK_MODEL_ENV = {"chat": "BEDROCK_MODEL_ID_CHAT"}
+# Tasks whose model the admin sets in Settings (app_settings "ai_models").
+TASK_MODEL_SETTINGS = ("draft_kb_entries", "check_step_support")
 
 
 @contextmanager
@@ -452,8 +454,16 @@ class BedrockBackend:
     @classmethod
     def model_id(cls) -> str:
         """BEDROCK_MODEL_ID (default Nova Lite), or the current task's
-        override (BEDROCK_MODEL_ID_CHAT for the chat answer) when set."""
-        task_env = TASK_MODEL_ENV.get(_model_task.get())
+        override when set: the admin's per-operation model (KB drafting and
+        its step check), or BEDROCK_MODEL_ID_CHAT for the chat answer."""
+        task = _model_task.get()
+        if task in TASK_MODEL_SETTINGS:
+            from backend import app_settings  # lazy: settings import categories, which import little
+
+            configured = getattr(app_settings.get("ai_models"), task, "")
+            if configured:
+                return configured
+        task_env = TASK_MODEL_ENV.get(task)
         return (task_env and env(task_env)) or env("BEDROCK_MODEL_ID", cls.DEFAULT_MODEL)
 
     @classmethod

@@ -1,0 +1,72 @@
+<!-- Source: https://www.odoo.com/documentation/18.0/applications/hr/time_off/request_time_off.html (main content, retrieved 2026-11-07). Licence: CC BY-SA 4.0, Odoo S.A. (odoo/documentation). Test fixture for the KB ingester eval. -->
+<main class="container-fluid">
+<article class="doc-body" id="o_content">
+<div role="main">
+<section id="request-time-off">
+<h1>Request time off<a class="headerlink" href="#request-time-off" title="Permalink to this headline">¶</a></h1>
+<p>When employees wish to take time off, they first submit a time off request through the <strong>Time Off</strong>
+application. Once their request has been submitted, it is then reviewed by either the employee’s
+manager or their time off officer (depending on who the employee’s <a class="reference internal" href="../employees/new_employee.html#employees-approvers"><span class="std std-ref">time off approver is</span></a>).</p>
+<div class="alert alert-primary">
+<p class="alert-title">
+Note</p><p>If the time off type the employee is requesting <a class="reference internal" href="../time_off.html#time-off-time-off-requests"><span class="std std-ref">does not require approval</span></a>, the time off is automatically approved, and does not need to be
+reviewed.</p>
+</div>
+</section><section id="submit-time-off-request">
+<h2>Submit time off request<a class="headerlink" href="#submit-time-off-request" title="Permalink to this headline">¶</a></h2>
+<p>To request time off, click the <span class="guilabel">New</span> button in the top-left corner of the <strong>Time Off</strong> app
+dashboard, and a <span class="guilabel">New Time Off</span> pop-up form loads.</p>
+<p>Fill out the <a class="reference internal" href="#time-off-fields"><span class="std std-ref">fields on the form</span></a>, and then click <span class="guilabel">Save &amp; Close</span> to
+submit the request.</p>
+<div class="alert alert-tip">
+<p class="alert-title">
+Tip</p><p>Requesting time off can be done either form the main <strong>Time Off</strong> app dashboard, or by navigating
+to <span class="menuselection">Time Off ‣ My Time ‣ My Time Off</span>, and clicking <span class="guilabel">New</span>.</p>
+</div>
+<img alt="A time off request for three hours of vacation time off." src="../../../_images/new-time-off.png"/>
+</section><section id="time-off-fields">
+<span id="id1"></span><h3>Time off fields<a class="headerlink" href="#time-off-fields" title="Permalink to this headline">¶</a></h3>
+<p>Enter the following information on the <span class="guilabel">New Time Off</span> request form:</p>
+<ul>
+<li><p><span class="guilabel">Time Off Type</span>: Using the drop-down menu, select the type of time off being requested.</p></li>
+<li><p><span class="guilabel">Dates</span>: Enter the dates that the time off falls under. There are two fields to
+populate: the start and end dates. Click on either date field and a popover calendar appears.</p>
+<p>Click on the start date, then click on the end date. The selected start and end dates are circled,
+and the dates between them are highlighted (if applicable).</p>
+<p>If only requesting time off for a single day, click on the start date, then click the same date
+again for the end date.</p>
+<p>When the correct dates are selected, click the <span class="guilabel">Apply</span> button.</p>
+<p>The selected dates now populate the two portions of the <span class="guilabel">Dates</span> field.</p>
+<p>If the selected <span class="guilabel">Time Off Type</span> is configured to have the time off taken in hours, the
+following two fields also appear:</p>
+<ul class="simple">
+<li><p><span class="guilabel">Half Day</span>: If the time off request is for a half day, tick this checkbox. When this
+is selected, the second date field disappears, and is replaced with a drop-down menu. From that
+drop-down menu, select either <span class="guilabel">Morning</span> or <span class="guilabel">Afternoon</span> to indicate which
+half of the day is being requested off.</p></li>
+<li><p><span class="guilabel">Custom Hours</span>: If the time off requested is not a whole or half day, tick this
+checkbox. If selected, a <span class="guilabel">From</span> and <span class="guilabel">To</span> field appears beneath this option.
+Using the drop-down menu, select the start and end time for the time off request.</p></li>
+</ul>
+</li>
+<li><p><span class="guilabel">Requested (Days/Hours)</span>: This field updates automatically once the <span class="guilabel">Date</span>
+section is completed. If the <span class="guilabel">Date</span> section is modified, this section automatically
+updates to reflect the total time off requested. This field is in either hours or days, depending
+on how the selected <a class="reference internal" href="../time_off.html#time-off-time-off-types"><span class="std std-ref">Time Off Type</span></a> is configured.</p></li>
+<li><p><span class="guilabel">Description</span>: Enter a description for the time off request. This should include any
+details that managers and approvers may need to approve the request.</p></li>
+<li><p><span class="guilabel">Supporting Document</span>: This field <strong>only</strong> appears if the <a class="reference internal" href="../time_off.html#time-off-time-off-types"><span class="std std-ref">Time Off Type</span></a> selected allows for the attachment of documents. Click the
+<i class="fa fa-paperclip"></i> <span class="guilabel">Attach File</span> button, and a file explorer window appears.</p>
+<p>Navigate to the desired files that should be attached, select them, then click The
+<span class="guilabel">Open</span> button. The files then appear on the time off request form. Multiple documents
+can be attached, if necessary.</p>
+</li>
+</ul>
+<img alt="A time off request form filled out for an employee home sick with the flu." src="../../../_images/time-off-request.png"/>
+</section>
+</div>
+<a class="o_git_link d-none d-lg-inline-block" href="https://github.com/odoo/documentation/edit/18.0/content/applications/hr/time_off/request_time_off.rst">
+<i class="i-edit"></i>Edit on GitHub
+                        </a>
+</article>
+</main>

@@ -82,7 +82,11 @@ def _is_address(host: str) -> bool:
     return True
 
 
-def create_source(conn, *, name: str, url: str, public_confirmed: bool, actor: str) -> int:
+def create_source(conn, *, name: str, url: str, public_confirmed: bool, actor: str,
+                  licence_note: str = "") -> int:
+    """licence_note: the content's licence / attribution, if it has one
+    (e.g. "CC BY-SA 4.0, Odoo S.A."); copied onto every entry drafted from
+    the source, next to the source URL."""
     if public_confirmed is not True:
         raise RunError("Confirm that this content is public or that you are allowed to use it")
     name = (name or "").strip()
@@ -96,13 +100,16 @@ def create_source(conn, *, name: str, url: str, public_confirmed: bool, actor: s
     except FetchError as exc:
         raise RunError(f"This URL can't be used ({exc.code})") from None
     url = url.strip()
+    licence_note = (licence_note or "").strip()
+    if len(licence_note) > 200:
+        raise RunError("The licence note can be at most 200 characters")
     if conn.execute("SELECT 1 FROM kb_sources WHERE root_url = ? AND active = 1", (url,)).fetchone():
         raise RunError("This URL is already a source", 409)
     now = _now()
     source_id = conn.execute(
         "INSERT INTO kb_sources (kind, name, root_url, config, public_confirmed_by, public_confirmed_at, "
-        "created_by, created_at) VALUES ('url', ?, ?, '{}', ?, ?, ?, ?) RETURNING source_id",
-        (name, url, actor, now, actor, now)).fetchone()["source_id"]
+        "created_by, created_at, licence_note) VALUES ('url', ?, ?, '{}', ?, ?, ?, ?, ?) RETURNING source_id",
+        (name, url, actor, now, actor, now, licence_note or None)).fetchone()["source_id"]
     audit.record(conn, actor, "kb.source.create", "kb_source", str(source_id), kind="url")
     return source_id
 
@@ -369,6 +376,8 @@ def save_chunk_result(conn, run: dict, chunk: dict, result) -> int:
     saved = 0
     for entry in result.entries:
         entry = {**entry, "applies_to": [t for t in entry["applies_to"] if t in usable_terms]}
+        if chunk.get("licence_note"):
+            entry["source_licence"] = chunk["licence_note"]
         notes = {k: v for k, v in entry.pop("notes").items() if v}
         if result.signals:
             notes["chunk_signals"] = result.signals
@@ -440,7 +449,8 @@ def _execute(run_id: int) -> None:
         estimate_info = json.loads(conn.execute("SELECT estimate FROM kb_ingest_runs WHERE run_id = ?",
                                                 (run_id,)).fetchone()["estimate"])
         chunks = [dict(r) for r in conn.execute(
-            "SELECT c.*, d.url, d.title AS page_title FROM kb_chunks c JOIN kb_documents d ON d.document_id = c.document_id "
+            "SELECT c.*, d.url, d.title AS page_title, s.licence_note FROM kb_chunks c "
+            "JOIN kb_documents d ON d.document_id = c.document_id JOIN kb_sources s ON s.source_id = d.source_id "
             "WHERE c.run_id = ? AND c.drafted_at IS NULL AND c.text IS NOT NULL ORDER BY c.document_id, c.ordinal",
             (run_id,))]
     finally:

@@ -18,6 +18,7 @@ import re
 
 from backend.ai_service import provider
 from kb_ingester import runs
+from kb_ingester.steps import ordered_lists
 from kb_ingester.safe_fetch import FetchError, HostPacer, SafeFetcher
 
 PUBLIC_IP = "93.184.216.34"
@@ -114,7 +115,7 @@ def block(name: str, content: str) -> str | None:
 
 class ScriptedModel:
     def __init__(self, drafts=None, supported=None):
-        self.drafts = drafts if drafts is not None else {"entries": []}
+        self.drafts = drafts if drafts is not None else {"entries": [], "proposed_terms": []}
         self.supported = supported or (lambda step, quote: True)
         self.calls: list[dict] = []
 
@@ -125,7 +126,8 @@ class ScriptedModel:
             steps = json.loads(block("steps_to_check", user))
             return json.dumps({"verdicts": [{"id": s["id"], "supported": bool(self.supported(s["step"], s["quote"]))}
                                             for s in steps]})
-        self.calls.append({"op": "draft", "system": system, "user": user})
+        self.calls.append({"op": "draft", "system": system, "user": user,
+                           "correction": messages[2]["content"] if len(messages) > 2 else None})
         chunk = block("source_chunk", user)
         drafts = self.drafts(chunk) if callable(self.drafts) else self.drafts
         return json.dumps(drafts)
@@ -158,8 +160,11 @@ Your manager gets a notification and approves or declines the request.</p>
 
 
 def leave_drafts(chunk: str) -> dict:
+    """The leave page's entry; its numbered list (as clean.py renders the
+    page) is procedure 1, so the code takes the quotes from the items."""
     return {
         "entries": [{
+            **({"procedure": 1} if ordered_lists(chunk or "") else {}),
             "title": "Apply for leave",
             "questions": ["How do I apply for leave?", "How can I request time off?", "Where do I ask for a day off?"],
             "answer": "You request time off in the Leave module; your manager then approves or declines it.",
