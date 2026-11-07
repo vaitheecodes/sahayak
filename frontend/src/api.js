@@ -337,6 +337,22 @@ export const api = {
   // decide; the backend enforces both).
   kbSources: () => request("/kb/sources", { auth: true }),
   kbCreateSource: (body) => request("/kb/sources", { method: "POST", body, auth: true }),
+  kbUploadSource: ({ name, file, publicConfirmed, licenceNote }) => {
+    const form = new FormData();
+    form.append("name", name);
+    form.append("public_confirmed", publicConfirmed ? "true" : "false");
+    form.append("licence_note", licenceNote || "");
+    form.append("file", file);
+    return upload("/kb/sources/upload", form);
+  },
+  kbTextSource: (body) => request("/kb/sources/text", { method: "POST", body, auth: true }),
+  kbUploadVersion: (sourceId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return upload(`/kb/sources/${sourceId}/upload`, form);
+  },
+  kbTextVersion: (sourceId, text) =>
+    request(`/kb/sources/${sourceId}/text`, { method: "POST", body: { text }, auth: true }),
   kbSourceRuns: (sourceId) => request(`/kb/sources/${sourceId}/runs`, { auth: true }),
   kbEstimate: (sourceId) => request(`/kb/sources/${sourceId}/estimate`, { method: "POST", auth: true }),
   kbStartRun: (runId, expectedModelCalls) =>

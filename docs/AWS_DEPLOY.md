@@ -675,7 +675,11 @@ aws iam put-role-policy --role-name ticketapp-api-task --policy-name ticketapp-a
 ```
 
 If `BEDROCK_MODEL_ID_CHAT` is set to another model (e.g. Nova Pro), add
-its profile and foundation-model ARNs too. The Converse API is authorised
+its profile and foundation-model ARNs too. KB drafting uses Nova Pro by
+default (admin Settings -> AI models): add
+`inference-profile/apac.amazon.nova-pro-v1:0` and
+`foundation-model/amazon.nova-pro-v1:0`, or drafting falls back to Nova
+Lite on every section (one extra call each). The Converse API is authorised
 by `bedrock:InvokeModel`.
 
 ## 7. Frontend app on Amplify (created first: its URL is the CORS origin)

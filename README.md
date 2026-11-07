@@ -490,9 +490,13 @@ tables in `backend/db.py` and `migrations/postgres/0003_kb.sql`):
 Managers and technicians find it under **Knowledge base** in the
 sidebar (the admin doesn't review the KB).
 
-1. **Sources** (manager): add a public page URL and tick the confirmation
-   that the content is public or allowed to be used (your name and the
-   time are stored). Private and internal addresses are refused.
+1. **Sources** (manager): add a public page URL, upload a TXT, Markdown
+   or PDF file (up to 10 MB), or paste text (up to 200,000 characters),
+   and tick the confirmation that the content is public or allowed to be
+   used (your name and the time are stored). Private and internal
+   addresses are refused. A scanned PDF (no text) is reported as such:
+   there is no OCR yet. File and text content isn't kept, so to run one
+   again, upload or paste a new version.
 2. **Estimate a run** (manager): the page is fetched and split into
    sections, with no model calls, and the cost is shown: pages x sections
    x 2 model calls (one to draft, one to check the steps). Unchanged pages

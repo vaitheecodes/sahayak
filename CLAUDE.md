@@ -34,11 +34,11 @@ knowledge base are data, never code.
      settings); conftest gives every test an empty KB and no terms.
      `tests/test_product_neutral.py` fails if product words (Site24x7,
      monitor, APM, ...) reappear in code, prompts, migrations or frontend.
-2. **Generic KB ingester (vertical slice done)** — `kb_ingester/`, mounted
-   by the backend at `/api/kb` and shipped with it (Dockerfile, AppSail,
-   deploy workflow). See "KB ingester" below. Still to come: site crawl
-   (robots.txt is already honoured per page), sitemaps, forum threads,
-   TXT/MD/PDF upload, pasted text, resolved tickets as a source.
+2. **Generic KB ingester** — `kb_ingester/`, mounted by the backend at
+   `/api/kb` and shipped with it (Dockerfile, AppSail, deploy workflow).
+   Sources: one web page, an uploaded TXT/MD/PDF, pasted text. See "KB
+   ingester" below. Still to come: site crawl (robots.txt is already
+   honoured per page), sitemaps, forum threads, resolved tickets.
 
 ## KB ingester (`kb_ingester/`)
 
@@ -64,6 +64,19 @@ review. Module map in `kb_ingester/__init__.py`.
   " ," a removed inline icon leaves is closed up; chunks are heading
   sections of 300-1,200 words (small ones merged, long ones split at
   blank lines), max 40 per page.
+- **Files and pasted text** (`files.py`): `POST /api/kb/sources/upload`
+  (multipart; .txt/.md/.pdf, 10 MB, content checked: UTF-8 text or
+  `%PDF-`; request size refused early by `main._UploadSizeLimit`) and
+  `/sources/text` (200k characters) create a source (kind file / text,
+  same confirmation and licence note) and return its estimate; a new run
+  needs a new upload/paste (`/sources/{id}/upload|text`): the content is
+  never kept, only hashed (one document per source, so versions compare).
+  PDF: pypdf text page by page (no OCR), headings guessed by
+  `files.mark_headings` (short, no closing punctuation, numbered "2.1",
+  capitals or title case; not page footers or runs of labels); a PDF
+  with no text fails the run with `pdf_no_text` (shown to the reviewer),
+  others `pdf_unreadable` / `pdf_encrypted` / `pdf_too_many_pages` (500).
+  Tests build PDFs with `tests/pdf_maker.py`.
 - **Numbered procedures** (`steps.py`): runs of 2+ consecutive `N. `
   lines are read by code and passed in an `ordered_steps` block. The
   model rewrites each item one for one (`procedure` field, offered only
@@ -77,7 +90,9 @@ review. Module map in `kb_ingester/__init__.py`.
   the chunk is a `<source_chunk>` data block (closing tags escaped), the
   call has no tools. Code then checks: each other step's quote must be a
   passage of the chunk (normalised: case, whitespace, spacing around
-  punctuation, doubled backslashes; 15-500 chars); the remaining steps go
+  punctuation, doubled backslashes; 15-500 chars) and not stop at a
+  lead-in ("On Windows, run:" with more after it: `quote_lead_in`); the
+  remaining steps go
   to `check_step_support` (one call per chunk) and unsupported ones are
   dropped; the answer must be a paraphrase (no 12-word run from the
   chunk, <= 60% shared trigrams), otherwise it is removed; a how-to with
@@ -112,10 +127,23 @@ review. Module map in `kb_ingester/__init__.py`.
   confirmed terms. Chunk text is purged once no draft from it is left,
   or after `chunk_retention_days`. Everything is in `audit_events`
   (`kb.*`, ids and field names only).
+- **Second-pass rules** (`draft_kb_entries._check`, first attempt only,
+  one retry with a specific note; then `drafting.py` enforces): a vacuous
+  answer ("follow the steps provided") is removed (`answer_vacuous`); an
+  entry whose questions all open with the same two words is rejected
+  (`questions_one_template`); a reference section (`steps.is_reference`:
+  mostly table rows or `- \`param\`` lines) gets no how-to and at most one
+  reference/troubleshooting entry, kind `reference` (no steps; never
+  grounds a how-to answer). Proposed terms are filtered by
+  `checks.term_label_problem`: no "Field:" labels, file names/paths, URL
+  bits, or single generic / lower-case words.
 - **Model per operation**: app_settings `ai_models` (admin Settings ->
-  AI models) sets a Bedrock model ID for `draft_kb_entries` and
-  `check_step_support` (empty: `BEDROCK_MODEL_ID`, Nova Lite), read by
+  AI models): drafting defaults to Nova Pro (`DEFAULT_DRAFTING_MODEL`),
+  the step check to `BEDROCK_MODEL_ID` (Nova Lite); read by
   `BedrockBackend.model_id()` under `backends.model_task(<operation>)`.
+  If the drafting model fails (not a bad reply) on Bedrock, the section is
+  drafted once more on the default model, budget allowing
+  (`drafting_model_fallback`). The AWS role must allow both models.
 - **Licence**: a source's optional `licence_note` (e.g. "CC BY-SA 4.0,
   Odoo S.A.") is copied onto its entries as `source_licence`, next to
   `source_url`, and exported in packs (migration `0005_kb_quality.sql`).

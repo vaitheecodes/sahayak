@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
-import { Calculator, Globe, Play, Plus } from "lucide-react";
+import { Calculator, ClipboardPaste, FileUp, Globe, Play, Plus } from "lucide-react";
 import { api } from "@/api";
 import { Alert } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { EmptyState } from "@/ui/empty-state";
-import { Input } from "@/ui/input";
+import { Input, Textarea } from "@/ui/input";
 import { Field } from "@/ui/label";
 import { Skeleton } from "@/ui/skeleton";
 import { formatDateTime, reasonLabel, RUN_TONE } from "./format";
 
-/* Sources: add a public page (with the "content is public / allowed"
- * confirmation), estimate a run (fetch + chunk, no model calls), then
- * start it. A running run is polled until it finishes. */
+/* Sources: add a public page, an uploaded TXT/MD/PDF file or pasted text
+ * (with the "content is public / allowed" confirmation), estimate a run
+ * (read + chunk, no model calls), then start it. A file or text source is
+ * run again by uploading or pasting a new version (its content isn't
+ * kept). A running run is polled until it finishes. */
+
+const MAX_FILE_MB = 10;
+const MAX_TEXT_CHARS = 200000;
+const KINDS = [
+  ["url", "Web page", Globe],
+  ["file", "File", FileUp],
+  ["text", "Pasted text", ClipboardPaste],
+];
 
 export default function SourcesPanel({ isManager }) {
   const [data, setData] = useState(null);
@@ -55,34 +65,43 @@ function CapsLine({ caps }) {
     <p className="text-sm text-muted-fg">
       Model-call caps: <span className="tabular-nums text-fg">{caps.per_run}</span> per run,{" "}
       <span className="tabular-nums text-fg">{caps.left_today}</span> of{" "}
-      <span className="tabular-nums">{caps.per_day}</span> left today (UTC). Each section of a page costs up to{" "}
-      {caps.calls_per_chunk} calls: one to draft, one to check the steps.
+      <span className="tabular-nums">{caps.per_day}</span> left today (UTC). Each section of a page, file or text
+      costs up to {caps.calls_per_chunk} calls: one to draft, one to check the steps.
     </p>
   );
 }
 
 function AddSource({ onAdded }) {
+  const [kind, setKind] = useState("url");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [file, setFile] = useState(null);
+  // A file input can't be cleared by state: a new key gives a fresh one.
+  const [fileKey, setFileKey] = useState(0);
+  const [text, setText] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [licence, setLicence] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const ids = { name: useId(), url: useId(), confirm: useId(), licence: useId() };
+  const ids = { name: useId(), url: useId(), confirm: useId(), licence: useId(), file: useId(), text: useId() };
+  const fileTooBig = file && file.size > MAX_FILE_MB * 1024 * 1024;
+  const content = { url: url.trim(), file: file && !fileTooBig, text: text.trim() && text.length <= MAX_TEXT_CHARS }[kind];
 
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
-      await api.kbCreateSource({
-        name: name.trim(),
-        url: url.trim(),
-        public_confirmed: confirmed,
-        licence_note: licence.trim(),
-      });
+      const common = { name: name.trim(), public_confirmed: confirmed, licence_note: licence.trim() };
+      if (kind === "url") await api.kbCreateSource({ ...common, url: url.trim() });
+      else if (kind === "file")
+        await api.kbUploadSource({ name: common.name, file, publicConfirmed: confirmed, licenceNote: common.licence_note });
+      else await api.kbTextSource({ ...common, text });
       setName("");
       setUrl("");
+      setFile(null);
+      setFileKey((k) => k + 1);
+      setText("");
       setLicence("");
       setConfirmed(false);
       onAdded();
@@ -98,26 +117,74 @@ function AddSource({ onAdded }) {
       <CardHeader>
         <div>
           <CardTitle>Add a source</CardTitle>
-          <CardDescription>One public page. Its sections are drafted into entries for review.</CardDescription>
+          <CardDescription>
+            A web page, a file (TXT, Markdown or PDF up to {MAX_FILE_MB} MB) or pasted text. Its sections are drafted
+            into entries for review.
+          </CardDescription>
         </div>
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={submit}>
+          <div role="radiogroup" aria-label="Kind of source" className="flex flex-wrap gap-2">
+            {KINDS.map(([value, label, Icon]) => (
+              <Button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={kind === value}
+                variant={kind === value ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setKind(value)}
+              >
+                <Icon aria-hidden="true" />
+                {label}
+              </Button>
+            ))}
+          </div>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <Field label="Name" htmlFor={ids.name}>
               <Input id={ids.name} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} required />
             </Field>
-            <Field label="Page URL" htmlFor={ids.url} hint="http or https on the standard port; private addresses are refused.">
-              <Input
-                id={ids.url}
-                type="url"
-                placeholder="https://help.example.com/guide"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                required
-              />
-            </Field>
+            {kind === "url" && (
+              <Field label="Page URL" htmlFor={ids.url} hint="http or https on the standard port; private addresses are refused.">
+                <Input
+                  id={ids.url}
+                  type="url"
+                  placeholder="https://help.example.com/guide"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  required
+                />
+              </Field>
+            )}
+            {kind === "file" && (
+              <Field
+                label="File"
+                htmlFor={ids.file}
+                hint={`.txt, .md or .pdf, at most ${MAX_FILE_MB} MB. PDFs need real text: scanned pages can't be read yet.`}
+                error={fileTooBig ? `This file is larger than ${MAX_FILE_MB} MB.` : undefined}
+              >
+                <Input
+                  key={fileKey}
+                  id={ids.file}
+                  type="file"
+                  accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
+                  className="h-auto py-1"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              </Field>
+            )}
           </div>
+          {kind === "text" && (
+            <Field
+              label="Text"
+              htmlFor={ids.text}
+              hint={`${text.length.toLocaleString()} of ${MAX_TEXT_CHARS.toLocaleString()} characters. Markdown headings (#, ##) and numbered lists are used.`}
+              error={text.length > MAX_TEXT_CHARS ? "Too long." : undefined}
+            >
+              <Textarea id={ids.text} rows={8} value={text} onChange={(e) => setText(e.target.value)} />
+            </Field>
+          )}
           <Field
             label="Licence or attribution (optional)"
             htmlFor={ids.licence}
@@ -139,9 +206,9 @@ function AddSource({ onAdded }) {
             </span>
           </label>
           <div>
-            <Button type="submit" disabled={saving || !confirmed || !name.trim() || !url.trim()}>
+            <Button type="submit" disabled={saving || !confirmed || !name.trim() || !content}>
               <Plus aria-hidden="true" />
-              {saving ? "Adding…" : "Add source"}
+              {saving ? (kind === "url" ? "Adding…" : "Reading…") : kind === "url" ? "Add source" : "Add and estimate"}
             </Button>
           </div>
           {error && <Alert tone="negative">{error}</Alert>}
@@ -184,6 +251,18 @@ function SourceCard({ source, isManager, onChange }) {
   }
 
   const estimate = () => act("estimate", () => api.kbEstimate(source.source_id));
+  const uploadVersion = (file) => file && act("estimate", () => api.kbUploadVersion(source.source_id, file));
+  const [pasting, setPasting] = useState(false);
+  const [newText, setNewText] = useState("");
+  const pasteVersion = () =>
+    act("estimate", async () => {
+      const next = await api.kbTextVersion(source.source_id, newText);
+      setPasting(false);
+      setNewText("");
+      return next;
+    });
+  const busyRun = !!busy || ["queued", "running"].includes(run?.status);
+  const filename = source.config?.filename;
   const start = () => act("start", () => api.kbStartRun(run.run_id, run.estimated_model_calls));
   const counts = source.entries || {};
 
@@ -193,9 +272,15 @@ function SourceCard({ source, isManager, onChange }) {
         <div className="min-w-0">
           <CardTitle>{source.name}</CardTitle>
           <CardDescription>
-            <a href={source.root_url} target="_blank" rel="noreferrer noopener" className="break-all text-primary underline-offset-4 hover:underline">
-              {source.root_url}
-            </a>
+            {source.kind === "url" ? (
+              <a href={source.root_url} target="_blank" rel="noreferrer noopener" className="break-all text-primary underline-offset-4 hover:underline">
+                {source.root_url}
+              </a>
+            ) : source.kind === "file" ? (
+              `File${filename ? `: ${filename}` : ""} (upload a new version to run it again)`
+            ) : (
+              "Pasted text (paste a new version to run it again)"
+            )}
           </CardDescription>
           <p className="mt-1 text-sm text-muted-fg">
             Confirmed public by {source.public_confirmed_by_name} on {formatDateTime(source.public_confirmed_at)}
@@ -206,15 +291,54 @@ function SourceCard({ source, isManager, onChange }) {
           <Link to="/kb/review" className="text-sm text-muted-fg hover:text-fg">
             {counts.draft || 0} draft · {counts.approved || 0} approved
           </Link>
-          {isManager && (
-            <Button variant="outline" onClick={estimate} disabled={!!busy || ["queued", "running"].includes(run?.status)}>
+          {isManager && source.kind === "url" && (
+            <Button variant="outline" onClick={estimate} disabled={busyRun}>
               <Calculator aria-hidden="true" />
               {busy === "estimate" ? "Reading the page…" : "Estimate a run"}
+            </Button>
+          )}
+          {isManager && source.kind === "file" && (
+            <Button variant="outline" asChild disabled={busyRun}>
+              <label className={busyRun ? "pointer-events-none opacity-50" : undefined}>
+                <FileUp aria-hidden="true" />
+                {busy === "estimate" ? "Reading the file…" : "Upload new version"}
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
+                  onChange={(e) => {
+                    uploadVersion(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </Button>
+          )}
+          {isManager && source.kind === "text" && (
+            <Button variant="outline" onClick={() => setPasting(!pasting)} disabled={busyRun}>
+              <ClipboardPaste aria-hidden="true" />
+              Paste new version
             </Button>
           )}
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {pasting && (
+          <div className="flex flex-col gap-2">
+            <Textarea
+              rows={6}
+              aria-label="New version of the text"
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+            />
+            <div>
+              <Button onClick={pasteVersion} disabled={busyRun || !newText.trim() || newText.length > MAX_TEXT_CHARS}>
+                <Calculator aria-hidden="true" />
+                Estimate this version
+              </Button>
+            </div>
+          </div>
+        )}
         {error && <Alert tone="negative">{error}</Alert>}
         {run ? <RunPanel run={run} isManager={isManager} onStart={start} starting={busy === "start"} /> : (
           <p className="text-sm text-muted-fg">No runs yet.</p>
@@ -251,10 +375,16 @@ function RunPanel({ run, isManager, onStart, starting }) {
         <span className="ml-auto text-sm text-muted-fg">{formatDateTime(run.finished_at || run.created_at)}</span>
       </div>
 
+      {run.stop_reason === "pdf_no_text" && (
+        <Alert tone="warning" title="This PDF has no extractable text">
+          It looks scanned (pages are images), so nothing could be drafted. Upload a PDF with real text, or the
+          document as a text or Markdown file. Reading scans (OCR) isn't supported yet.
+        </Alert>
+      )}
       {run.status === "estimated" && (
         <Alert
           tone={willCap ? "warning" : "info"}
-          title={`${est.pages} page × ${est.chunks_to_draft} section${est.chunks_to_draft === 1 ? "" : "s"} to draft = up to ${run.estimated_model_calls} model calls`}
+          title={`${est.pages} ${est.pages === 1 ? "document" : "documents"} × ${est.chunks_to_draft} section${est.chunks_to_draft === 1 ? "" : "s"} to draft = up to ${run.estimated_model_calls} model calls`}
           action={
             isManager && (
               <Button onClick={onStart} disabled={starting}>

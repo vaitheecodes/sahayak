@@ -40,7 +40,22 @@ const REASONS = {
   term_unsupported: "Term without evidence",
   invalid_entry: "Invalid entry",
   chunks_capped: "Sections over the page cap",
+  pdf_no_text: "No extractable text in this PDF (a scan?)",
+  pdf_unreadable: "PDF could not be read",
+  pdf_encrypted: "PDF is password-protected",
+  pdf_too_many_pages: "PDF has too many pages",
   entries_over_cap: "Entries over the 6 per section",
+  quote_lead_in: "Quote stops at a lead-in (\"run:\")",
+  term_field_label: "Term was a form field",
+  term_file: "Term was a file name",
+  term_url: "Term was part of a URL",
+  term_generic: "Term was a generic word",
+  answer_vacuous: "Answer only pointed at the steps",
+  questions_one_template: "Questions all one template",
+  reference_howto: "How-to from a reference table",
+  reference_extra: "Extra entry from a reference table",
+  reference_steps: "Steps on a reference entry",
+  drafting_model_fallback: "Drafted on the fallback model",
 };
 
 export function reasonLabel(code) {

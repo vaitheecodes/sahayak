@@ -126,6 +126,9 @@ T = technicians and managers, M = managers only. Errors are 400 (invalid),
 |---|---|---|
 | `GET /kb/sources` | — | T. `{sources:[{source_id, name, root_url, public_confirmed_by(_name), public_confirmed_at, last_run, entries:{status:n}}], caps:{per_run, per_day, used_today, left_today, calls_per_chunk}}` |
 | `POST /kb/sources` | `{name, url, public_confirmed:true, licence_note?}` | M. `licence_note` (≤ 200) is copied onto its entries as `source_licence`. 201 `{source_id}`. Without the confirmation 400; private/odd URLs 400; same URL 409. |
+| `POST /kb/sources/upload` | multipart: `name`, `public_confirmed`, `licence_note?`, `file` (.txt/.md/.pdf, ≤ 10 MB) | M. 201 `{source_id, run}` (the estimate). 400 for another type or bad content, 413 over 10 MB. A PDF without text gives a `failed` run with `stop_reason: "pdf_no_text"`. |
+| `POST /kb/sources/text` | `{name, text (≤ 200,000), public_confirmed:true, licence_note?}` | M. 201 `{source_id, run}` |
+| `POST /kb/sources/{id}/upload` \| `/text` | a new file / `{text}` | M. Estimates the new version of a file / text source (their content isn't kept, so `/estimate` is 400 for them). |
 | `GET /kb/sources/{id}/runs` | — | T. `{runs:[run]}`, newest first |
 | `POST /kb/sources/{id}/estimate` | — | M. Fetches and chunks (no model calls). The run: `status` `estimated` (or `done`/`nothing_to_draft`, `failed`/<fetch reason>), `estimated_model_calls`, `estimate:{pages, chunks, chunks_unchanged, chunks_to_draft, model_calls, caps}`. Replaces an unstarted estimate. |
 | `POST /kb/runs/{id}/start` | `{expected_model_calls}` | M. Must equal the estimate (409 otherwise); 429 when today's cap is used up. Drafting runs in the background. |

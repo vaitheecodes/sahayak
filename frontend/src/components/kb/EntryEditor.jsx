@@ -403,7 +403,9 @@ function SourceSection({ entry, steps }) {
       <CardContent>
         {entry.source && (
           <p className="mt-0 mb-3 text-sm text-muted-fg">
-            {entry.source.name}: confirmed public by {entry.source.public_confirmed_by_name} on{" "}
+            {entry.source.name}
+            {entry.source.kind === "file" && entry.source.filename && ` (file ${entry.source.filename})`}
+            {entry.source.kind === "text" && " (pasted text)"}: confirmed public by {entry.source.public_confirmed_by_name} on{" "}
             {formatDateTime(entry.source.public_confirmed_at)}
           </p>
         )}
