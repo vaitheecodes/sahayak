@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local test stack (scripts/devstack.sh): pid files and logs
+.devstack/

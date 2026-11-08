@@ -152,7 +152,6 @@
     "showEarlier_one": "Show {{count}} earlier message",
     "showEarlier_other": "Show {{count}} earlier messages",
     "attachments": "Attachments",
-    "attachmentsLater": "Opening attachments arrives in a later update.",
     "reopenPrompt": "Not solved after all? Reopen the ticket and our support team will take it from here.",
     "reopen": "Reopen ticket",
     "reopening": "Reopening…",
@@ -164,7 +163,11 @@
     "sendingHint": "Sending — if our AI assistant is handling this ticket it will reply in a few seconds.",
     "replyTooLong": "Your reply is too long (at most {{max}} characters).",
     "counter": "{{count}} / {{max}}",
-    "notFound": "This ticket isn't available."
+    "notFound": "This ticket isn't available.",
+    "openAttachment": "Open {{name}}",
+    "opening": "Opening…",
+    "retryUpload": "Retry upload",
+    "discardFiles": "Discard these files"
   },
   "newTicket": {
     "title": "Raise a ticket",
@@ -183,7 +186,9 @@
     "tooLong": "Too long (at most {{max}} characters).",
     "categoriesFailed": "Categories couldn't be loaded. You can still send the ticket without one.",
     "timeout": "The help desk took too long to answer. Your ticket may still have been created — check Tickets before sending it again.",
-    "attachmentsLater": "Attachments arrive in a later update. You can add details in a reply."
+    "retryUpload": "Retry upload",
+    "continueWithout": "Open the ticket without these files",
+    "openTicket": "Open the ticket"
   },
   "chatStatus": {
     "active": "Active",
@@ -236,5 +241,32 @@
     "openTicket": "Open ticket",
     "newChat": "Start a new chat",
     "notFound": "This chat isn't available."
+  },
+  "attachments": {
+    "title": "Attachments (optional)",
+    "count": "{{count}} / {{max}}",
+    "camera": "Camera",
+    "photos": "Photos",
+    "files": "Files",
+    "rules": "Up to {{max}} files, {{mb}} MB each: PNG, JPG, PDF, TXT or LOG.",
+    "full": "That's the most files one message can carry ({{max}}).",
+    "remove": "Remove {{name}}",
+    "reject": {
+      "type": "{{name}} can't be attached: only PNG, JPG, PDF, TXT and LOG files are allowed.",
+      "size": "{{name}} is larger than {{mb}} MB.",
+      "empty": "{{name}} is empty.",
+      "count": "{{name}} wasn't added: at most {{max}} files per message."
+    },
+    "cameraDenied": "Camera access is off for this app.",
+    "openSettings": "Open settings to allow it",
+    "pickFailed": "That file couldn't be read. Try choosing it again.",
+    "uploading_one": "Uploading {{count}} file…",
+    "uploading_other": "Uploading {{count}} files…",
+    "ticketUploadFailed": "Ticket {{id}} was created, but the files didn't upload: {{reason}}",
+    "replyUploadFailed": "Your reply was sent, but the files didn't upload: {{reason}}",
+    "uploadTimeout": "The upload took too long. The files may have arrived — check the ticket before trying again.",
+    "fixAndRetry": "Remove or replace the file it names, then retry.",
+    "downloadFailed": "Couldn't open {{name}}: {{reason}}",
+    "noViewer": "No app on this device can open {{name}}."
   }
 }

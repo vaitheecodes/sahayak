@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, Download, Paperclip } from 'lucide-react-native';
 import { isApiError } from '../../api/errors';
 import { REPLY_MAX, ticketsApi } from '../../api/tickets';
-import type { ChatTranscriptMessage, ThreadMessage, TicketDetail } from '../../api/types';
+import type { Attachment, ChatTranscriptMessage, ThreadMessage, TicketDetail } from '../../api/types';
 import { useApi } from '../../auth/SessionProvider';
 import { charCount } from '../../lib/charCount';
+import { errorMessage } from '../../lib/errorMessage';
 import { useApiError } from '../../lib/useApiError';
 import { absoluteTime, relativeTime } from '../../lib/time';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -28,6 +29,10 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Markdown } from '../../ui/Markdown';
 import { Chip, StatusChip, Tag } from '../../ui/StatusChip';
 import { Text } from '../../ui/Text';
+import { AttachmentPicker } from '../attachments/AttachmentPicker';
+import { NoViewerError, openAttachment } from '../attachments/openAttachment';
+import { uploadParts } from '../attachments/pick';
+import { formatBytes, type PendingFile } from '../attachments/rules';
 import { useMeta } from '../meta/MetaProvider';
 import { isRetryable } from './retryable';
 import { threadItems } from './threadView';
@@ -177,7 +182,7 @@ export function TicketDetailScreen({ ticketId, onLoaded }: Props) {
                 </Text>
               </Pressable>
             ) : (
-              <MessageCard key={item.message.message_id} message={item.message} />
+              <MessageCard key={item.message.message_id} message={item.message} ticketId={ticket.ticket_id} />
             ),
           )}
         </View>
@@ -227,7 +232,7 @@ function initials(name: string): string {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
-function MessageCard({ message }: { message: ThreadMessage }) {
+function MessageCard({ message, ticketId }: { message: ThreadMessage; ticketId: string }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
 
@@ -301,29 +306,68 @@ function MessageCard({ message }: { message: ThreadMessage }) {
       {message.attachments.length > 0 ? (
         <View style={styles.attachments} accessibilityLabel={t('ticket.attachments')}>
           {message.attachments.map((a) => (
-            <View key={a.attachment_id} style={[styles.file, { borderColor: colors.border, backgroundColor: colors.raised }]}>
-              <Paperclip size={14} color={colors.mutedFg} />
-              <Text variant="caption" numberOfLines={1} style={styles.shrink}>
-                {a.filename}
-              </Text>
-              <Text variant="caption" tone="muted">
-                {formatBytes(a.size_bytes)}
-              </Text>
-            </View>
+            <AttachmentChip key={a.attachment_id} ticketId={ticketId} attachment={a} />
           ))}
-          <Text variant="caption" tone="muted">
-            {t('ticket.attachmentsLater')}
-          </Text>
         </View>
       ) : null}
     </View>
   );
 }
 
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+/** Downloads the file with the session's token and opens it in another app. */
+function AttachmentChip({ ticketId, attachment }: { ticketId: string; attachment: Attachment }) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const api = useApi();
+  const [opening, setOpening] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function open() {
+    setOpening(true);
+    setProblem(null);
+    try {
+      await openAttachment(api, ticketId, attachment);
+    } catch (e) {
+      setProblem(
+        e instanceof NoViewerError
+          ? t('attachments.noViewer', { name: attachment.filename })
+          : t('attachments.downloadFailed', { name: attachment.filename, reason: errorMessage(t, e) }),
+      );
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  return (
+    <View style={styles.chipWrap}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('ticket.openAttachment', { name: attachment.filename })}
+        accessibilityState={{ busy: opening }}
+        disabled={opening}
+        onPress={open}
+        testID={`attachment-${attachment.attachment_id}`}
+        style={({ pressed }) => [
+          styles.file,
+          { borderColor: colors.border, backgroundColor: pressed ? colors.sheet : colors.raised },
+        ]}
+      >
+        {opening ? <ActivityIndicator size="small" color={colors.primary} /> : <Paperclip size={14} color={colors.mutedFg} />}
+        <Text variant="caption" numberOfLines={1} style={styles.shrink}>
+          {attachment.filename}
+        </Text>
+        <Text variant="caption" tone="muted">
+          {opening ? t('ticket.opening') : formatBytes(attachment.size_bytes)}
+        </Text>
+        <Download size={14} color={colors.mutedFg} />
+      </Pressable>
+      {problem ? (
+        <Text variant="caption" tone="negative" testID="attachment-error">
+          {problem}
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 /** The chat that led to this ticket, collapsed by default. */
@@ -378,15 +422,38 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
   const { colors } = useTheme();
   const api = useApi();
   const [text, setText] = useState('');
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  // The sent reply whose files still have to go up: a retry uploads again,
+  // it never sends the reply twice.
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const error = useApiError();
+  const uploadError = useApiError();
 
   const length = text.trim().length;
   const count = charCount(text);
   const tooLong = count > REPLY_MAX;
 
+  async function upload(messageId: string) {
+    uploadError.clear();
+    try {
+      await ticketsApi.uploadAttachments(api, ticketId, messageId, await uploadParts(files));
+      setFiles([]);
+      setPendingMessageId(null);
+    } catch (e) {
+      uploadError.show(e);
+    }
+  }
+
   async function send() {
+    if (pendingMessageId) {
+      setSending(true);
+      await upload(pendingMessageId);
+      await onSent();
+      setSending(false);
+      return;
+    }
     if (!length || tooLong) return;
     setSending(true);
     setNotice(null);
@@ -396,6 +463,10 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
       setText('');
       // The reply is saved even when the AI couldn't answer it.
       if (res.ai_error) setNotice(res.ai_error);
+      if (files.length > 0) {
+        setPendingMessageId(res.message_id);
+        await upload(res.message_id);
+      }
       await onSent();
     } catch (e) {
       error.show(e);
@@ -404,7 +475,17 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
     }
   }
 
+  function discardFiles() {
+    setFiles([]);
+    setPendingMessageId(null);
+    uploadError.clear();
+  }
+
+  const uploadTimedOut = isApiError(uploadError.error) && uploadError.error.kind === 'timeout';
   const nearLimit = count > REPLY_MAX * 0.9;
+  const canSend = pendingMessageId
+    ? files.length > 0 && !uploadTimedOut
+    : length > 0 && !tooLong && !error.coolingDown;
   return (
     <View style={[styles.card, { backgroundColor: colors.sheet, borderColor: colors.border }]}>
       <Text variant="label" tone="muted">
@@ -421,7 +502,7 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
           setText(v);
           if (error.message && !error.coolingDown) error.clear();
         }}
-        editable={!disabled && !sending}
+        editable={!disabled && !sending && !pendingMessageId}
         textAlignVertical="top"
         style={[
           styles.textarea,
@@ -429,19 +510,28 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
           { color: colors.fg, borderColor: tooLong ? colors.negative : colors.input },
         ]}
       />
+      <AttachmentPicker files={files} onChange={setFiles} disabled={disabled || sending} />
       <View style={styles.composerFoot}>
         <Text variant="caption" tone={tooLong ? 'negative' : 'muted'} style={nearLimit && !tooLong ? { color: colors.warning } : undefined}>
           {t('ticket.counter', { count, max: REPLY_MAX })}
         </Text>
         <Button
-          label={sending ? t('ticket.sending') : t('ticket.send')}
+          label={
+            sending
+              ? pendingMessageId
+                ? t('attachments.uploading', { count: files.length })
+                : t('ticket.sending')
+              : pendingMessageId
+                ? t('ticket.retryUpload')
+                : t('ticket.send')
+          }
           busy={sending}
-          disabled={disabled || !length || tooLong || error.coolingDown}
+          disabled={disabled || !canSend}
           onPress={send}
           style={styles.send}
         />
       </View>
-      {sending ? (
+      {sending && !pendingMessageId ? (
         <Text variant="caption" tone="muted" accessibilityLiveRegion="polite">
           {t('ticket.sendingHint')}
         </Text>
@@ -459,6 +549,23 @@ function ReplyComposer({ ticketId, disabled, onSent }: { ticketId: string; disab
           message={error.message}
           action={isRetryable(error.error) ? { label: t('common.retry'), onPress: send } : undefined}
         />
+      ) : null}
+      {pendingMessageId && uploadError.message ? (
+        <View style={styles.uploadProblem}>
+          <Banner
+            testID="upload-error"
+            tone={uploadTimedOut ? 'warning' : 'negative'}
+            message={
+              uploadTimedOut ? t('attachments.uploadTimeout') : t('attachments.replyUploadFailed', { reason: uploadError.message })
+            }
+          />
+          {!uploadTimedOut && !isRetryable(uploadError.error) ? (
+            <Text variant="caption" tone="muted">
+              {t('attachments.fixAndRetry')}
+            </Text>
+          ) : null}
+          <Button variant="ghost" label={t('ticket.discardFiles')} disabled={sending} onPress={discardFiles} />
+        </View>
       ) : null}
     </View>
   );
@@ -496,6 +603,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   attachments: { gap: space.xs },
+  chipWrap: { gap: 2 },
   file: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -522,4 +630,5 @@ const styles = StyleSheet.create({
   composerFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   send: { minWidth: 110 },
   closedNote: { textAlign: 'center' },
+  uploadProblem: { gap: space.xs },
 });

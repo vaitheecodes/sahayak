@@ -17,6 +17,8 @@ type RequestOptions = {
   form?: FormData;
   auth?: boolean; // default true
   signal?: AbortSignal;
+  /** Return the body as bytes (downloads) instead of parsing JSON. */
+  bytes?: boolean;
 };
 
 export type ApiClient = {
@@ -24,6 +26,8 @@ export type ApiClient = {
   get<T>(path: string, opts?: Omit<RequestOptions, 'json' | 'form'>): Promise<T>;
   post<T>(path: string, json?: unknown, opts?: Omit<RequestOptions, 'json' | 'form'>): Promise<T>;
   postForm<T>(path: string, form: FormData, opts?: Omit<RequestOptions, 'json' | 'form'>): Promise<T>;
+  /** GET a file. Errors are mapped like any other request. */
+  getBytes(path: string, opts?: Omit<RequestOptions, 'json' | 'form' | 'bytes'>): Promise<ArrayBuffer>;
 };
 
 export function createApiClient(options: ApiClientOptions): ApiClient {
@@ -70,6 +74,15 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       opts.signal?.removeEventListener('abort', onOuterAbort);
     }
 
+    if (res.ok && opts.bytes) {
+      try {
+        return (await res.arrayBuffer()) as T;
+      } catch {
+        // The connection dropped mid-body.
+        throw new ApiError('network');
+      }
+    }
+
     const text = await res.text().catch(() => '');
     let data: unknown = null;
     if (text) {
@@ -94,5 +107,6 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     get: (path, opts) => request('GET', path, opts),
     post: (path, json, opts) => request('POST', path, { ...opts, json: json ?? {} }),
     postForm: (path, form, opts) => request('POST', path, { ...opts, form }),
+    getBytes: (path, opts) => request('GET', path, { ...opts, bytes: true }),
   };
 }

@@ -32,7 +32,17 @@
           "backgroundColor": "#F1F4F6",
           "image": "./assets/splash-icon.png",
           "imageWidth": 120,
-          "dark": { "backgroundColor": "#0E1114" }
+          "dark": {
+            "backgroundColor": "#0E1114"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Sahayak to attach photos from your library to a support ticket.",
+          "cameraPermission": "Allow Sahayak to take a photo to attach to a support ticket.",
+          "microphonePermission": false
         }
       ]
     ],

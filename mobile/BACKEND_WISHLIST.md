@@ -67,3 +67,23 @@ in the backend; each item says what the app does meanwhile.
     again.
 14. **An explicit customer "close ticket" action.** *Now:* a ticket closes
     only through the AI's closing-acknowledgment path or staff.
+
+## Attachments
+
+15. **Staff can't attach files to a reply.** `POST /api/tickets/{id}/attachments`
+    is customer-only and there is no staff equivalent, so a technician can't
+    send a customer a file (a corrected document, a screenshot of the fix).
+    The app already downloads and opens any attachment on any visible
+    message. *Now:* tested by adding one to a staff reply directly in the
+    local test database.
+16. **Upload together with the message, or an idempotency key on upload.**
+    Files go up in a second request after the ticket or reply exists. If
+    that request times out, the files may or may not have arrived, and a
+    blind retry could attach them twice (until the 5-per-message cap).
+    *Now:* a refused or failed upload can be retried (the server checks all
+    files before storing any, so nothing is half-saved); after a timeout the
+    app says to check the ticket and offers no retry.
+17. **Return a clear upload error code.** The 400 `detail` strings ("x
+    doesn't look like a PDF file") are English and parsed by eye only; a
+    `code` plus the offending filename would let the app mark the right
+    file and translate the message.

@@ -1,7 +1,7 @@
 // A fetch stand-in: routes are "METHOD /path" -> handler returning
 // {status, body, headers}. Unmatched requests fail the test loudly.
 
-export type FakeReply = { status?: number; body?: unknown; headers?: Record<string, string> };
+export type FakeReply = { status?: number; body?: unknown; headers?: Record<string, string>; bytes?: Uint8Array };
 export type FakeRequest = { method: string; path: string; headers: Record<string, string>; body: unknown };
 type Handler = FakeReply | ((req: FakeRequest) => FakeReply | Promise<FakeReply>);
 
@@ -31,6 +31,7 @@ export function fakeFetch(routes: Record<string, Handler>) {
       status,
       headers: { get: (name: string) => lower[name.toLowerCase()] ?? null },
       text: async () => (reply.body === undefined ? '' : JSON.stringify(reply.body)),
+      arrayBuffer: async () => (reply.bytes ?? new Uint8Array()).slice().buffer,
     } as unknown as Response;
   });
   return { impl: impl as unknown as typeof fetch, calls };

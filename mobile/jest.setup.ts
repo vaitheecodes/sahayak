@@ -29,4 +29,64 @@ jest.mock('expo-constants', () => ({
 beforeEach(() => {
   const secure = jest.requireMock('expo-secure-store') as { __store: Map<string, string> };
   secure.__store.clear();
+  jest.clearAllMocks();
+  (jest.requireMock('expo-file-system') as { __files: Map<string, Uint8Array> }).__files.clear();
 });
+
+// expo-file-system's File/Directory, kept in memory: `__files` maps a uri
+// to its bytes so tests can seed picked files and check downloads.
+jest.mock('expo-file-system', () => {
+  const files = new Map<string, Uint8Array>();
+  const join = (parts: unknown[]) =>
+    parts
+      .map((p) => (typeof p === 'string' ? p : (p as { uri: string }).uri))
+      .map((p, i) => (i === 0 ? p.replace(/\/+$/, '') : p.replace(/^\/+|\/+$/g, '')))
+      .join('/');
+  // A real Blob, as Expo's File is, so FormData takes it.
+  class File extends Blob {
+    uri: string;
+    constructor(...parts: unknown[]) {
+      super([]);
+      this.uri = join(parts);
+    }
+    get name() {
+      return this.uri.split('/').pop() ?? '';
+    }
+    get exists() {
+      return files.has(this.uri);
+    }
+    get size() {
+      return files.get(this.uri)?.length ?? 0;
+    }
+    get contentUri() {
+      return this.uri.replace('file://', 'content://');
+    }
+    create() {
+      files.set(this.uri, new Uint8Array());
+    }
+    delete() {
+      files.delete(this.uri);
+    }
+    async write(content: Uint8Array) {
+      files.set(this.uri, content);
+    }
+    async copy(to: { uri: string }) {
+      files.set(to.uri, files.get(this.uri) ?? new Uint8Array());
+    }
+  }
+  class Directory {
+    uri: string;
+    constructor(...parts: unknown[]) {
+      this.uri = join(parts);
+    }
+    create() {}
+  }
+  return { __files: files, File, Directory, Paths: { cache: 'file:///cache', document: 'file:///docs' } };
+});
+
+jest.mock('expo-intent-launcher', () => ({ startActivityAsync: jest.fn(async () => ({ resultCode: 0 })) }));
+
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));

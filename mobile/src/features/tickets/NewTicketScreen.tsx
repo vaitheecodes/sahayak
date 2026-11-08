@@ -17,6 +17,9 @@ import { Screen } from '../../ui/Screen';
 import { Segmented } from '../../ui/Segmented';
 import { Text } from '../../ui/Text';
 import { TextField } from '../../ui/TextField';
+import { AttachmentPicker } from '../attachments/AttachmentPicker';
+import { uploadParts } from '../attachments/pick';
+import type { PendingFile } from '../attachments/rules';
 import { useMeta } from '../meta/MetaProvider';
 import { isRetryable } from './retryable';
 
@@ -38,7 +41,12 @@ export function NewTicketScreen({ onCreated }: Props) {
   const [description, setDescription] = useState('');
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  // Set once the ticket exists: from then on only the upload is retried, so
+  // a failed upload never creates a second ticket.
+  const [created, setCreated] = useState<CreatedTicket | null>(null);
   const apiError = useApiError();
+  const uploadError = useApiError();
 
   const descCount = charCount(description);
 
@@ -51,15 +59,39 @@ export function NewTicketScreen({ onCreated }: Props) {
     return e;
   }
 
+  /** Files go up after the ticket exists, attached to its first message. */
+  async function upload(ticket: CreatedTicket) {
+    setSubmitting(true);
+    uploadError.clear();
+    try {
+      await ticketsApi.uploadAttachments(api, ticket.ticket_id, ticket.message_id, await uploadParts(files));
+      onCreated(ticket);
+    } catch (err) {
+      uploadError.show(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submit() {
+    if (created) {
+      await upload(created);
+      return;
+    }
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) return;
     setSubmitting(true);
     apiError.clear();
     try {
-      const created = await ticketsApi.create(api, { subject, description, priority, category });
-      onCreated(created);
+      const ticket = await ticketsApi.create(api, { subject, description, priority, category });
+      if (files.length === 0) {
+        onCreated(ticket);
+        return;
+      }
+      setCreated(ticket);
+      setSubmitting(false);
+      await upload(ticket);
     } catch (err) {
       // 422: put each problem under its own field as well as in the banner.
       if (isApiError(err) && err.kind === 'validation') {
@@ -78,6 +110,9 @@ export function NewTicketScreen({ onCreated }: Props) {
 
   const clearField = (f: Field) => setErrors((e) => ({ ...e, [f]: undefined }));
   const timedOut = isApiError(apiError.error) && apiError.error.kind === 'timeout';
+  const uploadTimedOut = isApiError(uploadError.error) && uploadError.error.kind === 'timeout';
+  // The ticket exists: its text can't change any more, only the files.
+  const locked = submitting || created !== null;
   const descTooLong = descCount > DESCRIPTION_MAX;
   const descBorder = errors.description || descTooLong ? colors.negative : colors.input;
 
@@ -106,7 +141,7 @@ export function NewTicketScreen({ onCreated }: Props) {
         error={errors.subject}
         maxLength={SUBJECT_MAX}
         returnKeyType="next"
-        editable={!submitting}
+        editable={!locked}
       />
 
       <View style={styles.group}>
@@ -120,7 +155,7 @@ export function NewTicketScreen({ onCreated }: Props) {
             setCategory(c);
             clearField('category');
           }}
-          disabled={submitting}
+          disabled={locked}
           options={[
             { value: null, label: t('newTicket.categoryNone') },
             ...meta.categories.map((c) => ({ value: c, label: meta.categoryLabel(c) })),
@@ -146,7 +181,7 @@ export function NewTicketScreen({ onCreated }: Props) {
           style={styles.segmented}
           accessibilityLabel={t('newTicket.priority')}
           value={priority}
-          onChange={setPriority}
+          onChange={(p) => !locked && setPriority(p)}
           options={PRIORITIES.map((p) => ({ value: p, label: t(`priority.${p}`) }))}
         />
       </View>
@@ -163,7 +198,7 @@ export function NewTicketScreen({ onCreated }: Props) {
           multiline
           textAlignVertical="top"
           value={description}
-          editable={!submitting}
+          editable={!locked}
           onChangeText={(v) => {
             setDescription(v);
             clearField('description');
@@ -180,17 +215,52 @@ export function NewTicketScreen({ onCreated }: Props) {
         </View>
       </View>
 
-      <Text variant="caption" tone="muted">
-        {t('newTicket.attachmentsLater')}
-      </Text>
+      <AttachmentPicker files={files} onChange={setFiles} disabled={submitting} />
 
-      <Button
-        label={submitting ? t('newTicket.submitting') : t('newTicket.submit')}
-        busy={submitting}
-        disabled={apiError.coolingDown}
-        onPress={submit}
-      />
-      {submitting ? (
+      {created && uploadError.message ? (
+        <View style={styles.group}>
+          <Banner
+            testID="upload-error"
+            tone={uploadTimedOut ? 'warning' : 'negative'}
+            message={
+              uploadTimedOut
+                ? t('attachments.uploadTimeout')
+                : t('attachments.ticketUploadFailed', { id: created.ticket_id, reason: uploadError.message })
+            }
+          />
+          {!uploadTimedOut && !isRetryable(uploadError.error) ? (
+            <Text variant="caption" tone="muted">
+              {t('attachments.fixAndRetry')}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {created && uploadTimedOut ? null : (
+        <Button
+          label={
+            submitting
+              ? created
+                ? t('attachments.uploading', { count: files.length })
+                : t('newTicket.submitting')
+              : created
+                ? t('newTicket.retryUpload')
+                : t('newTicket.submit')
+          }
+          busy={submitting}
+          disabled={apiError.coolingDown || uploadError.coolingDown || (created !== null && files.length === 0)}
+          onPress={submit}
+        />
+      )}
+      {created && uploadError.message ? (
+        <Button
+          variant={uploadTimedOut ? 'primary' : 'ghost'}
+          label={uploadTimedOut ? t('newTicket.openTicket') : t('newTicket.continueWithout')}
+          disabled={submitting}
+          onPress={() => onCreated(created)}
+        />
+      ) : null}
+      {submitting && !created ? (
         <Text variant="caption" tone="muted" accessibilityLiveRegion="polite">
           {t('newTicket.submittingHint')}
         </Text>
