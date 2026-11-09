@@ -83,6 +83,9 @@
   --status-closed: #66768c;
   --status-closed-fg: #3d4a5c;
   --status-closed-bg: #e7eaef;
+  /* Support Bot replies: a restrained tint and a left rule (text on it >= 6.3:1). */
+  --bot-bg: #f1f4fb;
+  --bot-rule: #9db4e6;
 
   /* Data. chart-1 (cobalt) and chart-2 (amber) are the two series and
      differ in lightness too (OKLab L .46 vs .62); 3-5 only where a chart
@@ -155,6 +158,8 @@
     --status-closed: #7f8da3;
     --status-closed-fg: #b5c0d0;
     --status-closed-bg: #252a31;
+    --bot-bg: #1c2130;
+    --bot-rule: #4d6ba8;
     --chart-1: #6f9cf0;
     --chart-2: #eaae6a;
     --chart-3: #8fd3a5;
@@ -221,6 +226,8 @@
   --status-closed: #7f8da3;
   --status-closed-fg: #b5c0d0;
   --status-closed-bg: #252a31;
+  --bot-bg: #1c2130;
+  --bot-rule: #4d6ba8;
   --chart-1: #6f9cf0;
   --chart-2: #eaae6a;
   --chart-3: #8fd3a5;
@@ -313,6 +320,8 @@
   --color-status-closed: var(--status-closed);
   --color-status-closed-fg: var(--status-closed-fg);
   --color-status-closed-bg: var(--status-closed-bg);
+  --color-bot: var(--bot-bg);
+  --color-bot-rule: var(--bot-rule);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

@@ -13,6 +13,8 @@ import { api } from "../api";
 import { categoryLabel } from "../utils/categories";
 import { Markdown } from "../utils/markdown";
 import { absoluteTime, relativeTime } from "../utils/time";
+import { Bot } from "lucide-react";
+import { BOT_NAME } from "../lib/people";
 import { formatBytes } from "../utils/text";
 import AttachmentPicker, { PaperclipIcon } from "./AttachmentPicker";
 import ChatMessage from "./ui/ChatMessage";
@@ -73,13 +75,15 @@ function ThreadMessage({ ticketId, message }) {
       <article aria-label={`${message.sender_name}, ${relativeTime(message.created_at)}`}>
         <header className="email-head">
           <span className="email-avatar" aria-hidden="true">
-            {isAi ? "AI" : initials(message.sender_name)}
+            {isAi ? <Bot className="size-4" strokeWidth={1.75} /> : initials(message.sender_name)}
           </span>
           <div className="email-from">
             <div className="email-from-line">
-              <span className="email-sender">{message.sender_name}</span>
+              <span className="email-sender">{isAi ? BOT_NAME : message.sender_name}</span>
               {message.sender !== "customer" && (
-                <span className={`email-badge email-badge-${message.sender}`}>{message.sender_role}</span>
+                <span className={`email-badge email-badge-${message.sender}`}>
+                  {isAi ? "Automatic reply" : message.sender_role}
+                </span>
               )}
             </div>
             {message.to && <div className="email-to">to {message.to}</div>}

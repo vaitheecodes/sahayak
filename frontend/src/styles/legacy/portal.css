@@ -604,12 +604,16 @@
   background: var(--border-strong);
 }
 
-.email-card-ai::before {
-  background: var(--accent-500);
+/* Support Bot: a restrained tint and its own rule; staff replies stay plain
+   (their avatar and badge carry the team colour), so who wrote what is
+   clear without a coloured bubble. */
+.email-card-ai {
+  background: var(--bot-bg);
+  border-color: transparent;
 }
 
-.email-card-staff::before {
-  background: var(--status-ok);
+.email-card-ai::before {
+  background: var(--bot-rule);
 }
 
 .email-head {
@@ -633,13 +637,14 @@
 }
 
 .email-card-ai .email-avatar {
-  background: var(--accent-soft-strong);
-  color: var(--accent-300);
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--bot-rule);
 }
 
 .email-card-staff .email-avatar {
-  background: var(--status-ok-soft);
-  color: var(--status-ok);
+  background: var(--pill-accent-bg);
+  color: var(--pill-accent-fg);
 }
 
 .email-from {
@@ -669,13 +674,14 @@
 }
 
 .email-badge-ai {
-  background: var(--accent-soft);
-  color: var(--accent-400);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted-fg);
 }
 
 .email-badge-staff {
-  background: var(--status-ok-soft);
-  color: var(--status-ok);
+  background: var(--pill-accent-bg);
+  color: var(--pill-accent-fg);
 }
 
 .email-to,

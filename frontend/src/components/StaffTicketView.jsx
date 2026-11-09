@@ -20,6 +20,8 @@ import { categoryLabel } from "../utils/categories";
 import { Markdown } from "../utils/markdown";
 import { absoluteTime, relativeTime } from "../utils/time";
 import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
+import { Bot } from "lucide-react";
+import { BOT_NAME } from "../lib/people";
 import { formatBytes } from "../utils/text";
 import { PaperclipIcon } from "./AttachmentPicker";
 import ChatMessage from "./ui/ChatMessage";
@@ -114,17 +116,17 @@ function StaffMessage({ ticketId, m }) {
       <article aria-label={`${internal ? "Internal note" : "Message"} from ${m.author}`}>
         <header className="email-head">
           <span className="email-avatar" aria-hidden="true">
-            {m.sender === "ai" ? "AI" : initials(m.author)}
+            {m.sender === "ai" ? <Bot className="size-4" strokeWidth={1.75} /> : initials(m.author)}
           </span>
           <div className="email-from">
             <div className="email-from-line">
-              <span className="email-sender">{m.author}</span>
+              <span className="email-sender">{m.sender === "ai" ? BOT_NAME : m.author}</span>
               {internal ? (
-                <span className="private-tag">Internal note · not visible to customer</span>
+                <span className="private-tag">Internal note, only staff see this</span>
               ) : (
                 m.sender !== "customer" && (
                   <span className={`email-badge email-badge-${m.sender}`}>
-                    {m.sender === "ai" ? "AI Assistant" : "Support Agent"}
+                    {m.sender === "ai" ? "Automatic reply" : "Support Agent"}
                   </span>
                 )
               )}
