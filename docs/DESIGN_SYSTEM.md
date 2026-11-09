@@ -4,15 +4,82 @@ Status: spec, not yet applied. Scope: `frontend/src/styles/tokens.css`,
 `components.css`, `portal.css`, `frontend/src/index.css`, plus a small theme
 toggle and an `index.html` boot script. No new npm dependencies.
 
-> **Superseded colours (Nov 2026).** The palette below is the original
-> spec. The live tokens are in `frontend/src/styles/theme.css`: warm
-> neutrals (dark: bg `#111110`, card `#191917`, table header `#1F1F1C`,
-> raised `#262622`, border `#2B2A26` / strong `#383731`, text `#ECEBE6`,
-> muted `#A29F95`), one cobalt accent (`#6F9CF0` on `#0C1730` dark,
-> `#2D5BC2` light), status amber / red / green / blue, chart series cobalt
-> vs amber at different lightness; no purple, no gradients. The legacy
-> tokens (`styles/legacy/tokens.css`) are aliases of those. Every text
-> token is at least 4.5:1 in both themes.
+> **The live system (Nov 2026) is section 0 below.** Sections 1 onward
+> are the original spec, kept for the reasoning behind the type scale,
+> spacing and focus rules; their colours and the sidebar are superseded.
+
+## 0. Current system
+
+**Direction.** A help desk is a work queue, so the interface is built
+around status, not decoration. Each status has one colour, one icon and
+one word, the same on every chip, rail, strip and chart; surfaces stay
+warm-neutral so colour always means something. Density suits a help desk:
+totals in one ruled strip instead of a grid of cards, sentence-case table
+headers, left-aligned text. The one memorable element is the kanban status
+rail. IBM Plex Sans throughout with tabular figures; Plex Mono only for
+ticket ids. No gradients, no glass, no all-caps labels.
+
+**Tokens** (`frontend/src/styles/theme.css`, light and dark; the legacy
+tokens in `styles/legacy/tokens.css` alias them):
+
+- Surfaces: dark bg `#111110`, card `#191917`, table header `#1F1F1C`,
+  raised `#262622`, border `#2B2A26` / strong `#383731`, text `#ECEBE6`,
+  muted `#A29F95`; one cobalt accent (`#6F9CF0` on `#0C1730` dark,
+  `#2D5BC2` light).
+- Ticket status, `--status-<key>` (solid: bars, dots, chart series),
+  `-fg` (text and icon), `-bg` (chip). Contrast is text on chip / text on
+  the lowest page surface / solid on the sheet:
+
+  | Status | Icon | Light fg on bg | Ratios | Dark fg on bg | Ratios |
+  |---|---|---|---|---|---|
+  | New (open, nobody assigned) | Sparkle | #4F4D46 on #EEEDE8 | 7.22 / 6.97 / 3.59 | #C9C6BC on #2A2925 | 8.52 / 8.89 / 5.03 |
+  | Open | Circle | #1E4FB8 on #E6EDFB | 6.24 / 6.04 / 6.20 | #A9C3F2 on #1F2A3D | 8.08 / 8.52 / 6.45 |
+  | In progress | Contrast (half circle) | #0B6B66 on #DDF2EF | 5.45 / 5.23 / 4.48 | #7FD6CC on #16302D | 8.29 / 8.96 / 7.26 |
+  | Pending customer | Hourglass | #6A3FB5 on #EFE8FB | 5.89 / 5.78 / 5.39 | #C6AEF5 on #2A2340 | 7.63 / 7.79 / 5.83 |
+  | Resolved | CircleCheck | #1D6B3D on #E1F1E6 | 5.56 / 5.37 / 4.05 | #8FD3A5 on #1C2E22 | 8.22 / 8.70 / 7.44 |
+  | Closed | Lock | #3D4A5C on #E7EAEF | 7.47 / 7.42 / 4.63 | #B5C0D0 on #252A31 | 7.85 / 8.26 / 5.23 |
+
+- SLA: a clock and words, no fill, so it never reads as a status: on
+  track / met green, at risk amber (nothing else uses amber, so amber
+  means "act soon"), breached red, paused muted.
+- Priority: signal bars in ink (one to four), only urgent in red.
+- Support Bot: `--bot-bg` tint (`#F1F4FB` / `#1C2130`) with a `--bot-rule`
+  left rule, a bot icon and an "Automatic reply" tag, in chat transcripts
+  and ticket threads alike; staff replies stay plain with a team-tinted
+  avatar and a "Support Agent" badge; internal notes are amber and say
+  "only staff see this".
+
+Code: `ui/status.jsx` (StatusBadge, SlaBadge, PriorityBadge),
+`lib/statusMeta.js` (colours and icons for rails and charts); the legacy
+`StatusChip` / `SlaChip` render the same components.
+
+**Navigation** (`layout/AppShell.jsx`, `layout/nav.js`). No sidebar by
+default: a menu button at the far left of the 48px top bar opens the full
+menu (every screen of the role, grouped) as a slide-in panel with a scrim
+(Radix Dialog: focus trapped, Escape / scrim / choosing a screen closes
+it, `aria-expanded` on the button, always starts closed). The top bar keeps
+the role's main screens (`primary`: technician and manager Dashboard and
+Tickets, admin Users and Settings, customer Get help / My tickets / Chats),
+the page title, the theme menu and the user menu; under 768px the main
+screens fold into the panel.
+
+**Dashboards** (`components/dashboard/`). A Classic | Kanban switch
+(remembered per user in this browser) and the period selector, which
+applies to both. Classic: a "Created <period>" strip (tickets created in
+the period by current status; adds up to Total, plus SLA breached / at
+risk), a "Now" strip, then the role's detail (manager: how each technician
+is doing, open by priority, created and resolved per day; technician:
+needs my attention, my numbers). Kanban: one joined status rail (Total,
+New (unassigned), Open, In progress, Pending customer, Resolved, Closed),
+a thin strip under it showing the split, and the selected status's tickets
+below with search. Ticket lists (`components/TicketRows.jsx`) are a table
+from 768px and two-line items on phones (id and status, then subject).
+
+**Public pages.** `/` is the landing page for signed-out visitors (what
+the help desk does, sign in, how it works for customers and for the
+support team; the product name from Settings -> Product, "Runs on
+Sahayak"); `/login` and `/signup` share one form with show / hide password,
+field errors and a countdown after too many attempts (429 Retry-After).
 
 ---
 

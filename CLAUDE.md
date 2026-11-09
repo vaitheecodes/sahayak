@@ -491,12 +491,41 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 - **Frontend design system** (`frontend/src/styles/theme.css`,
   `src/ui/` shadcn-pattern components on Radix, `src/layout/AppShell.jsx`,
   `PRODUCT.md`): Tailwind v4, Lucide icons, Recharts, self-hosted IBM Plex
-  Sans/Mono. "Framed sheet" layout: one tinted frame holds a grouped
-  sidebar (per role, `layout/nav.js`) and a 48px top bar (page title,
-  theme menu System/Light/Dark, user menu); the page sits on a white sheet
-  with a 1px edge. Under 768px the sidebar becomes a drawer. Colour only on
-  data, status and the one primary action; every text token >= 4.5:1 in
-  both themes. Public pages (`/docs`, `/incidents`) use `PublicShell`.
+  Sans/Mono. "Framed sheet" layout: a 48px top bar on the tinted frame and
+  the page on a white sheet with a 1px edge. No sidebar by default: the
+  menu button (far left) opens the role's full menu (`layout/nav.js`
+  `groups`) as a slide-in panel (Radix Dialog: focus trapped, Escape /
+  scrim / picking a screen closes it, always starts closed); the top bar
+  keeps the main screens (`primary`), the page title, the theme menu and
+  the user menu, and under 768px those fold into the panel. **Status
+  language** (`ui/status.jsx`, `lib/statusMeta.js`, theme `--status-*`):
+  one colour + icon + word per status everywhere: New (open, nobody
+  assigned) grey, Open blue, In progress teal, Pending customer violet,
+  Resolved green, Closed slate; SLA is a clock + words with no fill (amber
+  only for at risk); priority is signal bars, red only for urgent; the
+  legacy StatusChip / SlaChip render the same. Support Bot replies (chat
+  and ticket threads) get the `--bot-bg` tint, a left rule, a bot icon and
+  "Automatic reply"; staff replies stay plain. **Dashboards**
+  (`components/dashboard/`): Classic | Kanban switch (per user,
+  localStorage `dashboardStyle:<sub>`, default Classic) + period. Classic:
+  "Created <period>" strip (created in the period by current status, adds
+  up to Total; `by_status`, `created_sla` from the API), a "Now" strip,
+  then the role's detail (manager: per-technician table from
+  `technician_workload`). Kanban: status rail (Total, New (unassigned),
+  Open, ...) + that status's tickets below (`/api/manager/tickets` or
+  `/api/staff/tickets?view=mine` with `period`, `status=new`, `assigned`;
+  same role scope). Ticket lists (`components/TicketRows.jsx`): a table
+  from 768px, two-line items on phones. **Public**: `/` landing page for
+  signed-out visitors (`pages/Landing.jsx`, product name from /api/meta,
+  "Runs on Sahayak"), `/login` and `/signup` (`pages/Login.jsx`: show /
+  hide password, field errors, 429 countdown from Retry-After); `/docs`,
+  `/incidents` use `PublicShell`. **Setup** (`components/SetupWizard.jsx`):
+  `/admin/settings` opens on a 4-step setup (product, categories and their
+  departments, each technician's department with the count still missing,
+  done) while the product is unnamed and not skipped in this browser;
+  "Run setup again" brings it back. Colour only on data, status and the
+  one primary action; every text token >= 4.5:1 in both themes (contrast
+  table in `docs/DESIGN_SYSTEM.md` section 0).
   The UI names the product "Help Desk" and the bot "Support Bot" (no
   third-party brand in user-visible text). The portal shown is picked
   from the role inside the token (`lib/tokenRole.js`, `api.getRole`), never
