@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getMustChangePassword, getRole, getToken, HOME_FOR_ROLE, onSessionChange } from "./api";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import CustomerPortal from "./pages/CustomerPortal";
@@ -23,12 +24,14 @@ function RequireRole({ role, roles = [role], children }) {
   return children;
 }
 
-function LoginRoute() {
+// Signed in: straight to your portal. Signed out: the landing page at /,
+// sign-in at /login, customer sign-up at /signup.
+function SignedOutRoute({ children }) {
   const role = getRole();
   if (getToken() && HOME_FOR_ROLE[role]) {
     return <Navigate to={getMustChangePassword() ? "/change-password" : HOME_FOR_ROLE[role]} replace />;
   }
-  return <Login />;
+  return children;
 }
 
 function ChangePasswordRoute() {
@@ -51,8 +54,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LoginRoute />} />
-        <Route path="/login" element={<LoginRoute />} />
+        <Route path="/" element={<SignedOutRoute><Landing /></SignedOutRoute>} />
+        <Route path="/login" element={<SignedOutRoute><Login /></SignedOutRoute>} />
+        <Route path="/signup" element={<SignedOutRoute><Login mode="signup" /></SignedOutRoute>} />
         <Route path="/change-password" element={<ChangePasswordRoute />} />
         {PORTALS.map(([role, Portal]) => (
           <Route

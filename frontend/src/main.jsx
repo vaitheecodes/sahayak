@@ -6,6 +6,7 @@ import '@fontsource/ibm-plex-sans/600.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
 import './index.css'
+import { setProduct } from './utils/product'
 import App from './App.jsx'
 import { api } from './api'
 import { setStatusLabels } from './utils/statusLabels'
@@ -26,6 +27,7 @@ api
   .then((meta) => {
     setStatusLabels(meta.status_labels)
     setCategoryLabels(meta.category_labels)
+    setProduct(meta.product)
   })
   .catch(() => {})
   .finally(render)

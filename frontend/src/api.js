@@ -92,7 +92,11 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
     } catch {
       /* no JSON body */
     }
-    throw new Error(detail);
+    const error = new Error(detail);
+    // 429s say how long to wait (Retry-After, seconds): sign-in counts it down.
+    error.status = res.status;
+    error.retryAfter = Number(res.headers.get("Retry-After")) || null;
+    throw error;
   }
 
   if (res.status === 204) return null;
