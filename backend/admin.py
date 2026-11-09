@@ -1,8 +1,11 @@
 """Admin console API (admin role only, enforced on every endpoint).
 
-  Tickets      all tickets, technician list, reassign
+The admin runs people and the system only: no tickets, dashboards or SLA
+reports (those are the managers', limited to their department:
+backend/manager.py; the admin gets 403 there).
+
   Team         technicians and managers: create, edit (name, email, role,
-               the manager's one department), deactivate, reset password
+               department), deactivate, reset password
   Customers    create, edit, deactivate, reset password
   Departments  names and KB-category mapping (a category belongs to at
                most one department)
@@ -41,10 +44,6 @@ _admin = auth.get_current_admin
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
-class ReassignRequest(BaseModel):
-    technician_id: str | None = None
-
-
 class CreateStaffRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=254)
@@ -53,8 +52,9 @@ class CreateStaffRequest(BaseModel):
 
 
 class UpdateStaffRequest(BaseModel):
-    """Only the fields present are changed. department_id applies to
-    managers; send null to clear it."""
+    """Only the fields present are changed. department_id: the manager's
+    department, or the one a technician works (whose tickets a manager may
+    assign them); send null to clear it."""
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     email: str | None = Field(default=None, min_length=3, max_length=254)
@@ -102,82 +102,6 @@ def _department_exists(conn, department_id: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM departments WHERE department_id = ?", (department_id,)
     ).fetchone() is not None
-
-
-# ---------------------------------------------------------------------------
-# Tickets
-# ---------------------------------------------------------------------------
-@router.get("/api/admin/tickets")
-def admin_tickets(admin_id: str = Depends(_admin)):
-    """Every ticket with customer and technician names (the full thread,
-    AI hand-off and history come from GET /api/staff/tickets/{id})."""
-    conn = db.get_connection()
-    try:
-        return [{**dict(row), "sla": sla.evaluate(row)} for row in conn.execute(
-            "SELECT t.*, c.name AS customer_name, c.email AS customer_email, "
-            "s.name AS technician_name FROM tickets t "
-            "JOIN customers c ON c.customer_id = t.customer_id "
-            "LEFT JOIN staff s ON s.staff_id = t.assigned_technician_id "
-            "ORDER BY t.created_at DESC"
-        )]
-    finally:
-        conn.close()
-
-
-@router.get("/api/admin/technicians")
-def admin_technicians(admin_id: str = Depends(_admin)):
-    """Active technicians with live ticket counts — the reassignment
-    dropdown on All Tickets."""
-    conn = db.get_connection()
-    try:
-        return [dict(row) for row in conn.execute(
-            "SELECT s.staff_id, s.name, s.email, "
-            "COALESCE(SUM(CASE WHEN t.status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END), 0) "
-            "AS active_count, "
-            "COALESCE(SUM(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END), 0) AS resolved_count "
-            "FROM staff s LEFT JOIN tickets t ON t.assigned_technician_id = s.staff_id "
-            "WHERE s.role = 'technician' AND s.active = 1 "
-            "GROUP BY s.staff_id, s.name, s.email ORDER BY lower(s.name)"
-        )]
-    finally:
-        conn.close()
-
-
-@router.post("/api/admin/tickets/{ticket_id}/reassign")
-def admin_reassign_ticket(ticket_id: str, body: ReassignRequest, admin_id: str = Depends(_admin)):
-    """(Re)assign a human-routed ticket to a technician, or return it to
-    the unassigned queue (technician_id=null). Logged in assignment
-    history and the audit log."""
-    conn = db.get_connection()
-    try:
-        ticket = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
-        if ticket is None:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        if ticket["route"] != "human":
-            raise HTTPException(
-                status_code=400, detail="Only tickets routed to a human agent can be (re)assigned"
-            )
-        if body.technician_id:
-            technician = conn.execute(
-                "SELECT name FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
-                (body.technician_id,),
-            ).fetchone()
-            if technician is None:
-                raise HTTPException(status_code=404, detail="Technician not found")
-            note = f"Reassigned to {technician['name']} by the administrator."
-        else:
-            note = "Returned to the unassigned queue by the administrator."
-
-        if lifecycle.set_assignee(conn, ticket_id, body.technician_id, admin_id):
-            insert_ticket_message(conn, ticket_id, "system", note, customer_visible=False)
-            if body.technician_id and ticket["status"] == "open":
-                lifecycle.set_status(conn, ticket_id, "in_progress", admin_id)
-            elif not body.technician_id and ticket["status"] == "in_progress":
-                lifecycle.set_status(conn, ticket_id, "open", admin_id)
-        conn.commit()
-        return {"ticket_id": ticket_id, "assigned_technician_id": body.technician_id}
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +153,6 @@ def create_staff(body: CreateStaffRequest, admin_id: str, response: Response | N
     try:
         if _email_taken(conn, email):
             raise HTTPException(status_code=400, detail="Email already registered")
-        if body.department_id and body.role != "manager":
-            raise HTTPException(status_code=400, detail="Only managers belong to a department")
         if body.department_id and not _department_exists(conn, body.department_id):
             raise HTTPException(status_code=404, detail="Department not found")
         prefix = "MGR" if body.role == "manager" else "TECH"
@@ -284,11 +206,7 @@ def update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str) -> dict
                         detail=f"Reassign their {open_tickets} open ticket(s) before changing the role",
                     )
             updates["role"] = role
-        if role == "technician":
-            if changes.get("department_id"):
-                raise HTTPException(status_code=400, detail="Only managers belong to a department")
-            updates["department_id"] = None
-        elif "department_id" in changes:
+        if "department_id" in changes:
             if changes["department_id"] and not _department_exists(conn, changes["department_id"]):
                 raise HTTPException(status_code=404, detail="Department not found")
             updates["department_id"] = changes["department_id"]

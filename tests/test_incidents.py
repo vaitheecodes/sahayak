@@ -361,13 +361,13 @@ def test_manager_must_keep_one_of_their_departments(client, pipeline, judge):
     assert res.status_code == 400
 
 
-def test_manager_can_open_linked_tickets_outside_their_categories(client, pipeline, judge):
+def test_a_linked_incident_does_not_open_another_departments_tickets(client, pipeline, judge):
+    """Everything a manager sees is their own department: an incident routed
+    to them doesn't open tickets whose category belongs to another one."""
     judge["departments"] = ["Product Support"]
-    ids = _three_customers_report(client, pipeline, category="OTHER")  # owned by Network
-    infra = _demo_manager(client)
-    res = client.get(f"/api/staff/tickets/{ids[0]}", headers=infra)
-    assert res.status_code == 200, res.text
-    assert res.json()["incidents"][0]["status"] == "detected"
+    ids = _three_customers_report(client, pipeline, category="OTHER")  # owned by General
+    manager = _demo_manager(client)
+    assert client.get(f"/api/staff/tickets/{ids[0]}", headers=manager).status_code == 403
 
 
 def test_only_managers_use_incident_endpoints(client, pipeline, judge):

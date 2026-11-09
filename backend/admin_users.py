@@ -3,7 +3,7 @@ managers (admin role only, enforced on every endpoint).
 
   GET    /api/admin/users                       ?role= &q= &status=active|inactive
   POST   /api/admin/users                       create (role customer/technician/manager)
-  PATCH  /api/admin/users/{user_id}             name, email, staff role, manager department
+  PATCH  /api/admin/users/{user_id}             name, email, staff role, department (staff)
   POST   /api/admin/users/{user_id}/deactivate  blocks sign-in and live sessions
   POST   /api/admin/users/{user_id}/activate
   POST   /api/admin/users/{user_id}/reset-password
@@ -138,7 +138,7 @@ def create_user(body: CreateUserRequest, response: Response, admin_id: str = Dep
     role = _check_role(body.role)
     if role == "customer":
         if body.department_id:
-            raise HTTPException(status_code=400, detail="Only managers belong to a department")
+            raise HTTPException(status_code=400, detail="Only staff belong to a department")
         row = admin.create_customer(admin.CreateCustomerRequest(name=body.name, email=body.email),
                                     admin_id, response)
     else:
@@ -157,7 +157,7 @@ def update_user(user_id: str, body: UpdateUserRequest, admin_id: str = Depends(_
         if changes.get("role") not in (None, "customer"):
             raise HTTPException(status_code=400, detail="A customer account can't become staff; create a staff account")
         if changes.get("department_id"):
-            raise HTTPException(status_code=400, detail="Only managers belong to a department")
+            raise HTTPException(status_code=400, detail="Only staff belong to a department")
         row = admin.update_customer(user_id, admin.UpdateCustomerRequest(
             **{k: v for k, v in changes.items() if k in ("name", "email")}), admin_id)
         return _user(row, "customer")

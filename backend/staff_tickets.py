@@ -11,9 +11,9 @@ Technicians work tickets that are with the support team (route 'human'):
   - the AI hand-off brief, suggested steps and chat transcript, kept
     apart from the conversation
 
-Managers don't assign. They oversee the tickets in their departments
-(categories owned by the departments the admin gave them) and each
-technician's workload there, read-only.
+Managers see only their own department (the categories it owns): this
+workspace read-only, and reassignment / priority on the Department
+tickets page (backend/manager.py). The admin has no ticket access.
 
 Every status/owner change goes through backend/ticket_lifecycle.py, so
 history is always written.
@@ -22,12 +22,13 @@ history is always written.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit, auth, chats, db, incidents, sla
+from backend import admin_reports, audit, auth, chats, db, periods, sla
 from backend import ticket_lifecycle as lifecycle
 from backend.repositories import tickets as tickets_repo
 from backend.conversation import (
@@ -42,7 +43,7 @@ router = APIRouter()
 
 TicketStatus = Literal["open", "in_progress", "pending_customer", "resolved", "closed"]
 
-_current_staff = auth.require_user("technician", "manager", "admin")
+_current_staff = auth.require_user("technician", "manager")
 
 
 # ---------------------------------------------------------------------------
@@ -63,14 +64,25 @@ class StaffMessageRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Scope helpers
 # ---------------------------------------------------------------------------
-def manager_categories(conn, manager_id: str) -> set[str]:
-    """Categories owned by the manager's (single) department."""
+def manager_department(conn, manager_id: str) -> dict | None:
+    """The manager's one department {department_id, name, categories}, or
+    None while the admin hasn't given them one."""
     row = conn.execute(
-        "SELECT d.categories FROM departments d JOIN staff s ON s.department_id = d.department_id "
-        "WHERE s.staff_id = ?",
+        "SELECT d.department_id, d.name, d.categories FROM departments d "
+        "JOIN staff s ON s.department_id = d.department_id WHERE s.staff_id = ?",
         (manager_id,),
     ).fetchone()
-    return set(json.loads(row["categories"])) if row else set()
+    if row is None:
+        return None
+    return {"department_id": row["department_id"], "name": row["name"],
+            "categories": set(json.loads(row["categories"]))}
+
+
+def manager_categories(conn, manager_id: str) -> set[str]:
+    """Categories owned by the manager's (single) department: everything a
+    manager sees or changes is limited to tickets and chats in them."""
+    department = manager_department(conn, manager_id)
+    return department["categories"] if department else set()
 
 
 def _ticket_category(ticket) -> str | None:
@@ -78,21 +90,17 @@ def _ticket_category(ticket) -> str | None:
 
 
 def _ticket_for_staff(conn, ticket_id: str, user: dict):
-    """The ticket if this staff member may see it: technicians and admin
-    see every ticket with the support team; managers only those in their
-    departments' categories or linked to an incident they can see.
-    AI-handled tickets aren't in the workspace."""
+    """The ticket if this staff member may see it: technicians see every
+    ticket with the support team; managers only those in their own
+    department's categories (also when they come from an incident). The
+    admin has no ticket access. AI-handled tickets aren't in the workspace."""
     ticket = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket["route"] != "human" and user["role"] != "admin":
+    if user["role"] == "manager" and _ticket_category(ticket) not in manager_categories(conn, user["id"]):
+        raise HTTPException(status_code=403, detail="Ticket is outside your department")
+    if ticket["route"] != "human":
         raise HTTPException(status_code=403, detail="This ticket is being handled by the AI assistant")
-    if (
-        user["role"] == "manager"
-        and _ticket_category(ticket) not in manager_categories(conn, user["id"])
-        and not incidents.manager_can_see_ticket(conn, user["id"], ticket_id)
-    ):
-        raise HTTPException(status_code=403, detail="Ticket is outside your departments")
     return ticket
 
 
@@ -135,26 +143,46 @@ _VIEWS = {
         "t.status IN ('open', 'in_progress', 'pending_customer')",
         "last_activity DESC",
     ),
+    # Resolved or closed in the last RECENTLY_RESOLVED_DAYS.
+    "resolved": (
+        "t.status IN ('resolved', 'closed') AND t.resolved_at >= :resolved_since",
+        "t.resolved_at DESC",
+    ),
 }
+RECENTLY_RESOLVED_DAYS = 14
+TicketView = Literal["unassigned", "mine", "recent", "open_pending", "resolved"]
 
 
-def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=None,
-               status=None, limit: int = 200) -> list[dict]:
-    clauses = ["t.route = 'human'", where]
+def _view_params(technician_id: str) -> dict:
+    return {"me": technician_id,
+            "resolved_since": sla.iso(sla.now() - timedelta(days=RECENTLY_RESOLVED_DAYS))}
+
+
+def _filters(clauses: list, params: dict, *, q=None, priority=None, status=None, ticket_type=None) -> None:
     if q:
         clauses.append(
-            # lower() on both sides: case-insensitive on SQLite and Postgres alike.
+            # lower() on both sides: case-insensitive on SQLite and Postgres alike;
+            # "#TKT-1" finds the id.
             "(lower(t.ticket_id) LIKE lower(:q) OR lower(t.subject) LIKE lower(:q) "
             "OR lower(t.ticket_text) LIKE lower(:q) OR lower(c.name) LIKE lower(:q) "
             "OR lower(c.email) LIKE lower(:q))"
         )
-        params["q"] = f"%{q.strip()}%"
+        params["q"] = f"%{q.strip().lstrip('#')}%"
     if priority:
         clauses.append("t.priority = :priority")
         params["priority"] = priority
     if status:
         clauses.append("t.status = :status")
         params["status"] = status
+    if ticket_type:
+        clauses.append("t.ticket_type = :ticket_type")
+        params["ticket_type"] = ticket_type
+
+
+def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=None,
+               status=None, ticket_type=None, limit: int = 200) -> list[dict]:
+    clauses = ["t.route = 'human'", where]
+    _filters(clauses, params, q=q, priority=priority, status=status, ticket_type=ticket_type)
     rows = conn.execute(
         f"{_LIST_SELECT} WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT {int(limit)}",
         params,
@@ -173,18 +201,53 @@ def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=N
 
 @router.get("/api/staff/tickets")
 def staff_ticket_list(
-    view: Literal["unassigned", "mine", "recent", "open_pending"] = "unassigned",
+    view: TicketView = "unassigned",
     q: str | None = Query(default=None, max_length=200),
     priority: Literal["low", "medium", "high", "urgent"] | None = None,
     status: TicketStatus | None = None,
+    ticket_type: Literal["ticket", "chat"] | None = None,
     technician_id: str = Depends(auth.get_current_technician),
 ):
+    """One list (view); ticket_type "chat" = escalated chats."""
     where, order = _VIEWS[view]
     conn = db.get_connection()
     try:
-        return _list_rows(conn, where, order, {"me": technician_id}, q=q, priority=priority, status=status)
+        return _list_rows(conn, where, order, _view_params(technician_id), q=q, priority=priority,
+                          status=status, ticket_type=ticket_type)
     finally:
         conn.close()
+
+
+@router.get("/api/staff/tickets/counts")
+def staff_ticket_counts(
+    q: str | None = Query(default=None, max_length=200),
+    priority: Literal["low", "medium", "high", "urgent"] | None = None,
+    status: TicketStatus | None = None,
+    ticket_type: Literal["ticket", "chat"] | None = None,
+    technician_id: str = Depends(auth.get_current_technician),
+):
+    """The count of each tab (Unassigned, Mine, All open, Recently
+    resolved) with the same filters as the list."""
+    conn = db.get_connection()
+    try:
+        counts = {}
+        for view in ("unassigned", "mine", "open_pending", "resolved"):
+            params = _view_params(technician_id)
+            clauses = ["t.route = 'human'", _VIEWS[view][0]]
+            _filters(clauses, params, q=q, priority=priority, status=status, ticket_type=ticket_type)
+            counts[view] = conn.execute(
+                "SELECT COUNT(*) FROM tickets t JOIN customers c ON c.customer_id = t.customer_id "
+                f"WHERE {' AND '.join(clauses)}", params).fetchone()[0]
+        return counts
+    finally:
+        conn.close()
+
+
+@router.get("/api/staff/dashboard")
+def technician_dashboard(period: Literal[periods.PRESETS] = periods.DEFAULT,  # type: ignore[valid-type]
+                         technician_id: str = Depends(auth.get_current_technician)):
+    """The technician's own tickets only (backend/admin_reports.py)."""
+    return admin_reports.technician_data(periods.period_range(period), technician_id)
 
 
 # ---------------------------------------------------------------------------

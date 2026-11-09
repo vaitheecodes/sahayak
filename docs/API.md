@@ -80,12 +80,16 @@ message is kept and nothing else changed.
 
 | Method & path | Role | Request | Response / notes |
 |---|---|---|---|
-| `GET /staff/tickets?view=&q=&priority=&status=` | T | `view`: `unassigned` (oldest first) \| `mine` \| `recent` \| `open_pending` | `[{ticket_id, subject, status, priority, ticket_type, category, created_at, last_activity, customer_name, customer_email, assigned_technician_id, assignee_name, preview}]` (tickets with the support team only) |
-| `GET /staff/tickets/{id}` | T, M (own department or linked incident), A | — | `{ticket:{..., description, customer, assignee}, messages:[... visibility, customer_visible, author ...], ai:{summary, suggestions, case_summary}, chat, incidents, status_history, assignment_history, can:{claim, reply, change_status, note}}` |
+| `GET /staff/tickets?view=&q=&priority=&status=&ticket_type=` | T | `view`: `unassigned` (oldest first) \| `mine` \| `recent` \| `open_pending` \| `resolved` (last 14 days); `q` matches subject, customer or `#id`; `ticket_type`: `ticket` \| `chat` | `[{ticket_id, subject, status, priority, ticket_type, category, created_at, last_activity, customer_name, customer_email, assigned_technician_id, assignee_name, preview}]` (tickets with the support team only) |
+| `GET /staff/tickets/counts?q=&priority=&status=&ticket_type=` | T | — | `{unassigned, mine, open_pending, resolved}` with the same filters (the tab counts) |
+| `GET /staff/dashboard?period=` | T | `period`: a preset (below) | own tickets only: `{period, cards:{assigned, in_progress, pending_customer, resolved, sla_at_risk}, attention:[{ticket_id, subject, priority, status, ticket_type, sla, updated_at, reason:"sla"\|"customer_reply"\|null}], attention_total, numbers:{avg_first_response_minutes, avg_resolution_minutes, sla_met_percent, reopened, chats_reviewed}}` |
+| `GET /staff/tickets/{id}` | T, M (own department only; 403 otherwise) | — | `{ticket:{..., description, customer, assignee}, messages:[... visibility, customer_visible, author ...], ai:{summary, suggestions, case_summary}, chat, incidents, status_history, assignment_history, can:{claim, reply, change_status, note}}` |
 | `POST /staff/tickets/{id}/claim` | T | — | workspace. 409 if someone else claimed it first (atomic). |
 | `POST /staff/tickets/{id}/status` | T (owner) | `{status}` | workspace; adds a customer-visible status event |
 | `POST /staff/tickets/{id}/messages` | T | `{body, visibility:"public_reply"\|"internal_note", subject?, set_status?}` | workspace. Public replies: owner only. Notes: any technician; never shown to customers. |
-| `GET /chat-reviews?status=` | T, M | — | AI-resolved chats with summary + transcript |
+| `GET /staff/chats?filter=active\|escalated\|resolved&q=` | T, M (own department) | — | `[{session_id, status, customer_name, first_message, category, ticket_id, message_count, created_at, updated_at}]`; customers and the admin get 403 |
+| `GET /staff/chats/{id}` | T, M (own department; 404 otherwise) | — | the read-only transcript `{..., messages:[{message_id, role, content, created_at}], ticket_id}` |
+| `GET /chat-reviews?status=` | T, M (own department) | — | AI-resolved chats with summary + transcript |
 | `POST /chat-reviews/{id}` | T, M | `{status:"verified"\|"closed"}` | `pending_review → verified → closed` |
 
 ## Manager
@@ -94,6 +98,16 @@ message is kept and nothing else changed.
 |---|---|---|
 | `GET /manager/departments` | M | `[{department_id, name, categories, manager_ids}]` (zero or one) |
 | `GET /manager/overview` | M | `{categories, tickets:[...], workload:[{staff_id, name, open, in_progress, pending_customer, resolved}], unassigned}` for the manager's department. Read-only. |
+| `GET /manager/dashboard?period=` | M | `{department, period, kpis:{open, in_progress, pending_customer, unassigned, sla_at_risk, sla_breached, avg_first_response_minutes, first_responses}, created, resolved, technician_workload, open_by_priority, over_time:[{date, created, resolved}]}` |
+| `GET /manager/sla?period=&priority=` | M | compliance by priority, totals and the watch list (open tickets at risk or breached), department only |
+| `GET /manager/tickets?q=&status=&priority=` | M | `{department, technicians, tickets:[{..., sla}]}`, newest first |
+| `GET /manager/technicians` | M | `{department, technicians:[{staff_id, name, email, active_count, resolved_count}]}`: technicians whose department is this one |
+| `POST /manager/tickets/{id}/reassign` | M | `{technician_id\|null}`; human-routed tickets only (400), outside the department 403, a technician from another department 400 |
+| `POST /manager/tickets/{id}/priority` | M | `{priority}`; SLA due times recalculated from creation; audited |
+
+Every manager endpoint is limited to the manager's own department (`staff.department_id`), direct ids included.
+
+**Periods** (`backend/periods.py`): `today`, `yesterday`, `this_week` (default), `last_week`, `this_month`, `last_month`, `this_quarter`, `this_year`; IST calendar days, weeks start Monday; anything else is 422.
 
 ## Incidents (managers; technicians for incidents assigned to them; the admin gets 403)
 
@@ -149,7 +163,9 @@ T = technicians and managers, M = managers only. Errors are 400 (invalid),
 ## Admin
 
 Every admin endpoint checks the admin role on the server: a customer,
-technician or manager gets 403, no token 401.
+technician or manager gets 403, no token 401. The admin runs people and
+the system only: tickets, dashboards and SLA reports are the managers'
+(`/manager/*`), and the admin gets 403 there.
 
 Temporary passwords are generated by the server: a create or reset
 response carries `temporary_password` once (`Cache-Control: no-store`).
@@ -163,12 +179,6 @@ and the account must change it at first sign-in.
 | `PATCH /admin/users/{id}` | any of `{name, email, role, department_id}` | staff role technician↔manager only; a customer can't become staff (400); the admin account → 403 |
 | `POST /admin/users/{id}/deactivate` · `/activate` | — | deactivated: can't sign in, live sessions stop; tickets kept |
 | `POST /admin/users/{id}/reset-password` | — | `temporary_password` (once); the old password stops working |
-| `GET /admin/dashboard?since=&until=&priority=` | — | tickets created in the range (dates or ISO, UTC, default last 30 days, max 366): `{total, by_status, by_priority, over_time:[{date, created, resolved}], open_by_priority, open_by_technician:[{technician_id, name, count}], response_times:{<priority>:{tickets, avg_first_response_minutes, first_responses, avg_resolution_minutes, resolved}}}` |
-| `GET /admin/sla?since=&until=&priority=` | — | `{enabled, at_risk_percent, calendar, tickets_with_sla, by_priority:{<p>:{tickets, first_response:{met, breached, percent}, resolution:{…}, breached, at_risk, within_sla}}, totals, watchlist:[{ticket_id, subject, priority, status, technician_name, next_due_at, sla}]}` |
-| `POST /admin/tickets/{id}/priority` | `{priority}` | SLA due times recalculated from creation; audited |
-| `GET /admin/tickets` | — | every ticket, every field, plus `sla` |
-| `GET /admin/technicians` | — | active technicians with active/resolved counts |
-| `POST /admin/tickets/{id}/reassign` | `{technician_id\|null}` | null returns it to the unassigned queue |
 | `GET /admin/staff` | — | `[{staff_id, name, email, role, active, must_change_password, department_id, department_name}]` |
 | `POST /admin/staff` | `{name, email, role:"technician"\|"manager", department_id?}` | plus `temporary_password` (once); forced change at first sign-in |
 | `PATCH /admin/staff/{id}` | any of `{name, email, role, department_id}` | 409 if a technician with open tickets would change role; a role change signs them out |

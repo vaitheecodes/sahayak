@@ -310,10 +310,10 @@ incident summary, post-incident summary draft, incident-question parsing):
 | Role | Signs in at | Can |
 |---|---|---|
 | Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
-| Technician | → `/technician` | unassigned / mine / recent / open queues, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
-| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), department tickets and workload (read-only), chat reviews, Try a ticket (`/try-a-ticket`) |
+| Technician | → `/technician` | dashboard of their own tickets (needs my attention, my numbers), tickets (unassigned / mine / all open / recently resolved, filters), read-only chats, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), dashboard and SLA for their department, department tickets (reassign to the department's technicians, priority), chats, chat reviews, Try a ticket (`/try-a-ticket`) |
 | Anyone | `/incidents`, `/docs` | public incident history and the read-only docs (routing policy, ticket statuses), no login |
-| Admin (single account) | → `/admin` | ticket dashboard, all tickets (reassign, priority), SLA targets and compliance, users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to chat reviews, incidents or Try a ticket (403) |
+| Admin (single account) | → `/admin` | SLA targets (in Settings), users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to tickets, dashboards, SLA reports, chats, chat reviews, incidents or Try a ticket (403) |
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it
@@ -458,8 +458,8 @@ and clicking through each portal in a browser at desktop and phone widths.
   fields;** the account's name and email and the category are used.
 - **Composer formatting** is a Markdown subset (bold, code, lists), not a
   WYSIWYG editor. Only customers can attach files.
-- **No manager reassignment and no "reply to all linked tickets"** (the
-  spec makes both optional; neither existed before).
+- **No "reply to all linked tickets"** (optional in the spec).
+- **"Take this chat"** (joining a live AI chat) is a placeholder.
 - **Real email is send-only and off by default;** there's no inbound
   email.
 - **Session tokens** live in `localStorage` with no refresh tokens. Failed

@@ -71,10 +71,16 @@ def _admin(client):
     return _login(client, "admin@example.com", "admin-dev-password")
 
 
-def _new_technician(client):
+def _department_id(client, name="Product Support"):
+    departments = client.get("/api/admin/departments", headers=_admin(client)).json()["departments"]
+    return next(d["department_id"] for d in departments if d["name"] == name)
+
+
+def _new_technician(client, department_id=None):
     email = f"tech-{next(_counter)}@example.com"
     res = client.post("/api/admin/staff", json={
-        "name": f"Tech {email}", "email": email, "role": "technician"}, headers=_admin(client))
+        "name": f"Tech {email}", "email": email, "role": "technician", "department_id": department_id},
+        headers=_admin(client))
     assert res.status_code == 200, res.text
     temp = res.json()["temporary_password"]
     headers = _login(client, email, temp)
@@ -263,25 +269,25 @@ def test_customer_reply_returns_pending_customer_to_open(client):
     assert res.json()["status"] == "open"
 
 
-def test_status_change_events_show_to_customer_but_admin_reassign_does_not(client):
+def test_status_change_events_show_to_customer_but_manager_reassign_does_not(client):
     customer = _customer(client)
     ticket_id = _raise(client, customer)
     tech = _demo(client, "technician")
     _claim(client, tech, ticket_id)
     client.post(f"/api/staff/tickets/{ticket_id}/status", json={"status": "resolved"}, headers=tech)
-    _, other_id = _new_technician(client)
-    res = client.post(f"/api/admin/tickets/{ticket_id}/reassign", json={"technician_id": other_id},
-                      headers=_admin(client))
-    assert res.status_code == 200
+    _, other_id = _new_technician(client, _department_id(client))
+    res = client.post(f"/api/manager/tickets/{ticket_id}/reassign", json={"technician_id": other_id},
+                      headers=_demo(client, "manager"))
+    assert res.status_code == 200, res.text
 
     events = [m["message"] for m in client.get(f"/api/tickets/{ticket_id}", headers=customer).json()["messages"]
               if m["sender"] == "system"]
     assert "Demo Technician is now handling your ticket." in events
     assert "Status changed to Resolved." in events
-    assert not any("administrator" in e for e in events)
+    assert not any("manager" in e or "Reassigned" in e for e in events)
 
     history = _query("SELECT * FROM ticket_assignment_history WHERE ticket_id = ? ORDER BY id", (ticket_id,))
-    assert history[-1]["to_user"] == other_id and history[-1]["changed_by"].startswith("ADMIN-")
+    assert history[-1]["to_user"] == other_id and history[-1]["changed_by"].startswith("MGR-")
 
 
 @pytest.mark.sqlite_only

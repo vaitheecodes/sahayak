@@ -318,7 +318,7 @@ _DASHBOARD_ENDPOINT = {
     "customer": "/api/tickets/mine",
     "technician": "/api/staff/tickets",
     "manager": "/api/manager/departments",
-    "admin": "/api/admin/tickets",
+    "admin": "/api/admin/users",
 }
 
 
@@ -396,13 +396,17 @@ def test_admin_sets_a_managers_single_department(client):
     assert set(mine[0]["categories"]) == {"OTHER", "OTHER"}
 
 
-def test_technicians_cannot_own_departments(client):
+def test_technicians_can_work_a_department(client):
+    """A technician's department is the one whose manager may assign them
+    its tickets (backend/manager.py)."""
     headers = _admin_headers(client)
     tech_id = _create_staff(client, role="technician", email="t3@example.com").json()["staff_id"]
     depts = client.get("/api/admin/departments", headers=headers).json()["departments"]
     res = client.patch(f"/api/admin/staff/{tech_id}", json={"department_id": depts[0]["department_id"]},
                        headers=headers)
-    assert res.status_code == 400
+    assert res.status_code == 200 and res.json()["department_id"] == depts[0]["department_id"]
+    res = client.patch(f"/api/admin/staff/{tech_id}", json={"department_id": None}, headers=headers)
+    assert res.status_code == 200 and res.json()["department_id"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -45,7 +45,7 @@ function AddUserForm({ departments, onCreated, onCancel }) {
         name: name.trim(),
         email: email.trim(),
         role,
-        department_id: role === "manager" ? departmentId : null,
+        department_id: role !== "customer" ? departmentId : null,
       });
       onCreated(created);
     } catch (err) {
@@ -81,12 +81,17 @@ function AddUserForm({ departments, onCreated, onCancel }) {
             ))}
           </select>
         </div>
-        {role === "manager" && (
+        {role !== "customer" && (
           <div className="field-group">
             <label className="field-label" htmlFor={ids.dept}>
-              Department
+              {role === "manager" ? "Department" : "Works in department"}
             </label>
             <DepartmentSelect id={ids.dept} value={departmentId} onChange={setDepartmentId} departments={departments} />
+            {role === "technician" && (
+              <p className="hint" style={{ margin: 0 }}>
+                The department's manager can assign them its tickets.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -120,7 +125,7 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
     if (name.trim() !== user.name) changes.name = name.trim();
     if (email.trim() !== user.email) changes.email = email.trim();
     if (isStaff && role !== user.role) changes.role = role;
-    if (role === "manager" && (departmentId || null) !== (user.department_id || null)) {
+    if (role !== "customer" && (departmentId || null) !== (user.department_id || null)) {
       changes.department_id = departmentId || null;
     }
     if (Object.keys(changes).length === 0) return onCancel();
@@ -161,12 +166,17 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
             </select>
           </div>
         )}
-        {role === "manager" && (
+        {role !== "customer" && (
           <div className="field-group">
             <label className="field-label" htmlFor={ids.dept}>
-              Department
+              {role === "manager" ? "Department" : "Works in department"}
             </label>
             <DepartmentSelect id={ids.dept} value={departmentId} onChange={setDepartmentId} departments={departments} />
+            {role === "technician" && (
+              <p className="hint" style={{ margin: 0 }}>
+                The department's manager can assign them its tickets.
+              </p>
+            )}
           </div>
         )}
       </div>

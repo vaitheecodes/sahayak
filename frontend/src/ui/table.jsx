@@ -11,7 +11,7 @@ export function Table({ className, wrapperClassName, ...props }) {
 }
 
 export function TableHeader({ className, ...props }) {
-  return <thead data-slot="table-header" className={cn("sticky top-0 z-10 bg-sheet", className)} {...props} />;
+  return <thead data-slot="table-header" className={cn("sticky top-0 z-10 bg-table-header", className)} {...props} />;
 }
 
 export function TableBody({ className, ...props }) {

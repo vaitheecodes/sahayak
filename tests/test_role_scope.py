@@ -1,8 +1,9 @@
 """Who can reach what after the admin role was slimmed down.
 
-- The admin keeps Dashboard, All Tickets, SLA, Users and Departments
-  (plus Settings and Activity, untouched) and loses Chat Reviews,
-  Incidents and Try a Ticket: 403 on every one of those endpoints.
+- The admin runs people and the system only: Users, Departments,
+  Settings and the Activity log. Dashboards, tickets, SLA, reassign, the
+  ticket workspace, chats, Chat Reviews, Incidents and Try a Ticket are
+  403 for the admin; the old admin report/ticket endpoints are gone.
 - Chat Reviews: technicians and managers.
 - Incidents: managers (technicians only the ones assigned to them).
 - Try a Ticket: technicians and managers, at /api/try-a-ticket.
@@ -189,14 +190,44 @@ def test_routing_policy_is_read_only(client):
 # What the admin keeps
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("path", [
-    "/api/admin/dashboard", "/api/admin/tickets", "/api/admin/sla", "/api/admin/users",
-    "/api/admin/departments", "/api/admin/settings", "/api/admin/audit",
+    "/api/admin/users", "/api/admin/departments", "/api/admin/settings", "/api/admin/audit",
 ])
 def test_admin_keeps_its_pages(client, path):
     assert client.get(path, headers=_admin(client)).status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/api/admin/dashboard", "/api/admin/tickets", "/api/admin/users"])
+@pytest.mark.parametrize("path", ["/api/admin/users", "/api/admin/departments", "/api/admin/audit"])
 @pytest.mark.parametrize("role", ["technician", "manager"])
 def test_admin_pages_stay_admin_only(client, path, role):
     assert client.get(path, headers=_demo(client, role)).status_code == 403
+
+
+# Dashboards, SLA, ticket lists, reassign / priority, the ticket workspace,
+# chats: the managers' and technicians'. The admin gets 403 on every one.
+NOT_FOR_ADMIN = [
+    ("get", "/api/manager/dashboard", None),
+    ("get", "/api/manager/sla", None),
+    ("get", "/api/manager/tickets", None),
+    ("get", "/api/manager/technicians", None),
+    ("post", "/api/manager/tickets/TKT-x/reassign", {"technician_id": None}),
+    ("post", "/api/manager/tickets/TKT-x/priority", {"priority": "high"}),
+    ("get", "/api/staff/dashboard", None),
+    ("get", "/api/staff/tickets", None),
+    ("get", "/api/staff/tickets/counts", None),
+    ("get", "/api/staff/tickets/TKT-x", None),
+    ("get", "/api/staff/chats", None),
+    ("get", "/api/staff/chats/CHAT-x", None),
+]
+
+
+@pytest.mark.parametrize("endpoint", NOT_FOR_ADMIN, ids=lambda e: f"{e[0]} {e[1]}")
+def test_admin_gets_403_on_dashboards_sla_tickets_reassign_and_chats(client, endpoint):
+    assert _call(client, endpoint, _admin(client)).status_code == 403
+
+
+@pytest.mark.parametrize("path", ["/api/admin/dashboard", "/api/admin/sla", "/api/admin/tickets",
+                                  "/api/admin/technicians"])
+def test_the_old_admin_report_and_ticket_endpoints_are_gone(client, path):
+    assert client.get(path, headers=_admin(client)).status_code == 404
+    res = client.post("/api/admin/tickets/TKT-x/reassign", headers=_admin(client), json={"technician_id": None})
+    assert res.status_code in (404, 405)

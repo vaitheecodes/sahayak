@@ -425,20 +425,44 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   parent `/uploads`) with random names. Covered by
   `tests/test_customer_tickets.py`.
 
-- **Admin area: users, dashboard, SLA** (`backend/admin_users.py`,
+- **Role layout** (`layout/nav.js`, `pages/{Admin,Manager,Technician}Portal.jsx`).
+  **Admin: people and system only** — People (Users, Departments) ·
+  System (Settings incl. SLA targets, Activity log); 403 on every ticket,
+  dashboard, SLA-report, chat, chat-review, incident and Try-a-ticket
+  endpoint (`tests/test_role_scope.py`). **Manager: own department only**
+  (`staff.department_id`; a ticket or chat is in it when the department
+  owns `COALESCE(category, requested_category)`), lists, counts and
+  direct ids alike (`backend/manager.py`, `staff_tickets._ticket_for_staff`
+  403, `chats._chat_scope` 404): Overview (Dashboard "Dashboard ·
+  <department>", SLA) · Work (Department tickets with reassign + priority,
+  Chats, Chat reviews, Incidents) · Knowledge base (+ Try a ticket).
+  Reassign goes only to technicians whose `department_id` is the
+  manager's (technicians may now "work" one department, set under Users).
+  **Technician**: My work (Dashboard of their own tickets only, Tickets
+  with tabs + counts + filters + Claim, Chats) · More (Chat reviews, KB
+  review queue, Try a ticket); assigned incidents stay at
+  `/technician/incidents`. **Chats** (`GET /api/staff/chats[/{id}]`,
+  `StaffChats.jsx`): read-only transcripts, technicians + managers;
+  "Take this chat" is a placeholder. **Periods** (`backend/periods.py`,
+  `components/dashboard/PeriodSelect.jsx`): Today … This year, IST, weeks
+  from Monday, default This week. Covered by
+  `tests/test_department_scope.py`, `tests/test_periods.py`.
+- **Users, reports, SLA** (`backend/admin_users.py`,
   `backend/admin_reports.py`, `backend/sla.py`; `UsersPanel`,
-  `DashboardPanel`, `SlaPanel`, `OneTimePassword`, `ui/SlaChip`). Every
-  endpoint admin-only on the server. **Users**: one list of customers,
+  `components/dashboard/`, `SlaPanel`, `OneTimePassword`, `ui/SlaChip`).
+  **Users** (admin-only): one list of customers,
   technicians and managers (`/api/admin/users`, same functions as the
   older `/api/admin/staff` and `/api/admin/customers`); never the admin
   (env-seeded) and never role `admin`. Create and reset generate the
   temporary password server-side (`auth.generate_temporary_password`),
   returned once with `Cache-Control: no-store`, stored only hashed, never
   in a list or the audit log; forced change at first sign-in.
-  Deactivated users can't sign in, tickets kept. **Dashboard**
-  (`/api/admin/dashboard`): counts by status/priority, created/resolved
-  per day, open by priority and technician, average first-response and
-  resolution time per priority, date range + priority filters; aggregated
+  Deactivated users can't sign in, tickets kept. **Reports**
+  (`admin_reports.py`, no router; `scope_sql(categories)` limits them):
+  `dashboard_data` (KPIs now, created/resolved per IST day, workload,
+  open by priority, avg first response) and `sla_data` for
+  `/api/manager/{dashboard,sla}`, `technician_data` for
+  `/api/staff/dashboard`; aggregated
   in Python so it runs the same on SQLite and Postgres. **SLA** (settings
   section `sla`, off by default): per priority a first-response and a
   resolution target; a ticket gets targets and due times at creation
@@ -450,32 +474,19 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `sla.on_status_changed`). Calendar 24x7 only; `sla.add_working_time` /
   `working_seconds` are where business hours go. States on_track /
   at_risk (`at_risk_percent`, default 75) / breached / met / paused;
-  `/api/admin/sla` gives compliance, totals and the near-breach list;
-  `sla` is on admin and staff ticket payloads, never customer ones. New
+  `sla` is on staff ticket payloads, never customer ones. New
   ticket columns (`first_response_at`, `resolved_at`, `sla_*`):
   `db._ADDED_COLUMNS` + backfill for SQLite,
   `migrations/postgres/0002_sla.sql` for Postgres. Covered by
   `tests/test_admin_area.py` (run on Postgres with
   `DB_BACKEND=postgres`).
 - **Admin portal** (`frontend/src/pages/AdminPortal.jsx`): the single
-  admin (see Auth). Tabs: **Dashboard**, **All Tickets** (`GET /api/admin/tickets`,
-  every field, every customer — including a **Technician** column with a live dropdown to
-  (re)assign or unassign any human-routed ticket via
-  `POST /api/admin/tickets/{id}/reassign`; picking "Unassigned" sends it
-  back to the open queue; a **Priority** dropdown and the **SLA** state),
-  **SLA**, **Users** (see the admin-area bullet above), **Departments**
+  admin (see Auth). Sections **Users**, **Departments**
   (`components/DepartmentsPanel.jsx`: create/edit/delete
   departments and their KB-category mapping — each category belongs to
   at most one department, enforced server-side), **Settings** and
-  **Activity**. Each section is its own route (`/admin/<section>`). Chat
-  Reviews (technicians + managers), Incidents (managers), **Try a ticket**
-  (`/try-a-ticket`, `POST /api/try-a-ticket`, technicians + managers: the
-  live pipeline trace without saving) and the **routing policy** (public,
-  read-only at `/docs/routing-policy`) are not in the admin console, and
-  the admin gets 403 on their endpoints (`tests/test_role_scope.py`).
-  Reassignment is restricted to `route == 'human'` tickets — an
-  ai/clarify ticket was never queued for a human, so there's nothing
-  to hand off.
+  **Activity log**, each its own route (`/admin/<section>`). The routing
+  policy is public, read-only at `/docs/routing-policy`.
 
 - **Frontend design system** (`frontend/src/styles/theme.css`,
   `src/ui/` shadcn-pattern components on Radix, `src/layout/AppShell.jsx`,
@@ -519,7 +530,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   Tickets that escalated without a chat (e.g. an immediate high-risk
   escalation) have no marker, so `summary` comes back `null` and only
   the original-message section renders — no empty summary block. Same
-  parsing reused in the admin All Tickets table's Text column.
+  parsing reused in the manager's Department tickets table.
 - **AI service** (`backend/ai_service/`, reconcile sub-stage C): every
   model call goes through it — one module per operation
   (`categorize_ticket`, `chat_response` [answer / clarify /
@@ -625,14 +636,15 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 - **Admin console, settings, audit** (reconcile sub-stage E;
   `backend/admin.py`, `backend/app_settings.py`, `backend/audit.py`).
   All admin endpoints live in `admin.py` (admin role on every one):
-  tickets + reassign + simulator, Team (`PATCH /api/admin/staff/{id}`:
+  simulator, Team (`PATCH /api/admin/staff/{id}`:
   name/email/role/department; a technician with open tickets can't change
   role; a role change invalidates their token), Customers (create with a
   forced password change, edit, deactivate — live sessions blocked —
   reset password), departments, settings, audit log. **A manager belongs
   to one department** (`staff.department_id`; the legacy
   `manager_departments` table is read once by the migration — first
-  mapping kept — and no longer written); technicians have none.
+  mapping kept — and no longer written); a technician may work one
+  (optional; the manager can assign them there).
   **Settings** (`app_settings`): `routing` (confidence bars, high-risk
   categories, escalation language tags, max clarifying rounds — read by
   `graph.decide_route` on every decision), `incidents` (window, min
@@ -693,8 +705,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `BEGIN IMMEDIATE` + `UPDATE ... WHERE assigned_technician_id IS NULL`,
   so of two simultaneous claims one gets 409. Only the owner replies
   publicly or changes status; any technician adds internal notes;
-  managers are read-only (their departments' categories only, plus
-  `/api/manager/overview` workload); admin reassign is logged.
+  managers see their department only and reassign / set priority there
+  (`/api/manager/tickets/{id}/{reassign,priority}`, logged).
   **Message visibility** (`ticket_messages.visibility`): `public_reply`,
   `internal_note`, `system_event` (+ `customer_visible`). Customer
   endpoints filter with `db.CUSTOMER_VISIBLE_SQL` in the query, and the

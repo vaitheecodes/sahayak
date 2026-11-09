@@ -21,12 +21,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from backend import admin, admin_reports, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
+from backend import admin, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
 from backend import handoff_signals
 from backend import categories as kb_categories
 from backend import incidents, kb_retrieval, product
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
-from backend import try_ticket
+from backend import manager, try_ticket
 from backend.ai_service import backends as ai_backends
 from backend.ai_service import provider as ai_provider
 from backend import ticket_lifecycle as lifecycle
@@ -152,9 +152,9 @@ app.include_router(staff_tickets.router)
 app.include_router(incidents.router)
 app.include_router(admin.router)
 app.include_router(admin_users.router)
-app.include_router(admin_reports.router)
 app.include_router(incident_resolution.router)
 app.include_router(try_ticket.router)
+app.include_router(manager.router)
 app.include_router(kb_api.router)
 
 

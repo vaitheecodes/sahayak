@@ -87,255 +87,94 @@
   --focus-ring-offset: 2px;                       /* new */
 }
 
-/* --- LIGHT (default) ----------------------------------------------------- */
-:root,
-:root[data-theme="light"] {
-  color-scheme: light;
-
-  /* surfaces — paper on a cool off-white page */
-  --surface-page: #f5f6f8;
-  --surface-raised: #ffffff;
-  --surface-overlay: #eef0f3;      /* recessed/neutral fill: counts, segmented track, skeleton */
-  --surface-float: #ffffff;        /* new — toasts, dialogs, menus (true floating layer) */
-  --surface-input: #ffffff;
-  --surface-hover: rgba(23, 27, 36, 0.04);
-  --surface-active: rgba(23, 27, 36, 0.07);
-  --header-bg: #ffffff;            /* new */
-  --scrim: rgba(23, 27, 36, 0.45); /* new — dialog backdrop */
+/* --- Colours: aliases of the design tokens in styles/theme.css --------------
+   One palette for both systems: warm graphite neutrals, one cobalt accent,
+   status colours for status only (blue open / in progress, amber waiting or
+   at risk, red breached or high, green resolved or on track). The theme
+   switch happens in theme.css; these follow it. No purple, no teal. */
+:root {
+  /* surfaces */
+  --surface-page: var(--frame);
+  --surface-raised: var(--sheet);
+  --surface-overlay: var(--active);   /* recessed/neutral fill: counts, segmented track, skeleton */
+  --surface-float: var(--float);
+  --surface-input: var(--sheet);
+  --surface-hover: color-mix(in srgb, var(--fg) 4%, transparent);
+  --surface-active: color-mix(in srgb, var(--fg) 7%, transparent);
+  --header-bg: var(--sheet);
 
   /* borders */
-  --border-subtle: #e3e6eb;        /* card / table hairlines (decorative) */
-  --border-default: #d2d7de;       /* button outlines, dividers */
-  --border-strong: #a3abb7;        /* emphasised dividers, scrollbar thumb */
-  --border-input: #868f9d;         /* new — 3.27:1 on white: field boundary */
-  --border-input-hover: #6b7482;   /* new */
+  --border-subtle: var(--border);
+  --border-default: var(--border-strong);
+  --border-input: var(--input);
+  --border-input-hover: var(--muted-fg);
 
   /* text */
-  --text-primary: #171b24;
-  --text-secondary: #4a5262;
-  --text-tertiary: #5f6878;
-  --text-on-accent: #ffffff;
+  --text-primary: var(--fg);
+  --text-secondary: var(--muted-fg);
+  --text-tertiary: var(--muted-fg);
+  --text-on-accent: var(--primary-fg);
 
-  /* accent — restrained blue */
-  --accent-300: #3d7be0;
-  --accent-400: #1a5bc4;           /* accent TEXT + icons, links */
-  --accent-500: #2563d6;           /* identity fills: active tab rail, dots, focus border */
-  --accent-550: #1a52b3;           /* primary hover (darker in light) */
-  --accent-600: #1f5fcc;           /* primary rest */
-  --accent-700: #16469a;           /* primary pressed */
-  --accent-soft: #e8effc;
-  --accent-soft-strong: #d4e2f9;
-  --accent-ring: rgba(37, 99, 214, 0.28); /* soft halo around focused inputs (decorative) */
-  --focus-ring: #2563d6;           /* new — the 3:1 indicator itself */
+  /* accent: cobalt. 500-700 are fills, 400 is accent text and icons. */
+  --accent-300: var(--primary-hover);
+  --accent-400: var(--primary);
+  --accent-500: var(--primary);
+  --accent-550: var(--primary-hover);
+  --accent-600: var(--primary);
+  --accent-700: var(--primary-hover);
+  --accent-soft: var(--pill-accent-bg);
+  --accent-soft-strong: color-mix(in srgb, var(--primary) 22%, var(--sheet));
+  --accent-ring: color-mix(in srgb, var(--primary) 30%, transparent);
+  --focus-ring: var(--ring);
 
   /* status (fg = text-safe on its soft AND on raised) */
-  --status-ok: #17744a;
-  --status-ok-soft: #e5f3ec;
-  --status-warn: #875400;
-  --status-warn-soft: #fcf1db;
-  --status-info: #1b5bbf;
-  --status-info-soft: #e6eefb;
-  --status-neutral: #4f5868;
-  --status-neutral-soft: #edeff3;
-  --status-danger: #b3261e;
-  --status-danger-soft: #fceceb;
-  --status-wait: #8a3a7c;          /* new — pending customer, active chat */
-  --status-wait-soft: #f6e9f3;     /* new */
-  --status-orange: #a94a08;        /* new — priority high only */
-  --status-orange-soft: #fcede2;   /* new */
-  --danger-fill: #b3261e;          /* new — solid destructive button, urgent lozenge */
-  --danger-fill-hover: #a12019;    /* new */
-  --note-fill: var(--status-warn-soft);  /* new — internal note card */
-  --note-border: #ecd29a;          /* new */
-  --note-strong: #f5e2b5;          /* new — note avatar/tag/active mode fill */
+  --status-ok: var(--pill-positive-fg);
+  --status-ok-soft: var(--pill-positive-bg);
+  --status-warn: var(--pill-warning-fg);
+  --status-warn-soft: var(--pill-warning-bg);
+  --status-info: var(--pill-info-fg);
+  --status-info-soft: var(--pill-info-bg);
+  --status-neutral: var(--pill-neutral-fg);
+  --status-neutral-soft: var(--pill-neutral-bg);
+  --status-danger: var(--pill-negative-fg);
+  --status-danger-soft: var(--pill-negative-bg);
+  /* Waiting (pending customer, active chat) is amber, like at-risk. */
+  --status-wait: var(--pill-warning-fg);
+  --status-wait-soft: var(--pill-warning-bg);
+  /* Priority high is red (as breached); urgent is the solid red lozenge. */
+  --status-orange: var(--pill-negative-fg);
+  --status-orange-soft: var(--pill-negative-bg);
+  --danger-fill: var(--negative);
+  --danger-fill-hover: var(--negative-hover);
+  --note-fill: var(--pill-warning-bg);
+  --note-border: color-mix(in srgb, var(--warning) 45%, var(--sheet));
+  --note-strong: color-mix(in srgb, var(--warning) 25%, var(--sheet));
 
   /* tables */
-  --table-header-bg: #f5f6f8;      /* new */
-  --table-zebra: #f9fafb;          /* new — optional, wide admin tables only */
-  --table-row-hover: #eef2fa;      /* new */
-  --table-row-selected: #e3ecfb;   /* new */
+  --table-header-bg: var(--table-header);
+  --table-zebra: var(--raised);
+  --table-row-hover: var(--raised);
+  --table-row-selected: var(--active);
 
-  /* charts — CVD-checked categorical set (see §3.3) */
-  --l-chart-1: #3163c9;  /* blue   */
-  --l-chart-2: #8a3208;  /* rust   */
-  --l-chart-3: #08896a;  /* teal   */
-  --l-chart-4: #b33188;  /* magenta*/
-  --l-chart-5: #b97a0c;  /* ochre  */
-  --l-chart-6: #43474f;  /* slate  */
-  --l-chart-grid: #e3e6eb;
-  --l-chart-axis: #868f9d;
-  --l-chart-label: var(--text-tertiary);
+  /* charts: cobalt and amber first (they differ in lightness, not only hue) */
+  --l-chart-1: var(--chart-1);
+  --l-chart-2: var(--chart-2);
+  --l-chart-3: var(--chart-3);
+  --l-chart-4: var(--chart-4);
+  --l-chart-5: var(--chart-5);
+  --l-chart-6: var(--muted-fg);
+  --l-chart-grid: var(--chart-grid);
+  --l-chart-axis: var(--input);
+  --l-chart-label: var(--muted-fg);
 
-  /* elevation — light mode gets a real (subtle) shadow scale */
-  --shadow-1: 0 1px 2px rgba(23, 27, 36, 0.06);                                   /* new — cards, rows */
-  --shadow-2: 0 1px 3px rgba(23, 27, 36, 0.08), 0 1px 2px rgba(23, 27, 36, 0.04); /* new — hover lift, KPI */
-  --shadow-3: 0 12px 24px -6px rgba(23, 27, 36, 0.16), 0 4px 8px -4px rgba(23, 27, 36, 0.08); /* new */
-  --shadow-overlay: var(--shadow-3);
-  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 6px 16px -12px rgba(23, 27, 36, 0.25);
-
-  --selection-bg: #cfe0fb;         /* new */
-}
-
-/* --- DARK: OS preference (keep identical to the forced block below) ------ */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-
-    --surface-page: #0f1114;
-    --surface-raised: #16191e;
-    --surface-overlay: #1e2228;
-    --surface-float: #1e2228;
-    --surface-input: #121418;
-    --surface-hover: rgba(255, 255, 255, 0.04);
-    --surface-active: rgba(255, 255, 255, 0.07);
-    --header-bg: #16191e;
-    --scrim: rgba(0, 0, 0, 0.6);
-
-    --border-subtle: #252930;
-    --border-default: #30353e;
-    --border-strong: #464c57;
-    --border-input: #666e7b;
-    --border-input-hover: #7c8491;
-
-    --text-primary: #e7e9ed;
-    --text-secondary: #aeb5c1;
-    --text-tertiary: #8f97a4;
-    --text-on-accent: #ffffff;
-
-    --accent-300: #9cc0f8;
-    --accent-400: #74a7f5;
-    --accent-500: #4a8af0;
-    --accent-550: #3170e0;
-    --accent-600: #2a65d4;
-    --accent-700: #2459bd;
-    --accent-soft: #172540;
-    --accent-soft-strong: #1e3156;
-    --accent-ring: rgba(116, 167, 245, 0.35);
-    --focus-ring: #74a7f5;
-
-    --status-ok: #5cc493;
-    --status-ok-soft: #15291f;
-    --status-warn: #e3b54e;
-    --status-warn-soft: #2b2312;
-    --status-info: #74a7f5;
-    --status-info-soft: #15233a;
-    --status-neutral: #a2aab6;
-    --status-neutral-soft: #23272e;
-    --status-danger: #f2847b;
-    --status-danger-soft: #331a19;
-    --status-wait: #df92cd;
-    --status-wait-soft: #2e1a2a;
-    --status-orange: #f0995c;
-    --status-orange-soft: #2f1e12;
-    --danger-fill: #c4372d;
-    --danger-fill-hover: #ad2f26;
-    --note-fill: var(--status-warn-soft);
-    --note-border: #5a4720;
-    --note-strong: #3b2f15;
-
-    --table-header-bg: #1b1f25;
-    --table-zebra: #191c22;
-    --table-row-hover: #1d2330;
-    --table-row-selected: #1f2c45;
-
-    --l-chart-1: #5b8def;
-    --l-chart-2: #e0702e;
-    --l-chart-3: #4fd1a8;
-    --l-chart-4: #d68bc8;
-    --l-chart-5: #d9c046;
-    --l-chart-6: #7a828f;
-    --l-chart-grid: #252930;
-    --l-chart-axis: #666e7b;
-    --l-chart-label: var(--text-tertiary);
-
-    --shadow-1: none;
-    --shadow-2: none;
-    --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
-    --shadow-overlay: var(--shadow-3);
-    --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
-
-    --selection-bg: #2a3a57;
-  }
-}
-
-/* --- DARK: forced (keep identical to the media block above) -------------- */
-:root[data-theme="dark"] {
-  color-scheme: dark;
-
-  --surface-page: #0f1114;
-  --surface-raised: #16191e;
-  --surface-overlay: #1e2228;
-  --surface-float: #1e2228;
-  --surface-input: #121418;
-  --surface-hover: rgba(255, 255, 255, 0.04);
-  --surface-active: rgba(255, 255, 255, 0.07);
-  --header-bg: #16191e;
-  --scrim: rgba(0, 0, 0, 0.6);
-
-  --border-subtle: #252930;
-  --border-default: #30353e;
-  --border-strong: #464c57;
-  --border-input: #666e7b;
-  --border-input-hover: #7c8491;
-
-  --text-primary: #e7e9ed;
-  --text-secondary: #aeb5c1;
-  --text-tertiary: #8f97a4;
-  --text-on-accent: #ffffff;
-
-  --accent-300: #9cc0f8;
-  --accent-400: #74a7f5;
-  --accent-500: #4a8af0;
-  --accent-550: #3170e0;
-  --accent-600: #2a65d4;
-  --accent-700: #2459bd;
-  --accent-soft: #172540;
-  --accent-soft-strong: #1e3156;
-  --accent-ring: rgba(116, 167, 245, 0.35);
-  --focus-ring: #74a7f5;
-
-  --status-ok: #5cc493;
-  --status-ok-soft: #15291f;
-  --status-warn: #e3b54e;
-  --status-warn-soft: #2b2312;
-  --status-info: #74a7f5;
-  --status-info-soft: #15233a;
-  --status-neutral: #a2aab6;
-  --status-neutral-soft: #23272e;
-  --status-danger: #f2847b;
-  --status-danger-soft: #331a19;
-  --status-wait: #df92cd;
-  --status-wait-soft: #2e1a2a;
-  --status-orange: #f0995c;
-  --status-orange-soft: #2f1e12;
-  --danger-fill: #c4372d;
-  --danger-fill-hover: #ad2f26;
-  --note-fill: var(--status-warn-soft);
-  --note-border: #5a4720;
-  --note-strong: #3b2f15;
-
-  --table-header-bg: #1b1f25;
-  --table-zebra: #191c22;
-  --table-row-hover: #1d2330;
-  --table-row-selected: #1f2c45;
-
-  --l-chart-1: #5b8def;
-  --l-chart-2: #e0702e;
-  --l-chart-3: #4fd1a8;
-  --l-chart-4: #d68bc8;
-  --l-chart-5: #d9c046;
-  --l-chart-6: #7a828f;
-  --l-chart-grid: #252930;
-  --l-chart-axis: #666e7b;
-  --l-chart-label: var(--text-tertiary);
-
+  /* elevation: the framed sheet has no shadow at rest */
   --shadow-1: none;
   --shadow-2: none;
-  --shadow-3: 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
-  --shadow-overlay: var(--shadow-3);
-  --shadow-sticky: 0 1px 0 var(--border-subtle), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+  --shadow-3: var(--shadow-pop);
+  --shadow-overlay: var(--shadow-pop);
+  --shadow-sticky: 0 1px 0 var(--border);
 
-  --selection-bg: #2a3a57;
+  --selection-bg: var(--selection);
 }
 
 /* ===========================================================================

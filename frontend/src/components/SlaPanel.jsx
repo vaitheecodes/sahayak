@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api } from "../api";
 import { statusLabel } from "../utils/statusLabels";
 import { absoluteTime, dueText } from "../utils/time";
-import { defaultRange, PRIORITIES, PRIORITY_LABELS } from "../utils/priorities";
-import ReportFilters from "./ReportFilters";
+import { PRIORITIES, PRIORITY_LABELS } from "../utils/priorities";
+import PeriodSelect, { DEFAULT_PERIOD } from "./dashboard/PeriodSelect";
+import { Select } from "@/ui/input";
 import Toast from "./Toast";
 import { SlaStateChip } from "./ui/SlaChip";
 
-/* Admin SLA page (backend/sla.py): the targets per priority, and how
- * tickets are doing against them.
+/* SLA (backend/sla.py): the targets per priority (admin, Settings) and how
+ * the manager's department is doing against them.
  *
  * SLA is off until enabled. Targets apply to tickets created while it is
  * on (a priority change recalculates from creation). The clock runs 24x7;
@@ -45,7 +46,7 @@ function TargetInput({ id, label, minutes, onChange }) {
   );
 }
 
-function SlaSettings({ onSaved }) {
+export function SlaSettings({ onSaved }) {
   const [values, setValues] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -157,14 +158,17 @@ function percent(value) {
 }
 
 function SlaReport({ refreshKey }) {
-  const [filters, setFilters] = useState(defaultRange);
+  const [period, setPeriod] = useState(DEFAULT_PERIOD);
+  const [priority, setPriority] = useState("");
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const priorityId = useId();
+  const filters = useMemo(() => ({ period, priority }), [period, priority]);
 
   useEffect(() => {
     let current = true;
     api
-      .adminSla(filters)
+      .managerSla(filters)
       .then((d) => {
         if (current) {
           setData(d);
@@ -179,7 +183,23 @@ function SlaReport({ refreshKey }) {
 
   return (
     <section className="sla-report">
-      <ReportFilters value={filters} onChange={setFilters} />
+      <div className="flex flex-wrap items-center gap-4">
+        <PeriodSelect value={period} onChange={setPeriod} />
+        <div className="flex items-center gap-2">
+          <label htmlFor={priorityId} className="text-sm text-muted-fg">
+            Priority
+          </label>
+          <Select id={priorityId} className="w-36" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option value="">All</option>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {data?.department && <span className="text-sm text-muted-fg">{data.department.name} only</span>}
+      </div>
       {error && <p className="error">{error}</p>}
       {!data && !error && <p className="hint">Loading...</p>}
       {data && (
@@ -304,19 +324,23 @@ function SlaReport({ refreshKey }) {
   );
 }
 
+/* Manager SLA page: compliance and the near-breach list for the
+ * manager's department (GET /api/manager/sla). The targets themselves are
+ * the admin's (Settings → SLA targets, AdminSlaSettings below). */
 export default function SlaPanel() {
+  return (
+    <div className="sla-panel">
+      <SlaReport refreshKey={0} />
+    </div>
+  );
+}
+
+export function AdminSlaSettings() {
   const [toast, setToast] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const dismiss = useCallback(() => setToast(null), []);
   return (
     <div className="sla-panel">
-      <SlaSettings
-        onSaved={(message) => {
-          setToast({ message });
-          setRefreshKey((k) => k + 1);
-        }}
-      />
-      <SlaReport refreshKey={refreshKey} />
+      <SlaSettings onSaved={(message) => setToast({ message })} />
       <Toast toast={toast} onDismiss={dismiss} />
     </div>
   );

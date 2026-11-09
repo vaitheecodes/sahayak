@@ -446,7 +446,7 @@ def test_appsail_headers_never_authorize(quickml_env, tmp_path, monkeypatch):
     get 401/403 everywhere."""
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
     with TestClient(main.app) as c:
-        for path in ("/api/admin/tickets", "/api/staff/tickets", "/api/tickets/mine", "/api/incidents"):
+        for path in ("/api/admin/users", "/api/staff/tickets", "/api/tickets/mine", "/api/incidents"):
             assert c.get(path, headers=APPSAIL_HEADERS).status_code in (401, 403)
 
 

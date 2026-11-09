@@ -4,6 +4,16 @@ Status: spec, not yet applied. Scope: `frontend/src/styles/tokens.css`,
 `components.css`, `portal.css`, `frontend/src/index.css`, plus a small theme
 toggle and an `index.html` boot script. No new npm dependencies.
 
+> **Superseded colours (Nov 2026).** The palette below is the original
+> spec. The live tokens are in `frontend/src/styles/theme.css`: warm
+> neutrals (dark: bg `#111110`, card `#191917`, table header `#1F1F1C`,
+> raised `#262622`, border `#2B2A26` / strong `#383731`, text `#ECEBE6`,
+> muted `#A29F95`), one cobalt accent (`#6F9CF0` on `#0C1730` dark,
+> `#2D5BC2` light), status amber / red / green / blue, chart series cobalt
+> vs amber at different lightness; no purple, no gradients. The legacy
+> tokens (`styles/legacy/tokens.css`) are aliases of those. Every text
+> token is at least 4.5:1 in both themes.
+
 ---
 
 ## 1. Direction
@@ -587,7 +597,7 @@ scroll wrappers. Rows have a 1px `--border-subtle` divider. Hover uses
 row also gets a 2px `--accent-500` inset left marker
 (`box-shadow: inset 2px 0 0 var(--accent-500)`). Zebra striping is off by
 default; opt in with `.table-zebra tbody tr:nth-child(even)` using
-`--table-zebra`, for the admin All Tickets and audit tables only. Numeric
+`--table-zebra`, for the Department tickets and audit tables only. Numeric
 columns (counts, durations, confidence, SLA remaining) get `.num`:
 `text-align: right; font-variant-numeric: tabular-nums`, and the matching
 `th` is right-aligned too. Ticket IDs use mono 12px in `--text-secondary`.

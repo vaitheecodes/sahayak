@@ -201,13 +201,16 @@ export const api = {
     request(`/chat-reviews/${reviewId}`, { method: "POST", body: { status }, auth: true }),
 
   // Technician workspace + manager oversight (backend/staff_tickets.py).
-  staffTickets: ({ view, q, priority, status } = {}) => {
-    const params = new URLSearchParams({ view: view || "unassigned" });
-    if (q) params.set("q", q);
-    if (priority) params.set("priority", priority);
-    if (status) params.set("status", status);
-    return request(`/staff/tickets?${params}`, { auth: true });
-  },
+  staffTickets: ({ view, q, priority, status, ticket_type } = {}) =>
+    request(`/staff/tickets?${query({ view: view || "unassigned", q, priority, status, ticket_type })}`, {
+      auth: true,
+    }),
+  staffTicketCounts: ({ q, priority, status, ticket_type } = {}) =>
+    request(`/staff/tickets/counts?${query({ q, priority, status, ticket_type })}`, { auth: true }),
+  staffDashboard: (period) => request(`/staff/dashboard?${query({ period })}`, { auth: true }),
+  // Chats, read-only (technicians: all; managers: their department).
+  staffChats: ({ filter, q } = {}) => request(`/staff/chats?${query({ filter, q })}`, { auth: true }),
+  staffChat: (sessionId) => request(`/staff/chats/${encodeURIComponent(sessionId)}`, { auth: true }),
   staffTicket: (ticketId) => request(`/staff/tickets/${ticketId}`, { auth: true }),
   staffClaim: (ticketId) =>
     request(`/staff/tickets/${ticketId}/claim`, { method: "POST", auth: true }),
@@ -220,6 +223,18 @@ export const api = {
       auth: true,
     }),
   managerOverview: () => request("/manager/overview", { auth: true }),
+  // Manager pages, limited to the manager's department (backend/manager.py).
+  managerDashboard: (period) => request(`/manager/dashboard?${query({ period })}`, { auth: true }),
+  managerSla: ({ period, priority } = {}) => request(`/manager/sla?${query({ period, priority })}`, { auth: true }),
+  managerTickets: (filters = {}) => request(`/manager/tickets?${query(filters)}`, { auth: true }),
+  managerReassignTicket: (ticketId, technicianId) =>
+    request(`/manager/tickets/${ticketId}/reassign`, {
+      method: "POST",
+      body: { technician_id: technicianId || null },
+      auth: true,
+    }),
+  managerSetTicketPriority: (ticketId, priority) =>
+    request(`/manager/tickets/${ticketId}/priority`, { method: "POST", body: { priority }, auth: true }),
 
   // AI incident correlation (backend/incidents.py): managers, and
   // technicians for incidents assigned to them.
@@ -264,15 +279,6 @@ export const api = {
     request(`/incidents/${incidentId}/visibility`, { method: "PUT", body: { visibility }, auth: true }),
   publicIncidents: () => request("/public/incidents"),
 
-  adminTickets: () => request("/admin/tickets", { auth: true }),
-  adminTechnicians: () => request("/admin/technicians", { auth: true }),
-  adminReassignTicket: (ticketId, technicianId) =>
-    request(`/admin/tickets/${ticketId}/reassign`, {
-      method: "POST",
-      body: { technician_id: technicianId || null },
-      auth: true,
-    }),
-
   adminStaff: () => request("/admin/staff", { auth: true }),
   adminUpdateStaff: (staffId, changes) =>
     request(`/admin/staff/${staffId}`, { method: "PATCH", body: changes, auth: true }),
@@ -292,11 +298,6 @@ export const api = {
     request(`/admin/users/${userId}/${active ? "activate" : "deactivate"}`, { method: "POST", auth: true }),
   adminResetUserPassword: (userId) =>
     request(`/admin/users/${userId}/reset-password`, { method: "POST", auth: true }),
-
-  adminDashboard: (filters = {}) => request(`/admin/dashboard?${query(filters)}`, { auth: true }),
-  adminSla: (filters = {}) => request(`/admin/sla?${query(filters)}`, { auth: true }),
-  adminSetTicketPriority: (ticketId, priority) =>
-    request(`/admin/tickets/${ticketId}/priority`, { method: "POST", body: { priority }, auth: true }),
 
   adminSettings: () => request("/admin/settings", { auth: true }),
   adminSaveSettings: (section, values) =>

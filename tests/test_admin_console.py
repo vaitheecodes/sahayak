@@ -154,7 +154,8 @@ def test_admin_assigns_manager_role_and_department(client):
     assert client.get("/api/auth/me", headers=_bearer(token)).status_code == 401
 
     back = client.patch(f"/api/admin/staff/{tech['staff_id']}", json={"role": "technician"}, headers=admin).json()
-    assert back["department_id"] is None  # technicians have no department
+    # A technician may keep working the department (its manager can assign them).
+    assert back["role"] == "technician" and back["department_name"] == "General"
 
 
 def test_technician_with_open_tickets_cannot_change_role(client):

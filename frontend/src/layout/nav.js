@@ -1,12 +1,11 @@
 import {
   Activity,
-  BookOpen,
+  LayoutDashboard,
   ClipboardCheck,
   Globe,
   Shapes,
   Tags,
   Building2,
-  ChartColumn,
   FlaskConical,
   Inbox,
   LifeBuoy,
@@ -33,14 +32,7 @@ const KNOWLEDGE_BASE = {
     { to: "/kb/sources", label: "Sources", icon: Globe },
     { to: "/kb/terms", label: "Terms", icon: Tags },
     { to: "/kb/categories", label: "Categories", icon: Shapes },
-  ],
-};
-
-const RESOURCES = {
-  label: "Resources",
-  items: [
-    { to: "/docs", label: "Docs", icon: BookOpen },
-    { to: "/incidents", label: "Service history", icon: Radar },
+    { to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical },
   ],
 };
 
@@ -63,49 +55,54 @@ export const NAV = {
     scope: "Technician workspace",
     groups: [
       {
-        label: "Work",
+        label: "My work",
         items: [
-          { to: "/technician", label: "Tickets", icon: Inbox, end: true },
-          { to: "/technician/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
-          { to: "/technician/incidents", label: "Assigned incidents", icon: Siren },
+          { to: "/technician", label: "Dashboard", icon: LayoutDashboard, end: true },
+          { to: "/technician/tickets", label: "Tickets", icon: Inbox },
+          { to: "/technician/chats", label: "Chats", icon: MessagesSquare },
         ],
       },
-      KNOWLEDGE_BASE,
-      { label: "Tools", items: [{ to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical }] },
-      RESOURCES,
+      {
+        label: "More",
+        items: [
+          { to: "/technician/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
+          { to: "/kb/review", label: "KB review queue", icon: ClipboardCheck },
+          { to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical },
+        ],
+      },
     ],
   },
+  // Everything a manager sees is limited to their own department.
   manager: {
     scope: "Manager",
     groups: [
       {
-        label: "Oversight",
+        label: "Overview",
         items: [
-          { to: "/manager", label: "Incidents", icon: Siren, end: true },
+          { to: "/manager", label: "Dashboard", icon: LayoutDashboard, end: true },
+          { to: "/manager/sla", label: "SLA", icon: Timer },
+        ],
+      },
+      {
+        label: "Work",
+        items: [
           { to: "/manager/tickets", label: "Department tickets", icon: Inbox },
+          { to: "/manager/chats", label: "Chats", icon: MessagesSquare },
           { to: "/manager/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
+          { to: "/manager/incidents", label: "Incidents", icon: Siren },
         ],
       },
       KNOWLEDGE_BASE,
-      { label: "Tools", items: [{ to: "/try-a-ticket", label: "Try a ticket", icon: FlaskConical }] },
-      RESOURCES,
     ],
   },
+  // People and system only: no tickets, dashboards or SLA (the managers').
   admin: {
     scope: "Admin console",
     groups: [
       {
-        label: "Overview",
+        label: "People",
         items: [
-          { to: "/admin", label: "Dashboard", icon: ChartColumn, end: true },
-          { to: "/admin/tickets", label: "All tickets", icon: Ticket },
-          { to: "/admin/sla", label: "SLA", icon: Timer },
-        ],
-      },
-      {
-        label: "Organization",
-        items: [
-          { to: "/admin/users", label: "Users", icon: Users },
+          { to: "/admin", label: "Users", icon: Users, end: true },
           { to: "/admin/departments", label: "Departments", icon: Building2 },
         ],
       },
@@ -113,10 +110,9 @@ export const NAV = {
         label: "System",
         items: [
           { to: "/admin/settings", label: "Settings", icon: Settings2 },
-          { to: "/admin/activity", label: "Activity", icon: Activity },
+          { to: "/admin/activity", label: "Activity log", icon: Activity },
         ],
       },
-      RESOURCES,
     ],
   },
 };

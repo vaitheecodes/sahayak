@@ -1,4 +1,5 @@
-"""Admin area: user management, the ticket dashboard and SLA.
+"""Admin area (user management, SLA settings) and the reports that moved
+to managers: the department dashboard and SLA page.
 
 - Every admin endpoint is admin-only on the server: a customer, technician
   or manager gets 403, no token 401.
@@ -7,8 +8,9 @@
   the audit log, stored only hashed; first sign-in must change it; reset
   works the same way; a deactivated user can't sign in and keeps their
   tickets; a customer can't be edited into staff.
-- Dashboard: counts by status/priority, per-day series, open by priority
-  and technician, average first-response and resolution times.
+- Manager dashboard (their department, a period preset): KPIs now, open by
+  priority and technician, created vs resolved per day, average first
+  response.
 - SLA: off by default; when on, due times from the priority at creation,
   recalculated on a priority change; first response, breach, at-risk, the
   resolution clock pausing in Pending Customer and resuming; the SLA
@@ -110,9 +112,6 @@ ADMIN_ENDPOINTS = [
     ("post", "/api/admin/users/CUST-x/reset-password", None),
     ("post", "/api/admin/staff", {"name": "X", "email": "x2-authz@example.com", "role": "technician"}),
     ("post", "/api/admin/customers/CUST-x/reset-password", None),
-    ("get", "/api/admin/dashboard", None),
-    ("get", "/api/admin/sla", None),
-    ("post", "/api/admin/tickets/TCK-x/priority", {"priority": "high"}),
     ("put", "/api/admin/settings/sla", {"enabled": True}),
     ("get", "/api/admin/audit", None),
 ]
@@ -244,11 +243,11 @@ def test_user_actions_are_audited_without_passwords(client):
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
-def test_dashboard_counts_series_and_response_times(client):
-    admin, tech = _admin(client), _demo(client, "technician")
+def test_manager_dashboard_counts_series_and_response_times(client):
+    manager, tech = _demo(client, "manager"), _demo(client, "technician")
     headers, _ = _customer(client)
     urgent, low, other = _raise(client, headers, "urgent"), _raise(client, headers, "low"), _raise(client, headers)
-    created = NOW - timedelta(hours=3)
+    created = sla.now() - timedelta(hours=3)
     _sql("UPDATE tickets SET created_at = ?", (_iso(created),))
     client.post(f"/api/staff/tickets/{urgent}/claim", headers=tech)
     client.post(f"/api/staff/tickets/{urgent}/messages", headers=tech,
@@ -258,25 +257,18 @@ def test_dashboard_counts_series_and_response_times(client):
     _sql("UPDATE tickets SET first_response_at = ? WHERE ticket_id = ?", (_iso(created + timedelta(minutes=30)), urgent))
     _sql("UPDATE tickets SET resolved_at = ? WHERE ticket_id = ?", (_iso(created + timedelta(hours=2)), low))
 
-    day = created.date().isoformat()
-    res = client.get("/api/admin/dashboard", params={"since": day, "until": day}, headers=admin)
+    res = client.get("/api/manager/dashboard", params={"period": "this_year"}, headers=manager)
     assert res.status_code == 200, res.text
     d = res.json()
-    assert d["total"] == 3
-    assert d["by_status"]["in_progress"] == 1 and d["by_status"]["resolved"] == 1 and d["by_status"]["open"] == 1
-    assert d["by_priority"] == {"low": 1, "medium": 1, "high": 0, "urgent": 1}
-    assert d["over_time"][0]["date"] == day and d["over_time"][0]["created"] == 3
+    assert d["department"]["name"] == "Product Support" and d["period"]["preset"] == "this_year"
+    assert d["kpis"]["open"] == 1 and d["kpis"]["in_progress"] == 1 and d["kpis"]["unassigned"] == 1
+    assert d["kpis"]["avg_first_response_minutes"] == 30.0
+    assert d["created"] == 3 and d["resolved"] == 1
+    assert sum(p["created"] for p in d["over_time"]) == 3 and sum(p["resolved"] for p in d["over_time"]) == 1
     assert d["open_by_priority"] == {"low": 0, "medium": 1, "high": 0, "urgent": 1}
-    by_tech = {e["name"]: e["count"] for e in d["open_by_technician"]}
-    assert by_tech == {"Demo Technician": 1, "Unassigned": 1}
-    assert d["response_times"]["urgent"]["avg_first_response_minutes"] == 30.0
-    assert d["response_times"]["low"]["avg_resolution_minutes"] == 120.0
-
-    only_low = client.get("/api/admin/dashboard", params={"since": day, "until": day, "priority": "low"},
-                          headers=admin).json()
-    assert only_low["total"] == 1 and other not in json.dumps(only_low)
-    assert client.get("/api/admin/dashboard", params={"since": "2026-12-01", "until": "2026-11-01"},
-                      headers=admin).status_code == 400
+    assert {w["name"]: w["open"] for w in d["technician_workload"]} == {"Demo Technician": 1}
+    assert other  # unassigned, open
+    assert client.get("/api/manager/dashboard", params={"period": "last_decade"}, headers=manager).status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +279,7 @@ def test_sla_is_off_until_the_admin_turns_it_on(client):
     before = _raise(client, headers, "urgent")
     (row,) = _sql("SELECT sla_resolution_due FROM tickets WHERE ticket_id = ?", (before,))
     assert row["sla_resolution_due"] is None
-    assert client.get("/api/admin/sla", headers=_admin(client)).json()["enabled"] is False
+    assert client.get("/api/manager/sla", headers=_demo(client, "manager")).json()["enabled"] is False
 
     _enable_sla(client)
     after = _raise(client, headers, "urgent")
@@ -311,7 +303,8 @@ def test_priority_change_recalculates_the_due_times(client):
     _enable_sla(client)
     headers, _ = _customer(client)
     ticket_id = _raise(client, headers, "low")
-    res = client.post(f"/api/admin/tickets/{ticket_id}/priority", json={"priority": "urgent"}, headers=_admin(client))
+    res = client.post(f"/api/manager/tickets/{ticket_id}/priority", json={"priority": "urgent"},
+                      headers=_demo(client, "manager"))
     assert res.status_code == 200, res.text
     (row,) = _sql(f"SELECT {sla.SLA_COLUMNS} FROM tickets WHERE ticket_id = ?", (ticket_id,))
     created = sla.parse(row["created_at"])
@@ -367,9 +360,9 @@ def test_resolution_clock_pauses_while_pending_customer_and_resumes(client):
         created + timedelta(hours=14), abs=timedelta(seconds=5))  # 8 h target + 6 h paused
 
 
-def test_sla_dashboard_compliance_and_watchlist(client):
+def test_manager_sla_page_compliance_and_watchlist(client):
     _enable_sla(client)
-    admin, tech = _admin(client), _demo(client, "technician")
+    manager, tech = _demo(client, "manager"), _demo(client, "technician")
     headers, _ = _customer(client)
     late, risky, fine = _raise(client, headers, "urgent"), _raise(client, headers, "urgent"), _raise(client, headers, "urgent")
     now = sla.now()
@@ -387,7 +380,7 @@ def test_sla_dashboard_compliance_and_watchlist(client):
     client.post(f"/api/staff/tickets/{fine}/claim", headers=tech)
     client.post(f"/api/staff/tickets/{fine}/messages", headers=tech, json={"body": "Hi", "visibility": "public_reply"})
 
-    d = client.get("/api/admin/sla", headers=admin).json()
+    d = client.get("/api/manager/sla", params={"period": "this_year"}, headers=manager).json()
     assert d["enabled"] is True and d["tickets_with_sla"] == 3
     urgent = d["by_priority"]["urgent"]
     assert urgent["first_response"] == {"met": 2, "breached": 1, "percent": 66.7}

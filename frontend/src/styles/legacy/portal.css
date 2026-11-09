@@ -949,14 +949,9 @@
 
 .skeleton {
   border-radius: var(--l-radius-sm);
-  background: linear-gradient(
-    90deg,
-    var(--surface-overlay) 0%,
-    var(--border-default) 50%,
-    var(--surface-overlay) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  /* A flat pulse, no gradient. */
+  background: var(--surface-overlay);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
 
 .skeleton-line {
@@ -1685,4 +1680,9 @@ td.customer-cell {
   gap: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--l-text-sm);
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }

@@ -1,10 +1,12 @@
-/* One vocabulary for every ticket mark, learned once:
+/* One vocabulary for every ticket mark, learned once. Status colours mean
+ * one thing each: blue = open / being worked, amber = waiting or at risk,
+ * red = breached or high, green = resolved or on track.
  *
- *   status    open=warning  in_progress=info  pending_customer=accent
+ *   status    open=info  in_progress=info  pending_customer=warning
  *             resolved=positive  closed=neutral
- *   priority  urgent=negative  high=warning  medium=neutral  low=outline
+ *   priority  urgent=negative  high=negative  medium=neutral  low=outline
  *   route     ai / clarify = accent (the bot), human = neutral
- *   SLA       breached=negative  at_risk=warning  on_track=info
+ *   SLA       breached=negative  at_risk=warning  on_track=positive
  *             met=positive  paused=neutral
  *
  * Every mark is a word on a pale tint; colour never carries meaning alone. */
@@ -16,9 +18,9 @@ import { statusLabel } from "@/utils/statusLabels";
 import { absoluteTime, dueText } from "@/utils/time";
 
 const STATUS_TONE = {
-  open: "warning",
+  open: "info",
   in_progress: "info",
-  pending_customer: "accent",
+  pending_customer: "warning",
   resolved: "positive",
   closed: "neutral",
 };
@@ -31,7 +33,7 @@ export function StatusBadge({ status, className }) {
   );
 }
 
-const PRIORITY_TONE = { urgent: "negative", high: "warning", medium: "neutral", low: "outline" };
+const PRIORITY_TONE = { urgent: "negative", high: "negative", medium: "neutral", low: "outline" };
 
 export function PriorityBadge({ priority, className }) {
   if (!priority) return <span className="text-muted-fg">—</span>;
@@ -59,7 +61,7 @@ export function RouteBadge({ route, className }) {
 }
 
 const SLA_STATES = {
-  on_track: { tone: "info", label: "On track" },
+  on_track: { tone: "positive", label: "On track" },
   at_risk: { tone: "warning", label: "At risk" },
   breached: { tone: "negative", label: "Breached" },
   met: { tone: "positive", label: "Met" },

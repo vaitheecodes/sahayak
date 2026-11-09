@@ -29,7 +29,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from backend import ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, runtime
@@ -582,27 +582,44 @@ def escalate_chat(
 # ---------------------------------------------------------------------------
 # Internal review of AI-resolved chats (technicians and managers, not the admin)
 # ---------------------------------------------------------------------------
-_get_reviewer = auth.require_role("technician", "manager")
 
 _REVIEW_TRANSITIONS = {"pending_review": {"verified", "closed"}, "verified": {"closed"}}
+
+
+def _chat_scope(conn, user: dict, params: list) -> str:
+    """Managers see only chats in their own department's categories;
+    technicians every chat."""
+    if user["role"] != "manager":
+        return "1 = 1"
+    from backend.staff_tickets import manager_categories  # staff_tickets imports this module
+
+    categories = sorted(manager_categories(conn, user["id"]))
+    if not categories:
+        return "1 = 0"
+    params.extend(categories)
+    return f"COALESCE(s.category, s.requested_category) IN ({', '.join('?' * len(categories))})"
+
+
+_staff_chat_user = auth.require_user("technician", "manager")
 
 
 @router.get("/api/chat-reviews")
 def list_chat_reviews(
     status: Literal["pending_review", "verified", "closed"] | None = None,
-    reviewer_id: str = Depends(_get_reviewer),
+    user: dict = Depends(_staff_chat_user),
 ):
     conn = db.get_connection()
     try:
+        params: list = []
         query = (
             "SELECT r.*, s.issue, s.customer_id, s.resolved_at, c.name AS customer_name "
             "FROM chat_reviews r JOIN chat_sessions s ON s.session_id = r.chat_id "
-            "JOIN customers c ON c.customer_id = s.customer_id"
+            "JOIN customers c ON c.customer_id = s.customer_id "
+            f"WHERE {_chat_scope(conn, user, params)}"
         )
-        params: tuple = ()
         if status:
-            query += " WHERE r.status = ?"
-            params = (status,)
+            query += " AND r.status = ?"
+            params.append(status)
         rows = conn.execute(query + " ORDER BY r.created_at DESC", params).fetchall()
         return [
             {**dict(row), "transcript": transcript_rows(conn, row["chat_id"])}
@@ -614,12 +631,15 @@ def list_chat_reviews(
 
 @router.post("/api/chat-reviews/{review_id}")
 def update_chat_review(
-    review_id: str, body: ReviewUpdateRequest, reviewer_id: str = Depends(_get_reviewer)
+    review_id: str, body: ReviewUpdateRequest, user: dict = Depends(_staff_chat_user)
 ):
+    reviewer_id = user["id"]
     conn = db.get_connection()
     try:
+        params: list = [review_id]
         review = conn.execute(
-            "SELECT status FROM chat_reviews WHERE review_id = ?", (review_id,)
+            "SELECT r.status FROM chat_reviews r JOIN chat_sessions s ON s.session_id = r.chat_id "
+            f"WHERE r.review_id = ? AND {_chat_scope(conn, user, params)}", params,
         ).fetchone()
         if review is None:
             raise HTTPException(status_code=404, detail="Review not found")
@@ -637,5 +657,65 @@ def update_chat_review(
                      status=body.status)
         conn.commit()
         return {"review_id": review_id, "status": body.status}
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Staff view of chats (technicians: every chat; managers: their department)
+# ---------------------------------------------------------------------------
+# Read-only: staff watch AI chats and open the ticket a chat escalated to.
+# Taking over a live chat is the next phase. Customers and the admin get 403;
+# nothing here is returned by the customer endpoints above.
+_CHAT_FILTERS = {"active": "s.status = 'active'", "escalated": "s.status = 'escalated'",
+                 "resolved": "s.status IN ('resolved', 'abandoned')"}
+
+
+@router.get("/api/staff/chats")
+def staff_chats(
+    filter: Literal["active", "escalated", "resolved"] = "active",
+    q: str | None = Query(default=None, max_length=200),
+    user: dict = Depends(_staff_chat_user),
+):
+    """Chat sessions, most recently active first: customer, first message,
+    times and message count."""
+    conn = db.get_connection()
+    try:
+        params: list = []
+        clauses = [_CHAT_FILTERS[filter], _chat_scope(conn, user, params)]
+        if q and q.strip():
+            clauses.append("(lower(c.name) LIKE lower(?) OR lower(s.issue) LIKE lower(?) "
+                           "OR lower(s.session_id) LIKE lower(?))")
+            params.extend([f"%{q.strip()}%"] * 3)
+        rows = conn.execute(
+            "SELECT s.session_id, s.status, s.issue, s.created_at, s.updated_at, s.resolved_at, "
+            "COALESCE(s.category, s.requested_category) AS category, s.escalated_ticket_id AS ticket_id, "
+            "COALESCE(s.contact_name, c.name) AS customer_name, "
+            "(SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.session_id) AS message_count, "
+            "(SELECT m.content FROM chat_messages m WHERE m.session_id = s.session_id AND m.role = 'customer' "
+            " ORDER BY m.created_at ASC LIMIT 1) AS first_message "
+            "FROM chat_sessions s JOIN customers c ON c.customer_id = s.customer_id "
+            f"WHERE {' AND '.join(clauses)} ORDER BY s.updated_at DESC LIMIT 200", params).fetchall()
+        return [{**dict(r), "first_message": (r["first_message"] or r["issue"] or "")[:300]} for r in rows]
+    finally:
+        conn.close()
+
+
+@router.get("/api/staff/chats/{session_id}")
+def staff_chat(session_id: str, user: dict = Depends(_staff_chat_user)):
+    """The read-only transcript, and the ticket it escalated to. A chat
+    outside a manager's department is 404."""
+    conn = db.get_connection()
+    try:
+        params: list = [session_id]
+        row = conn.execute(
+            "SELECT s.session_id, s.status, s.issue, s.summary, s.created_at, s.updated_at, s.resolved_at, "
+            "COALESCE(s.category, s.requested_category) AS category, s.escalated_ticket_id AS ticket_id, "
+            "COALESCE(s.contact_name, c.name) AS customer_name, c.email AS customer_email "
+            "FROM chat_sessions s JOIN customers c ON c.customer_id = s.customer_id "
+            f"WHERE s.session_id = ? AND {_chat_scope(conn, user, params)}", params).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        return {**dict(row), "messages": transcript_rows(conn, session_id)}
     finally:
         conn.close()

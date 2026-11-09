@@ -55,7 +55,7 @@ DEMO_STAFF = [
         "email": "technician@example.com",
         "password": "technician-demo-pass",
         "role": "technician",
-        "department": None,
+        "department": "Product Support",
     },
 ]
 
