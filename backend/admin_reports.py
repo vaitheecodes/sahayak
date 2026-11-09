@@ -74,6 +74,22 @@ def _is_open(ticket: dict) -> bool:
     return ticket["status"] not in sla.DONE_STATUSES
 
 
+def by_status(rows: list[dict]) -> dict:
+    """Tickets by current status, adding up to total. New is not a stored
+    status: an open ticket with nobody assigned (Open is then open and
+    picked up)."""
+    counts = dict.fromkeys(("new", "open", "in_progress", "pending_customer", "resolved", "closed"), 0)
+    for t in rows:
+        key = "new" if t["status"] == "open" and t["assigned_technician_id"] is None else t["status"]
+        counts[key] = counts.get(key, 0) + 1
+    return {"total": len(rows), **counts}
+
+
+def _sla_counts(rows: list[dict], at, settings) -> dict:
+    states = [e["state"] for t in rows if (e := sla.evaluate(t, at, settings))]
+    return {"breached": states.count("breached"), "at_risk": states.count("at_risk")}
+
+
 def _per_day(values: list[datetime | None]) -> Counter:
     return Counter(ist_day(v) for v in values if v)
 
@@ -83,10 +99,12 @@ def _per_day(values: list[datetime | None]) -> Counter:
 # ---------------------------------------------------------------------------
 def dashboard_data(period: Period, categories=None, technicians: list[dict] | None = None) -> dict:
     """KPIs now (open, in progress, unassigned, SLA at risk / breached),
-    average first response for tickets created in the period, open tickets
-    per technician and per priority, and tickets created vs resolved per
-    IST day. `technicians` ({staff_id, name}) are listed even with nothing
-    open."""
+    average first response for tickets created in the period, the tickets
+    created in the period by current status (and their SLA), how each
+    technician is doing (open and breached now; resolved and average first
+    response in the period), open tickets per priority, and tickets created
+    vs resolved per IST day. `technicians` ({staff_id, name}) are listed
+    even with nothing open."""
     where, params = _between("created_at", period)
     created = _rows(where, params, categories)
     where, params = _between("resolved_at", period)
@@ -95,17 +113,27 @@ def dashboard_data(period: Period, categories=None, technicians: list[dict] | No
 
     settings = app_settings.get("sla")
     at = sla.now()
-    states = [e["state"] for t in open_now if (e := sla.evaluate(t, at, settings))]
+    open_states = {t["ticket_id"]: e["state"] for t in open_now if (e := sla.evaluate(t, at, settings))}
+    states = list(open_states.values())
     first = [m for t in created if (m := _minutes(t["created_at"], t["first_response_at"])) is not None]
 
-    workload = {t["staff_id"]: {"technician_id": t["staff_id"], "name": t["name"], "open": 0}
-                for t in technicians or []}
+    def row(staff_id: str, name: str) -> dict:
+        return {"technician_id": staff_id, "name": name, "open": 0, "breached": 0, "resolved": 0,
+                "avg_first_response_minutes": None}
+
+    workload = {t["staff_id"]: row(t["staff_id"], t["name"]) for t in technicians or []}
     for t in open_now:
         key = t["assigned_technician_id"]
         if key is None:
             continue
-        workload.setdefault(key, {"technician_id": key, "name": t["technician_name"] or key, "open": 0})
+        workload.setdefault(key, row(key, t["technician_name"] or key))
         workload[key]["open"] += 1
+        workload[key]["breached"] += open_states.get(t["ticket_id"]) == "breached"
+    for key, w in workload.items():
+        w["resolved"] = sum(1 for t in resolved if t["assigned_technician_id"] == key)
+        w["avg_first_response_minutes"] = _avg([
+            m for t in created
+            if t["assigned_technician_id"] == key and (m := _minutes(t["created_at"], t["first_response_at"])) is not None])
 
     made = _per_day([sla.parse(t["created_at"]) for t in created])
     done = _per_day([sla.parse(t["resolved_at"]) for t in resolved])
@@ -124,6 +152,8 @@ def dashboard_data(period: Period, categories=None, technicians: list[dict] | No
         },
         "created": len(created),
         "resolved": len(resolved),
+        "by_status": by_status(created),
+        "created_sla": _sla_counts(created, at, settings),
         "technician_workload": sorted(workload.values(), key=lambda w: (-w["open"], w["name"].lower())),
         "open_by_priority": {p: sum(1 for t in open_now if t["priority"] == p) for p in sla.PRIORITIES},
         "over_time": [{"date": d.isoformat(), "created": made.get(d, 0), "resolved": done.get(d, 0)}
@@ -215,6 +245,8 @@ def technician_data(period: Period, technician_id: str) -> dict:
     resolved = [t for t in _rows(f"{mine} AND {where}", [technician_id, *params]) if not _is_open(t)]
     where, params = _between("first_response_at", period)
     responded = _rows(f"{mine} AND {where}", [technician_id, *params])
+    where, params = _between("created_at", period)
+    created = _rows(f"{mine} AND {where}", [technician_id, *params])
 
     conn = db.get_connection()
     try:
@@ -269,6 +301,8 @@ def technician_data(period: Period, technician_id: str) -> dict:
             "resolved": len(resolved),
             "sla_at_risk": open_states.count("at_risk") + open_states.count("breached"),
         },
+        "by_status": by_status(created),
+        "created_sla": _sla_counts(created, at, settings),
         "attention": attention[:_ATTENTION_LIMIT],
         "attention_total": len(attention),
         "numbers": {

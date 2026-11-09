@@ -9,13 +9,16 @@ import { EmptyState } from "@/ui/empty-state";
 import { Skeleton } from "@/ui/skeleton";
 import { PriorityBadge, SlaBadge } from "@/ui/status";
 import { relativeTime } from "@/utils/time";
+import { useDashboardStyle } from "@/lib/dashboardStyle";
+import KanbanBoard from "./KanbanBoard";
 import PeriodSelect, { DEFAULT_PERIOD } from "./PeriodSelect";
-import { KpiCard, minutesText } from "./parts";
+import { CreatedStrip, MetricStrip, StyleToggle, minutesText } from "./parts";
 
 /* Technician dashboard (GET /api/staff/dashboard): this technician's own
- * tickets only. Cards are now (resolved: in the period), the attention
- * list puts SLA near breach first, then new customer replies, then the
- * rest by last update; "My numbers" cover the period. */
+ * tickets only. Classic: what was created in the period (by current
+ * status), what is true now, the attention list (SLA near breach first,
+ * then new customer replies, then the rest by last update) and "My
+ * numbers" for the period. Kanban: the status rail and its tickets. */
 
 const REASON = { sla: "SLA", customer_reply: "Customer replied" };
 
@@ -30,6 +33,7 @@ function Number({ label, value }) {
 
 export default function TechnicianDashboard() {
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
+  const [style, setStyle] = useDashboardStyle();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
@@ -51,26 +55,42 @@ export default function TechnicianDashboard() {
 
   if (error) return <Alert tone="negative">{error}</Alert>;
   if (!data) return <Skeleton className="h-64" />;
-  const c = data.cards;
-  const n = data.numbers;
   const label = data.period.label.toLowerCase();
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="m-0 text-base text-muted-fg">Your tickets only.</p>
+        <StyleToggle value={style} onChange={setStyle} />
+        <span className="text-sm text-muted-fg max-sm:order-last max-sm:w-full">Your tickets only</span>
         <PeriodSelect value={period} onChange={setPeriod} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <KpiCard label="Assigned to me" value={c.assigned} />
-        <KpiCard label="In progress" value={c.in_progress} />
-        <KpiCard label="Waiting on customer" value={c.pending_customer} />
-        <KpiCard label="Resolved" value={c.resolved} hint={data.period.label} />
-        <KpiCard label="SLA at risk" value={c.sla_at_risk} tone={c.sla_at_risk ? "warning" : undefined} />
-      </div>
+      {style === "kanban" ? (
+        <KanbanBoard role="technician" period={period} byStatus={data.by_status} />
+      ) : (
+        <Classic data={data} label={label} />
+      )}
+    </div>
+  );
+}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+function Classic({ data, label }) {
+  const c = data.cards;
+  const n = data.numbers;
+  return (
+    <>
+      <CreatedStrip period={data.period} byStatus={data.by_status} sla={data.created_sla} />
+      <MetricStrip
+        caption="Now"
+        items={[
+          { label: "Assigned to me", value: c.assigned },
+          { label: "In progress", value: c.in_progress, status: "in_progress" },
+          { label: "Waiting on customer", value: c.pending_customer, status: "pending_customer" },
+          { label: "SLA at risk", value: c.sla_at_risk, clock: true, tone: c.sla_at_risk ? "warning" : undefined },
+        ]}
+      />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader>
             <CardTitle as="h3">Needs my attention</CardTitle>
@@ -95,8 +115,8 @@ export default function TechnicianDashboard() {
                         <span className="flex items-center gap-2 text-sm text-muted-fg">
                           <span className="font-mono">{t.ticket_id}</span>
                           {t.ticket_type === "chat" && <ChatBadge />}
-                          {t.reason && <span>· {REASON[t.reason]}</span>}
-                          <span>· {relativeTime(t.updated_at)}</span>
+                          {t.reason && <span className="font-medium text-fg">{REASON[t.reason]}</span>}
+                          <span>{relativeTime(t.updated_at)}</span>
                         </span>
                         <span className="block truncate text-base">{t.subject}</span>
                       </span>
@@ -119,10 +139,11 @@ export default function TechnicianDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle as="h3">My numbers · {data.period.label}</CardTitle>
+            <CardTitle as="h3">My numbers, {label}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl className="m-0">
+              <Number label="Resolved" value={c.resolved} />
               <Number label="Avg first response" value={minutesText(n.avg_first_response_minutes)} />
               <Number label="Avg resolution" value={minutesText(n.avg_resolution_minutes)} />
               <Number label="SLA met" value={n.sla_met_percent === null ? "—" : `${n.sla_met_percent}%`} />
@@ -133,6 +154,6 @@ export default function TechnicianDashboard() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </>
   );
 }

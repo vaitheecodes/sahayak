@@ -326,3 +326,82 @@ def test_escalated_chat_ticket_takes_the_chats_latest_category(client, graph):
     assert _category_pair(kept["session_id"]) == ("SETUP", "SETUP")
     detail = client.get(f"/api/staff/chats/{kept['session_id']}", headers=manager).json()
     assert client.get(f"/api/staff/tickets/{detail['ticket_id']}", headers=manager).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Dashboards: created in the period by current status (New = open with
+# nobody assigned), per-technician figures; kanban list filters keep scope
+# ---------------------------------------------------------------------------
+def _set(ticket_id, **columns):
+    conn = db.get_connection()
+    try:
+        for column, value in columns.items():
+            conn.execute(f"UPDATE tickets SET {column} = ? WHERE ticket_id = ?", (value, ticket_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_manager_dashboard_counts_created_tickets_by_status_and_technician(client, graph):
+    customer = _customer(client)
+    insider_headers, insider = _technician(client, "Product Support")
+    new, picked, waiting, done = (_raise(client, graph, customer, "ISSUE") for _ in range(4))
+    _raise(client, graph, customer, "ACCOUNT")  # another department: never counted
+    old = _raise(client, graph, customer, "ISSUE")
+    _set(old, created_at=sla.iso(sla.now() - timedelta(days=400)))  # before this year
+    manager = _demo(client, "manager")
+    for ticket in (picked, waiting, done):
+        res = client.post(f"/api/manager/tickets/{ticket}/reassign", json={"technician_id": insider}, headers=manager)
+        assert res.status_code == 200, res.text
+    client.post(f"/api/staff/tickets/{picked}/status", json={"status": "open"}, headers=insider_headers)
+    client.post(f"/api/staff/tickets/{waiting}/status", json={"status": "pending_customer"}, headers=insider_headers)
+    client.post(f"/api/staff/tickets/{done}/status", json={"status": "resolved"}, headers=insider_headers)
+
+    data = client.get("/api/manager/dashboard?period=this_year", headers=manager).json()
+    assert data["by_status"] == {"total": 4, "new": 1, "open": 1, "in_progress": 0, "pending_customer": 1,
+                                 "resolved": 1, "closed": 0}
+    assert sum(v for k, v in data["by_status"].items() if k != "total") == data["by_status"]["total"]
+    assert data["created_sla"] == {"breached": 0, "at_risk": 0}  # SLA is off by default
+    (row,) = [w for w in data["technician_workload"] if w["technician_id"] == insider]
+    assert row["open"] == 2 and row["resolved"] == 1 and row["breached"] == 0
+    assert "avg_first_response_minutes" in row
+
+    def ids(**filters):
+        query = "&".join(f"{k}={v}" for k, v in filters.items())
+        res = client.get(f"/api/manager/tickets?{query}", headers=manager)
+        assert res.status_code == 200, res.text
+        return {t["ticket_id"] for t in res.json()["tickets"]}
+
+    assert ids(status="new", period="this_year") == {new}
+    assert ids(status="open", assigned="true", period="this_year") == {picked}
+    assert ids(period="this_year") == {new, picked, waiting, done}
+    assert old in ids() and old not in ids(period="this_year")
+
+
+def test_technician_dashboard_and_kanban_list_are_their_own_tickets(client, graph):
+    customer = _customer(client)
+    me, _ = _technician(client)
+    other, _ = _technician(client)
+    mine, theirs, unassigned = (_raise(client, graph, customer, "ISSUE") for _ in range(3))
+    client.post(f"/api/staff/tickets/{mine}/claim", headers=me)
+    client.post(f"/api/staff/tickets/{theirs}/claim", headers=other)
+
+    data = client.get("/api/staff/dashboard?period=this_week", headers=me).json()
+    assert data["by_status"]["total"] == 1 and data["by_status"]["in_progress"] == 1
+    assert data["by_status"]["new"] == 0
+
+    def ids(**filters):
+        query = "&".join(f"{k}={v}" for k, v in {"view": "mine", **filters}.items())
+        res = client.get(f"/api/staff/tickets?{query}", headers=me)
+        assert res.status_code == 200, res.text
+        return [t["ticket_id"] for t in res.json()]
+
+    assert ids(period="this_week") == [mine]
+    assert ids(period="this_week", status="in_progress") == [mine]
+    assert ids(period="this_week", status="new") == []
+    # "new" on the unassigned view: the unclaimed ticket only.
+    res = client.get("/api/staff/tickets?view=unassigned&status=new&period=this_week", headers=me)
+    assert [t["ticket_id"] for t in res.json()] == [unassigned]
+    _set(mine, created_at=sla.iso(sla.now() - timedelta(days=60)))
+    assert ids(period="this_week") == []
+    assert client.get("/api/staff/tickets?view=mine&period=last_decade", headers=me).status_code == 422

@@ -2,20 +2,17 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Inbox } from "lucide-react";
 import { api } from "@/api";
-import { ChatBadge } from "@/components/ChatBadge";
 import StaffTicketView from "@/components/StaffTicketView";
+import TicketRows from "@/components/TicketRows";
 import { Alert } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { EmptyState } from "@/ui/empty-state";
 import { Input, Select } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
-import { PriorityBadge, SlaBadge, StatusBadge } from "@/ui/status";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 import { PRIORITIES, PRIORITY_LABELS } from "@/utils/priorities";
 import { STATUS_KEYS, statusLabel } from "@/utils/statusLabels";
-import { absoluteTime, relativeTime } from "@/utils/time";
 
 /* Technician Tickets: tabs with counts, search (subject, customer, #id),
  * status / priority / type filters, one row per ticket. Unassigned rows
@@ -152,81 +149,21 @@ export default function TechnicianTickets() {
           <EmptyState icon={Inbox} title={view === "unassigned" ? "Nothing waiting to be claimed" : "No tickets match"} />
         )}
         {tickets && tickets.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>SLA</TableHead>
-                <TableHead>Updated</TableHead>
-                {view === "unassigned" && (
-                  <TableHead>
-                    <span className="sr-only">Claim</span>
-                  </TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tickets.map((t) => (
-                <TableRow
-                  key={t.ticket_id}
-                  data-state={openId === t.ticket_id ? "selected" : undefined}
-                  className="cursor-pointer"
-                  onClick={() => open(t.ticket_id)}
-                >
-                  <TableCell className="whitespace-nowrap">
-                    <span className="inline-flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="cursor-pointer border-0 bg-transparent p-0 font-mono text-sm text-primary hover:underline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open(t.ticket_id);
-                        }}
-                      >
-                        {t.ticket_id}
-                      </button>
-                      {t.ticket_type === "chat" && <ChatBadge />}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-80">
-                    <span className="block truncate" title={t.subject}>
-                      {t.subject}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-48">
-                    <span className="block truncate" title={t.customer_email}>
-                      {t.customer_name}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={t.status} />
-                  </TableCell>
-                  <TableCell>
-                    <PriorityBadge priority={t.priority} />
-                  </TableCell>
-                  <TableCell>
-                    <SlaBadge sla={t.sla} compact />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-muted-fg">
-                    <time dateTime={t.last_activity} title={absoluteTime(t.last_activity)}>
-                      {relativeTime(t.last_activity)}
-                    </time>
-                  </TableCell>
-                  {view === "unassigned" && (
-                    <TableCell>
-                      <Button size="sm" onClick={(e) => claim(e, t.ticket_id)} disabled={claiming === t.ticket_id}>
-                        {claiming === t.ticket_id ? "Claiming…" : "Claim"}
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <TicketRows
+            tickets={tickets}
+            selectedId={openId}
+            onOpen={(t) => open(t.ticket_id)}
+            actionLabel="Claim"
+            action={
+              view === "unassigned"
+                ? (t) => (
+                    <Button size="sm" onClick={(e) => claim(e, t.ticket_id)} disabled={claiming === t.ticket_id}>
+                      {claiming === t.ticket_id ? "Claiming…" : "Claim"}
+                    </Button>
+                  )
+                : null
+            }
+          />
         )}
       </Card>
 

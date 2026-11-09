@@ -42,6 +42,9 @@ from backend.conversation import (
 router = APIRouter()
 
 TicketStatus = Literal["open", "in_progress", "pending_customer", "resolved", "closed"]
+# List filters also take "new": open with nobody assigned (not a stored status).
+ListStatus = Literal["new", "open", "in_progress", "pending_customer", "resolved", "closed"]
+PeriodPreset = Literal[periods.PRESETS]  # type: ignore[valid-type]
 
 _current_staff = auth.require_user("technician", "manager")
 
@@ -158,7 +161,8 @@ def _view_params(technician_id: str) -> dict:
             "resolved_since": sla.iso(sla.now() - timedelta(days=RECENTLY_RESOLVED_DAYS))}
 
 
-def _filters(clauses: list, params: dict, *, q=None, priority=None, status=None, ticket_type=None) -> None:
+def _filters(clauses: list, params: dict, *, q=None, priority=None, status=None, ticket_type=None,
+             period=None) -> None:
     if q:
         clauses.append(
             # lower() on both sides: case-insensitive on SQLite and Postgres alike;
@@ -171,18 +175,24 @@ def _filters(clauses: list, params: dict, *, q=None, priority=None, status=None,
     if priority:
         clauses.append("t.priority = :priority")
         params["priority"] = priority
-    if status:
+    if status == "new":
+        clauses.append("t.status = 'open' AND t.assigned_technician_id IS NULL")
+    elif status:
         clauses.append("t.status = :status")
         params["status"] = status
+    if period:
+        p = periods.period_range(period)
+        clauses.append("t.created_at >= :period_start AND t.created_at < :period_end")
+        params.update(period_start=sla.iso(p.start), period_end=sla.iso(p.end))
     if ticket_type:
         clauses.append("t.ticket_type = :ticket_type")
         params["ticket_type"] = ticket_type
 
 
 def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=None,
-               status=None, ticket_type=None, limit: int = 200) -> list[dict]:
+               status=None, ticket_type=None, period=None, limit: int = 200) -> list[dict]:
     clauses = ["t.route = 'human'", where]
-    _filters(clauses, params, q=q, priority=priority, status=status, ticket_type=ticket_type)
+    _filters(clauses, params, q=q, priority=priority, status=status, ticket_type=ticket_type, period=period)
     rows = conn.execute(
         f"{_LIST_SELECT} WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT {int(limit)}",
         params,
@@ -204,16 +214,18 @@ def staff_ticket_list(
     view: TicketView = "unassigned",
     q: str | None = Query(default=None, max_length=200),
     priority: Literal["low", "medium", "high", "urgent"] | None = None,
-    status: TicketStatus | None = None,
+    status: ListStatus | None = None,
     ticket_type: Literal["ticket", "chat"] | None = None,
+    period: PeriodPreset | None = None,
     technician_id: str = Depends(auth.get_current_technician),
 ):
-    """One list (view); ticket_type "chat" = escalated chats."""
+    """One list (view); ticket_type "chat" = escalated chats; `period`:
+    created in that preset (the dashboards' kanban list)."""
     where, order = _VIEWS[view]
     conn = db.get_connection()
     try:
         return _list_rows(conn, where, order, _view_params(technician_id), q=q, priority=priority,
-                          status=status, ticket_type=ticket_type)
+                          status=status, ticket_type=ticket_type, period=period)
     finally:
         conn.close()
 
@@ -222,7 +234,7 @@ def staff_ticket_list(
 def staff_ticket_counts(
     q: str | None = Query(default=None, max_length=200),
     priority: Literal["low", "medium", "high", "urgent"] | None = None,
-    status: TicketStatus | None = None,
+    status: ListStatus | None = None,
     ticket_type: Literal["ticket", "chat"] | None = None,
     technician_id: str = Depends(auth.get_current_technician),
 ):

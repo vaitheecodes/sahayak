@@ -201,8 +201,8 @@ export const api = {
     request(`/chat-reviews/${reviewId}`, { method: "POST", body: { status }, auth: true }),
 
   // Technician workspace + manager oversight (backend/staff_tickets.py).
-  staffTickets: ({ view, q, priority, status, ticket_type } = {}) =>
-    request(`/staff/tickets?${query({ view: view || "unassigned", q, priority, status, ticket_type })}`, {
+  staffTickets: ({ view, q, priority, status, ticket_type, period } = {}) =>
+    request(`/staff/tickets?${query({ view: view || "unassigned", q, priority, status, ticket_type, period })}`, {
       auth: true,
     }),
   staffTicketCounts: ({ q, priority, status, ticket_type } = {}) =>

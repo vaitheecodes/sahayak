@@ -9,7 +9,7 @@ be assigned its tickets.
 
   GET  /api/manager/dashboard?period=          KPIs, workload, created vs resolved, open by priority
   GET  /api/manager/sla?period=&priority=      compliance and the near-breach list
-  GET  /api/manager/tickets?q=&status=&priority=   Department tickets
+  GET  /api/manager/tickets?q=&status=&priority=&period=&assigned=   Department tickets
   GET  /api/manager/technicians                 the department's technicians, with counts
   POST /api/manager/tickets/{id}/reassign       {technician_id | null}
   POST /api/manager/tickets/{id}/priority       {priority}
@@ -35,7 +35,8 @@ router = APIRouter()
 _manager = auth.get_current_manager
 
 Priority = Literal["low", "medium", "high", "urgent"]
-Status = Literal["open", "in_progress", "pending_customer", "resolved", "closed"]
+# "new" = open with nobody assigned (not a stored status).
+Status = Literal["new", "open", "in_progress", "pending_customer", "resolved", "closed"]
 PeriodPreset = Literal[periods.PRESETS]  # type: ignore[valid-type]
 
 
@@ -100,9 +101,11 @@ def manager_sla(period: PeriodPreset = periods.DEFAULT, priority: Priority | Non
 
 @router.get("/api/manager/tickets")
 def manager_tickets(q: str | None = Query(default=None, max_length=200), status: Status | None = None,
-                    priority: Priority | None = None, manager_id: str = Depends(_manager)):
+                    priority: Priority | None = None, period: PeriodPreset | None = None,
+                    assigned: bool | None = None, manager_id: str = Depends(_manager)):
     """The department's tickets (AI-handled ones too, without reassign),
-    newest first."""
+    newest first. `period`: created in that preset; status "new": open with
+    nobody assigned; `assigned`: someone has it (true) or nobody (false)."""
     department = _department(manager_id)
     params: list = []
     clauses = [admin_reports.scope_sql(department["categories"] if department else set(), params)]
@@ -111,12 +114,20 @@ def manager_tickets(q: str | None = Query(default=None, max_length=200), status:
                        "OR lower(t.ticket_text) LIKE lower(?) OR lower(c.name) LIKE lower(?) "
                        "OR lower(c.email) LIKE lower(?))")
         params.extend([f"%{q.strip()}%"] * 5)
-    if status:
+    if status == "new":
+        clauses.append("t.status = 'open' AND t.assigned_technician_id IS NULL")
+    elif status:
         clauses.append("t.status = ?")
         params.append(status)
     if priority:
         clauses.append("t.priority = ?")
         params.append(priority)
+    if assigned is not None:
+        clauses.append(f"t.assigned_technician_id IS {'NOT ' if assigned else ''}NULL")
+    if period:
+        p = periods.period_range(period)
+        clauses.append("t.created_at >= ? AND t.created_at < ?")
+        params.extend([sla.iso(p.start), sla.iso(p.end)])
     conn = db.get_connection()
     try:
         rows = conn.execute(
