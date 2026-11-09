@@ -741,6 +741,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   help by `tests/aws_cli_options.py`).
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
+  SQLite uses the DELETE journal by default (`db._journal_mode`): WAL
+  deadlocked every endpoint under concurrent requests with SQLite 3.51.0;
+  `SQLITE_JOURNAL_MODE=WAL` opts back in.
 - **Phase 2 (not yet done)**: swap SQLite → Azure SQL/Cosmos in
   `backend/db.py`, plain JWT → Azure AD B2C in `backend/auth.py`,
   `uvicorn --reload` → Azure App Service/Functions. No pipeline-logic

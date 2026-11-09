@@ -515,16 +515,20 @@ CREATE TABLE IF NOT EXISTS kb_entry_terms (
 """
 
 
-# WAL is the fast default for a local disk, but it relies on shared memory
-# that network file systems don't support reliably — and on App Service the
-# only persistent storage (/home) is a network share. Set
-# SQLITE_JOURNAL_MODE=DELETE there.
+# DELETE (the classic rollback journal) by default. WAL is faster for
+# concurrent readers, but: it relies on shared memory that network file
+# systems don't support reliably (on App Service the only persistent storage,
+# /home, is a network share); and SQLite 3.51.0 (Anaconda's Python) deadlocked
+# in WAL mode when several requests opened and closed connections at once
+# (one thread in sqlite3WalClose, the rest in findReusableFd, all on the same
+# mutex: every database endpoint hung). SQLITE_JOURNAL_MODE=WAL opts back in.
 _JOURNAL_MODES = {"WAL", "DELETE", "TRUNCATE"}
+DEFAULT_JOURNAL_MODE = "DELETE"
 
 
 def _journal_mode() -> str:
-    mode = os.environ.get("SQLITE_JOURNAL_MODE", "WAL").strip().upper()
-    return mode if mode in _JOURNAL_MODES else "WAL"
+    mode = (os.environ.get("SQLITE_JOURNAL_MODE") or "").strip().upper()
+    return mode if mode in _JOURNAL_MODES else DEFAULT_JOURNAL_MODE
 
 
 def backend_name() -> str:

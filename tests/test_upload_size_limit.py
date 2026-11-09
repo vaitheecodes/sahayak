@@ -77,3 +77,16 @@ def test_a_declared_size_within_the_limit_reaches_the_app():
     # The app itself answers (its form parsing or auth), not the middleware.
     status, _, _ = _call(length=str(main.MAX_UPLOAD_REQUEST_BYTES), receive=_empty_body)
     assert status not in (411, 413)
+
+
+@pytest.mark.parametrize("value, expected", [
+    (None, ["http://localhost:5173", "http://localhost:4173"]),
+    ("", ["http://localhost:5173", "http://localhost:4173"]),
+    ("  ", ["http://localhost:5173", "http://localhost:4173"]),
+    ("https://a.example, https://b.example,", ["https://a.example", "https://b.example"]),
+])
+def test_an_empty_allowed_origins_setting_means_the_local_defaults(value, expected):
+    """.env.example ships "ALLOWED_ORIGINS=": that must not mean no origin."""
+    from backend import main
+
+    assert main.allowed_origins(value) == expected

@@ -48,17 +48,21 @@ app = FastAPI(title="Ticket Resolution Agent")
 
 # Comma-separated list, so the deployed Static Web Apps origin can be set as
 # an App Service Application Setting without a code change. Falls back to the
-# local Vite dev/preview ports when unset.
+# local Vite dev/preview ports when unset or empty (.env.example ships
+# "ALLOWED_ORIGINS=", which used to mean no origin at all).
 #
 # Note: these must be explicit origins, not "*" — allow_credentials=True and
 # a wildcard origin are mutually exclusive per the CORS spec, and browsers
 # reject the combination.
 _DEFAULT_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173"
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get("ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
-    if origin.strip()
-]
+
+
+def allowed_origins(value: str | None) -> list[str]:
+    return [origin.strip() for origin in ((value or "").strip() or _DEFAULT_ALLOWED_ORIGINS).split(",")
+            if origin.strip()]
+
+
+ALLOWED_ORIGINS = allowed_origins(os.environ.get("ALLOWED_ORIGINS"))
 
 # The attachment upload (POST /api/tickets/{id}/attachments) takes at most
 # MAX_ATTACHMENTS_PER_MESSAGE files of MAX_ATTACHMENT_BYTES, but FastAPI
