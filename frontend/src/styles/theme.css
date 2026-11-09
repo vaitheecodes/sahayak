@@ -62,6 +62,27 @@
   --pill-info-fg: #1e4590;
   --pill-accent-bg: #e3eafa;
   --pill-accent-fg: #224aa0;
+  /* Ticket statuses: one colour each, everywhere (chip, rail, chart). fg = text
+     and icons (>= 5.2:1 on chip and page), bg = chip tint, solid = bars and
+     dots (>= 3.5:1 on the sheet). New = open with nobody assigned. */
+  --status-new: #8a877d;
+  --status-new-fg: #4f4d46;
+  --status-new-bg: #eeede8;
+  --status-open: #2d5bc2;
+  --status-open-fg: #1e4fb8;
+  --status-open-bg: #e6edfb;
+  --status-progress: #14857e;
+  --status-progress-fg: #0b6b66;
+  --status-progress-bg: #ddf2ef;
+  --status-pending: #7c52c8;
+  --status-pending-fg: #6a3fb5;
+  --status-pending-bg: #efe8fb;
+  --status-resolved: #2f8f55;
+  --status-resolved-fg: #1d6b3d;
+  --status-resolved-bg: #e1f1e6;
+  --status-closed: #66768c;
+  --status-closed-fg: #3d4a5c;
+  --status-closed-bg: #e7eaef;
 
   /* Data. chart-1 (cobalt) and chart-2 (amber) are the two series and
      differ in lightness too (OKLab L .46 vs .62); 3-5 only where a chart
@@ -116,6 +137,24 @@
     --pill-info-fg: #a9c3f2;
     --pill-accent-bg: #1b2642;
     --pill-accent-fg: #9dbbf4;
+    --status-new: #8c897f;
+    --status-new-fg: #c9c6bc;
+    --status-new-bg: #2a2925;
+    --status-open: #6f9cf0;
+    --status-open-fg: #a9c3f2;
+    --status-open-bg: #1f2a3d;
+    --status-progress: #3fb8ab;
+    --status-progress-fg: #7fd6cc;
+    --status-progress-bg: #16302d;
+    --status-pending: #a283e8;
+    --status-pending-fg: #c6aef5;
+    --status-pending-bg: #2a2340;
+    --status-resolved: #5dbb7d;
+    --status-resolved-fg: #8fd3a5;
+    --status-resolved-bg: #1c2e22;
+    --status-closed: #7f8da3;
+    --status-closed-fg: #b5c0d0;
+    --status-closed-bg: #252a31;
     --chart-1: #6f9cf0;
     --chart-2: #eaae6a;
     --chart-3: #8fd3a5;
@@ -164,6 +203,24 @@
   --pill-info-fg: #a9c3f2;
   --pill-accent-bg: #1b2642;
   --pill-accent-fg: #9dbbf4;
+  --status-new: #8c897f;
+  --status-new-fg: #c9c6bc;
+  --status-new-bg: #2a2925;
+  --status-open: #6f9cf0;
+  --status-open-fg: #a9c3f2;
+  --status-open-bg: #1f2a3d;
+  --status-progress: #3fb8ab;
+  --status-progress-fg: #7fd6cc;
+  --status-progress-bg: #16302d;
+  --status-pending: #a283e8;
+  --status-pending-fg: #c6aef5;
+  --status-pending-bg: #2a2340;
+  --status-resolved: #5dbb7d;
+  --status-resolved-fg: #8fd3a5;
+  --status-resolved-bg: #1c2e22;
+  --status-closed: #7f8da3;
+  --status-closed-fg: #b5c0d0;
+  --status-closed-bg: #252a31;
   --chart-1: #6f9cf0;
   --chart-2: #eaae6a;
   --chart-3: #8fd3a5;
@@ -238,6 +295,24 @@
   --color-pill-info-fg: var(--pill-info-fg);
   --color-pill-accent: var(--pill-accent-bg);
   --color-pill-accent-fg: var(--pill-accent-fg);
+  --color-status-new: var(--status-new);
+  --color-status-new-fg: var(--status-new-fg);
+  --color-status-new-bg: var(--status-new-bg);
+  --color-status-open: var(--status-open);
+  --color-status-open-fg: var(--status-open-fg);
+  --color-status-open-bg: var(--status-open-bg);
+  --color-status-progress: var(--status-progress);
+  --color-status-progress-fg: var(--status-progress-fg);
+  --color-status-progress-bg: var(--status-progress-bg);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-fg: var(--status-pending-fg);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-resolved: var(--status-resolved);
+  --color-status-resolved-fg: var(--status-resolved-fg);
+  --color-status-resolved-bg: var(--status-resolved-bg);
+  --color-status-closed: var(--status-closed);
+  --color-status-closed-fg: var(--status-closed-fg);
+  --color-status-closed-bg: var(--status-closed-bg);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

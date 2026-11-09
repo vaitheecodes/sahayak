@@ -362,8 +362,6 @@ a:focus-visible {
 .role-badge {
   font-size: var(--l-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--l-tracking-label);
   padding: 0.1rem 0.4rem;
   border-radius: var(--l-radius-sm);
   background: transparent;
@@ -498,8 +496,6 @@ a:focus-visible {
 .ticket-detail dt {
   font-weight: 600;
   font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   color: var(--color-text-muted);
   margin-top: 0.4rem;
 }
@@ -523,18 +519,16 @@ a:focus-visible {
   align-items: center;
   font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   padding: 0.2rem 0.6rem;
   border-radius: var(--l-radius-sm);
   white-space: nowrap;
 }
 
-.pill-open { background: var(--color-warning-soft); color: var(--color-warning); }
-.pill-in_progress { background: var(--color-info-soft); color: var(--color-info); }
-.pill-resolved { background: var(--color-success-soft); color: var(--color-success); }
-.pill-pending_customer { background: var(--status-wait-soft); color: var(--status-wait); }
-.pill-closed { background: var(--status-neutral-soft); color: var(--status-neutral); }
+.pill-open { background: var(--status-open-bg); color: var(--status-open-fg); }
+.pill-in_progress { background: var(--status-progress-bg); color: var(--status-progress-fg); }
+.pill-resolved { background: var(--status-resolved-bg); color: var(--status-resolved-fg); }
+.pill-pending_customer { background: var(--status-pending-bg); color: var(--status-pending-fg); }
+.pill-closed { background: var(--status-closed-bg); color: var(--status-closed-fg); }
 .pill-ai { background: var(--color-primary-soft); color: var(--accent-400); }
 .pill-clarify { background: var(--color-info-soft); color: var(--color-info); }
 .pill-human { background: var(--color-warning-soft); color: var(--color-warning); }
@@ -570,8 +564,6 @@ th {
   color: var(--text-tertiary);
   font-weight: 600;
   font-size: var(--l-text-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--l-tracking-label);
   background: var(--table-header-bg);
   border-bottom-color: var(--border-default);
 }
@@ -623,8 +615,6 @@ td.wrap {
 
 .trace-stat-label {
   font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   color: var(--color-text-muted);
 }
 

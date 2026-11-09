@@ -1,32 +1,18 @@
-/* One status vocabulary, used everywhere a ticket appears: the customer's
- * My tickets, the technician queue, the admin table, the simulator trace.
- * A reader should learn the colors once.
- *
- *   warn     open              waiting on the support team, nobody on it yet
- *   info     in_progress       a technician has it
- *   wait     pending_customer  waiting on the customer's reply
- *   ok       resolved          the AI or a technician answered it
- *   neutral  closed            terminal, archived
- *
- * Route chips share the scale so "handled by AI" and "waiting on the
- * customer" read as the same family of fact.
- */
+/* Ticket statuses use the shared StatusBadge (ui/status.jsx: one colour,
+ * icon and word per status everywhere). The chips below are for the other
+ * vocabularies: chat sessions, routes, confidence and incidents. */
 
-import { statusLabel } from "../../utils/statusLabels";
+import { StatusBadge } from "@/ui/status";
 
-// Labels come from the admin's settings (utils/statusLabels.js).
-const STATUS_TONE = {
-  open: "warn",
-  in_progress: "info",
-  pending_customer: "wait",
-  resolved: "ok",
-  closed: "neutral",
-};
+export function StatusChip({ status, label }) {
+  if (!status) return null;
+  return <StatusBadge status={status} label={label} />;
+}
 
 const ROUTE = {
   ai: { tone: "accent", label: "AI" },
   clarify: { tone: "accent", label: "Clarifying" },
-  human: { tone: "warn", label: "Human" },
+  human: { tone: "neutral", label: "Human" },
   closed: { tone: "neutral", label: "Closed" },
 };
 
@@ -43,11 +29,6 @@ function Chip({ tone, label, title, dot = true }) {
       {label}
     </span>
   );
-}
-
-export function StatusChip({ status, label }) {
-  if (!status) return null;
-  return <Chip tone={STATUS_TONE[status] || "neutral"} label={label || statusLabel(status)} />;
 }
 
 /* AI chat sessions have their own lifecycle (backend/chats.py), drawn

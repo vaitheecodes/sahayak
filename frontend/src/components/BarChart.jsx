@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 /* A small grouped bar chart in plain SVG (no chart library): one group per
  * point, one bar per series. Drawn at the container's real width (measured)
- * so text and bars are never stretched. Colors come from --chart-1..
+ * so text and bars are never stretched. Colors: a series' own `color`, else --chart-1..
  * tokens so both themes work. The numbers are also in a visually hidden
  * table for screen readers. */
 
@@ -45,7 +45,7 @@ export default function BarChart({ title, points, series, labelFor }) {
       <div className="chart-legend" aria-hidden="true">
         {series.map((s, i) => (
           <span key={s.key} className="chart-legend-item">
-            <span className="chart-swatch" style={{ background: `var(--chart-${i + 1})` }} />
+            <span className="chart-swatch" style={{ background: s.color || `var(--chart-${i + 1})` }} />
             {s.label}
           </span>
         ))}
@@ -66,7 +66,7 @@ export default function BarChart({ title, points, series, labelFor }) {
               const v = p[s.key] || 0;
               return (
                 <rect key={s.key} x={j * barW} y={y(v)} width={barW - 1} height={Math.max(0, PAD.top + plotH - y(v))}
-                      rx="1.5" fill={`var(--chart-${j + 1})`}>
+                      rx="1.5" fill={s.color || `var(--chart-${j + 1})`}>
                   <title>{`${labelFor(p)}: ${v} ${s.label.toLowerCase()}`}</title>
                 </rect>
               );

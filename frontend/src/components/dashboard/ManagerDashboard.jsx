@@ -4,6 +4,7 @@ import BarChart from "@/components/BarChart";
 import { Alert } from "@/ui/alert";
 import { Card, CardContent } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
+import { statusColor } from "@/lib/statusMeta";
 import { PRIORITIES, PRIORITY_LABELS } from "@/utils/priorities";
 import PeriodSelect, { DEFAULT_PERIOD } from "./PeriodSelect";
 import { HBars, KpiCard, minutesText } from "./parts";
@@ -89,8 +90,8 @@ export default function ManagerDashboard({ onDepartment }) {
             title={`Created vs resolved per day · ${data.period.label}`}
             points={data.over_time}
             series={[
-              { key: "created", label: "Created" },
-              { key: "resolved", label: "Resolved" },
+              { key: "created", label: "Created", color: statusColor("open") },
+              { key: "resolved", label: "Resolved", color: statusColor("resolved") },
             ]}
             labelFor={dayLabel}
           />
