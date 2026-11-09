@@ -77,10 +77,6 @@ def _technicians(conn, department_id: str | None) -> list[dict]:
         "GROUP BY s.staff_id, s.name, s.email ORDER BY lower(s.name)", (department_id,))]
 
 
-def _period(preset: str) -> periods.Period:
-    return periods.period_range(preset)
-
-
 @router.get("/api/manager/dashboard")
 def manager_dashboard(period: PeriodPreset = periods.DEFAULT, manager_id: str = Depends(_manager)):
     department = _department(manager_id)
@@ -89,7 +85,7 @@ def manager_dashboard(period: PeriodPreset = periods.DEFAULT, manager_id: str = 
         technicians = _technicians(conn, department and department["department_id"])
     finally:
         conn.close()
-    data = admin_reports.dashboard_data(_period(period), department["categories"] if department else set(),
+    data = admin_reports.dashboard_data(periods.period_range(period), department["categories"] if department else set(),
                                         technicians)
     return {"department": _department_out(department), **data}
 
@@ -98,7 +94,7 @@ def manager_dashboard(period: PeriodPreset = periods.DEFAULT, manager_id: str = 
 def manager_sla(period: PeriodPreset = periods.DEFAULT, priority: Priority | None = None,
                 manager_id: str = Depends(_manager)):
     department = _department(manager_id)
-    data = admin_reports.sla_data(_period(period), department["categories"] if department else set(), priority)
+    data = admin_reports.sla_data(periods.period_range(period), department["categories"] if department else set(), priority)
     return {"department": _department_out(department), **data}
 
 

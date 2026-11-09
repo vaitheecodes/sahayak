@@ -32,7 +32,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from backend import ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, runtime
+from backend import admin_reports, ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, provider, summarize_conversation
 from backend.conversation import (
@@ -593,11 +593,8 @@ def _chat_scope(conn, user: dict, params: list) -> str:
         return "1 = 1"
     from backend.staff_tickets import manager_categories  # staff_tickets imports this module
 
-    categories = sorted(manager_categories(conn, user["id"]))
-    if not categories:
-        return "1 = 0"
-    params.extend(categories)
-    return f"COALESCE(s.category, s.requested_category) IN ({', '.join('?' * len(categories))})"
+    return admin_reports.scope_sql(manager_categories(conn, user["id"]), params,
+                                   "COALESCE(s.category, s.requested_category)")
 
 
 _staff_chat_user = auth.require_user("technician", "manager")

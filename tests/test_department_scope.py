@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import itertools
 import json
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, main, runtime, seed_data
+from backend import db, main, runtime, seed_data, sla
 from backend.ai_service import suggest_steps
 from backend.ai_service import summarize_conversation as summaries
 from backend.ai_service.schemas import HandoffSummary, SuggestedSteps
@@ -234,3 +235,94 @@ def test_staff_chats_are_for_staff_and_department_limited(client, graph):
     body = json.dumps([client.get(f"/api/chats/{theirs['session_id']}", headers=customer).json(),
                        client.get(f"/api/tickets/{theirs['ticket_id']}", headers=customer).json()])
     assert "ai_suggestions" not in body and "Check the sign-in log." not in body
+
+
+def test_seed_gives_an_existing_demo_technician_a_department(client):
+    """A demo database from before technicians had departments: the next
+    startup's seed fills the gap, so the demo manager can reassign."""
+    (tech,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "technician"]
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE staff SET department_id = NULL WHERE email = ?", (tech["email"],))
+        conn.commit()
+        seed_data.seed_demo_staff(conn)
+        (row,) = conn.execute("SELECT d.name FROM staff s JOIN departments d ON d.department_id = s.department_id "
+                              "WHERE s.email = ?", (tech["email"],)).fetchall()
+    finally:
+        conn.close()
+    assert row["name"] == tech["department"]
+
+
+# ---------------------------------------------------------------------------
+# Technician Tickets: tab counts and Recently resolved
+# ---------------------------------------------------------------------------
+def test_tab_counts_and_recently_resolved_boundary(client, graph):
+    customer = _customer(client)
+    me, _ = _technician(client)
+    unassigned, mine, done = (_raise(client, graph, customer, "ISSUE") for _ in range(3))
+    for ticket in (mine, done):
+        assert client.post(f"/api/staff/tickets/{ticket}/claim", headers=me).status_code == 200
+    res = client.post(f"/api/staff/tickets/{done}/status", json={"status": "resolved"}, headers=me)
+    assert res.status_code == 200, res.text
+
+    counts = client.get("/api/staff/tickets/counts", headers=me).json()
+    assert counts == {"unassigned": 1, "mine": 2, "open_pending": 2, "resolved": 1}
+    assert [t["ticket_id"] for t in client.get("/api/staff/tickets?view=resolved", headers=me).json()] == [done]
+    assert [t["ticket_id"] for t in client.get("/api/staff/tickets?view=unassigned", headers=me).json()] \
+        == [unassigned]
+
+    # 14 days: one resolved 13 days ago is still listed, one 15 days ago is not.
+    recent = _raise(client, graph, customer, "ISSUE")
+    client.post(f"/api/staff/tickets/{recent}/claim", headers=me)
+    client.post(f"/api/staff/tickets/{recent}/status", json={"status": "resolved"}, headers=me)
+    conn = db.get_connection()
+    try:
+        for ticket, days in ((done, 15), (recent, 13)):
+            conn.execute("UPDATE tickets SET resolved_at = ? WHERE ticket_id = ?",
+                         (sla.iso(sla.now() - timedelta(days=days)), ticket))
+        conn.commit()
+    finally:
+        conn.close()
+    listed = [t["ticket_id"] for t in client.get("/api/staff/tickets?view=resolved", headers=me).json()]
+    assert listed == [recent]
+    assert client.get("/api/staff/tickets/counts", headers=me).json()["resolved"] == 1
+
+
+# ---------------------------------------------------------------------------
+# An escalated chat and its ticket share one category, so the manager's chat
+# scope and ticket scope agree (no "Open the ticket" link that 403s).
+# ---------------------------------------------------------------------------
+def _category_pair(session_id):
+    conn = db.get_connection()
+    try:
+        (row,) = conn.execute(
+            "SELECT COALESCE(s.category, s.requested_category) AS chat, "
+            "COALESCE(t.category, t.requested_category) AS ticket FROM chat_sessions s "
+            "JOIN tickets t ON t.ticket_id = s.escalated_ticket_id WHERE s.session_id = ?", (session_id,)).fetchall()
+        return row["chat"], row["ticket"]
+    finally:
+        conn.close()
+
+
+def test_escalated_chat_ticket_takes_the_chats_latest_category(client, graph):
+    customer = _customer(client)
+    manager = _demo(client, "manager")
+
+    # Answered as SETUP, then the escalating turn is classified ACCOUNT.
+    moved = _chat(client, graph, customer, "SETUP", escalate=False)
+    graph.category = "ACCOUNT"
+    res = client.post(f"/api/chats/{moved['session_id']}/messages",
+                      json={"message": "It is still not working after that"}, headers=customer)
+    assert res.status_code == 200 and res.json()["status"] == "escalated", res.text
+    assert _category_pair(moved["session_id"]) == ("ACCOUNT", "ACCOUNT")
+    # Neither is in Product Support: the chat is hidden, the ticket refused.
+    assert client.get(f"/api/staff/chats/{moved['session_id']}", headers=manager).status_code == 404
+    assert client.get(f"/api/staff/tickets/{res.json()['ticket_id']}", headers=manager).status_code == 403
+
+    # "Raise a ticket" after an answer: both SETUP, and the link opens.
+    kept = _chat(client, graph, customer, "SETUP", escalate=False)
+    res = client.post(f"/api/chats/{kept['session_id']}/escalate", json={}, headers=customer)
+    assert res.status_code == 200, res.text
+    assert _category_pair(kept["session_id"]) == ("SETUP", "SETUP")
+    detail = client.get(f"/api/staff/chats/{kept['session_id']}", headers=manager).json()
+    assert client.get(f"/api/staff/tickets/{detail['ticket_id']}", headers=manager).status_code == 200

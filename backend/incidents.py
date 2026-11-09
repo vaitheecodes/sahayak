@@ -418,20 +418,6 @@ def _can_see(conn, cluster, user: dict) -> bool:
     return any(d["department_id"] in mine for d in _cluster_departments(conn, cluster["incident_id"]))
 
 
-def manager_can_see_ticket(conn, manager_id: str, ticket_id: str) -> bool:
-    """Managers may open any ticket linked to a cluster they can see."""
-    mine = manager_department_ids(conn, manager_id)
-    for row in conn.execute(
-        "SELECT c.* FROM incident_clusters c JOIN incident_tickets it ON it.incident_id = c.incident_id "
-        "WHERE it.ticket_id = ?", (ticket_id,)
-    ):
-        if row["needs_routing"] or any(
-            d["department_id"] in mine for d in _cluster_departments(conn, row["incident_id"])
-        ):
-            return True
-    return False
-
-
 def can_resolve(cluster, user: dict, conn) -> bool:
     """Resolving needs a manager who can see it, or the technician it's
     assigned to."""
@@ -525,15 +511,30 @@ def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
     conn = db.get_connection()
     try:
         cluster = _cluster_or_404(conn, incident_id, user)
-        tickets = [
-            {"ticket_id": t["ticket_id"], "subject": subject_for(t), "status": t["status"],
-             "priority": t["priority"], "created_at": t["created_at"], "customer_name": t["customer_name"],
-             "category": t["category"] or t["requested_category"], "added_at": t["added_at"]}
-            for t in conn.execute(
+        # A ticket opens only where the workspace would let it
+        # (staff_tickets._ticket_for_staff): with the support team, and for a
+        # manager in their own department. Others stay countable, without
+        # subject or customer.
+        if user["role"] == "manager":
+            from backend.staff_tickets import manager_categories  # staff_tickets imports chats -> here
+
+            mine = manager_categories(conn, user["id"])
+        else:
+            mine = None
+        tickets = []
+        for t in conn.execute(
                 "SELECT t.*, c.name AS customer_name, it.added_at FROM incident_tickets it "
                 "JOIN tickets t ON t.ticket_id = it.ticket_id JOIN customers c ON c.customer_id = t.customer_id "
-                "WHERE it.incident_id = ? ORDER BY t.created_at", (incident_id,))
-        ]
+                "WHERE it.incident_id = ? ORDER BY t.created_at", (incident_id,)):
+            category = t["category"] or t["requested_category"]
+            can_open = t["route"] == "human" and (mine is None or category in mine)
+            tickets.append({
+                "ticket_id": t["ticket_id"], "status": t["status"], "priority": t["priority"],
+                "created_at": t["created_at"], "category": category, "added_at": t["added_at"],
+                "can_open": can_open,
+                "subject": subject_for(t) if can_open else None,
+                "customer_name": t["customer_name"] if can_open else None,
+            })
         names = {r["id"]: r["name"] for r in conn.execute(
             "SELECT staff_id AS id, name FROM staff UNION ALL SELECT admin_id, name FROM admins")}
         reviews = [
@@ -552,7 +553,7 @@ def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
             **_cluster_row(conn, cluster),
             "summary": json.loads(cluster["summary"]),
             "tickets": tickets,
-            "affected_customers": sorted({t["customer_name"] for t in tickets}),
+            "affected_customers": sorted({t["customer_name"] for t in tickets if t["customer_name"]}),
             "reviews": reviews,
             "all_departments": [dict(r) for r in conn.execute(
                 "SELECT department_id, name FROM departments ORDER BY name")],

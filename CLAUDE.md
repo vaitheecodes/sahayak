@@ -597,8 +597,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `INCIDENT_ROUTING_CONFIDENCE`, else `needs_routing`. Manager/admin
   corrections (`source = 'manager'`) survive AI re-runs. Review:
   confirm / investigate / dismiss with a note -> `incident_reviews`.
-  Managers see clusters linked to their departments plus unrouted ones,
-  and may open any linked ticket. Customers on a confirmed cluster's
+  Managers see clusters linked to their departments plus unrouted ones;
+  a linked ticket outside their department is listed without subject or
+  customer and can't be opened (`can_open`, same rule as the workspace). Customers on a confirmed cluster's
   tickets get a neutral `incident_notice`. No reply-to-all fan-out.
   Covered by `tests/test_incidents.py`.
 - **Post-incident summary + incident memory** (`backend/incident_resolution.py`,

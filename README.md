@@ -315,6 +315,8 @@ incident summary, post-incident summary draft, incident-question parsing):
 | Anyone | `/incidents`, `/docs` | public incident history and the read-only docs (routing policy, ticket statuses), no login |
 | Admin (single account) | → `/admin` | SLA targets (in Settings), users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to tickets, dashboards, SLA reports, chats, chat reviews, incidents or Try a ticket (403) |
 
+After upgrading, the admin must give each technician a department under Users, or a manager's reassign list stays empty.
+
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it
 needs a person — the customer asks, the AI can't do it, the routing

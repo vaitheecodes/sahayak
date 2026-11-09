@@ -12,6 +12,7 @@ each ticket to a human with the category the test chooses.
 from __future__ import annotations
 
 import itertools
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -367,7 +368,28 @@ def test_a_linked_incident_does_not_open_another_departments_tickets(client, pip
     judge["departments"] = ["Product Support"]
     ids = _three_customers_report(client, pipeline, category="OTHER")  # owned by General
     manager = _demo_manager(client)
+    (cluster,) = _clusters()
+    detail = client.get(f"/api/incidents/{cluster['incident_id']}", headers=manager).json()
+    # Still countable, but nothing to open and no customer or subject.
+    assert len(detail["tickets"]) == 3
+    assert all(t["can_open"] is False and t["customer_name"] is None and t["subject"] is None
+               for t in detail["tickets"])
+    names = {r["name"] for r in _query(
+        "SELECT c.name FROM customers c JOIN tickets t ON t.customer_id = c.customer_id")}
+    body = json.dumps(detail)
+    assert not any(name in body for name in names)
     assert client.get(f"/api/staff/tickets/{ids[0]}", headers=manager).status_code == 403
+
+
+def test_incident_tickets_in_the_managers_department_can_be_opened(client, pipeline, judge):
+    judge["departments"] = ["Product Support"]
+    ids = _three_customers_report(client, pipeline, category="ISSUE")
+    manager = _demo_manager(client)
+    (cluster,) = _clusters()
+    detail = client.get(f"/api/incidents/{cluster['incident_id']}", headers=manager).json()
+    assert {t["ticket_id"] for t in detail["tickets"] if t["can_open"] and t["customer_name"]} == set(ids)
+    assert len(detail["affected_customers"]) == 3
+    assert client.get(f"/api/staff/tickets/{ids[0]}", headers=manager).status_code == 200
 
 
 def test_only_managers_use_incident_endpoints(client, pipeline, judge):

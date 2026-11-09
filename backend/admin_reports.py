@@ -22,6 +22,7 @@ from datetime import datetime
 
 from backend import app_settings, db, sla
 from backend import ticket_lifecycle as lifecycle
+from backend.conversation import subject_for
 from backend.periods import Period, ist_day
 
 STATUSES = ("open", "in_progress", "pending_customer", "resolved", "closed")
@@ -30,14 +31,18 @@ _COLUMNS = ("t.ticket_id, t.subject, t.ticket_text, t.route, t.ticket_type, t.as
             + ", ".join("t." + c.strip() for c in sla.SLA_COLUMNS.split(",")))
 
 
-def scope_sql(categories: set[str] | frozenset | None, params: list) -> str:
-    """The WHERE fragment for a category scope (appends its parameters)."""
+TICKET_CATEGORY = "COALESCE(t.category, t.requested_category)"
+
+
+def scope_sql(categories: set[str] | frozenset | None, params: list, column: str = TICKET_CATEGORY) -> str:
+    """The WHERE fragment for a category scope on `column` (appends its
+    parameters)."""
     if categories is None:
         return "1 = 1"
     if not categories:
         return "1 = 0"
     params.extend(sorted(categories))
-    return f"COALESCE(t.category, t.requested_category) IN ({', '.join('?' * len(categories))})"
+    return f"{column} IN ({', '.join('?' * len(categories))})"
 
 
 def _rows(where: str, params: list, categories=None) -> list[dict]:
@@ -69,14 +74,7 @@ def _is_open(ticket: dict) -> bool:
     return ticket["status"] not in sla.DONE_STATUSES
 
 
-def subject(ticket: dict) -> str:
-    if ticket.get("subject"):
-        return ticket["subject"]
-    line = (ticket.get("ticket_text") or "").split("\n", 1)[0].strip()
-    return line if len(line) <= 80 else line[:77].rstrip() + "..."
-
-
-def _per_day(period: Period, values: list[datetime | None]) -> Counter:
+def _per_day(values: list[datetime | None]) -> Counter:
     return Counter(ist_day(v) for v in values if v)
 
 
@@ -109,8 +107,8 @@ def dashboard_data(period: Period, categories=None, technicians: list[dict] | No
         workload.setdefault(key, {"technician_id": key, "name": t["technician_name"] or key, "open": 0})
         workload[key]["open"] += 1
 
-    made = _per_day(period, [sla.parse(t["created_at"]) for t in created])
-    done = _per_day(period, [sla.parse(t["resolved_at"]) for t in resolved])
+    made = _per_day([sla.parse(t["created_at"]) for t in created])
+    done = _per_day([sla.parse(t["resolved_at"]) for t in resolved])
     last_day = ist_day(period.until())
     return {
         "period": period.as_dict(),
@@ -178,7 +176,7 @@ def sla_data(period: Period, categories=None, priority: str | None = None) -> di
         open_where += " AND t.priority = ?"
         open_params.append(priority)
     watch = sorted(
-        ({"ticket_id": t["ticket_id"], "subject": subject(t), "priority": t["priority"], "status": t["status"],
+        ({"ticket_id": t["ticket_id"], "subject": subject_for(t), "priority": t["priority"], "status": t["status"],
           "technician_name": t["technician_name"], "created_at": t["created_at"], "next_due_at": next_due(e),
           "sla": e}
          for t in _rows(open_where, open_params, categories)
@@ -247,7 +245,7 @@ def technician_data(period: Period, technician_id: str) -> dict:
         customer_replied = bool(last and last["sender"] == "customer")
         updated = (last or {}).get("at") or t["created_at"]
         attention.append({
-            "ticket_id": t["ticket_id"], "subject": subject(t), "priority": t["priority"],
+            "ticket_id": t["ticket_id"], "subject": subject_for(t), "priority": t["priority"],
             "status": t["status"], "ticket_type": t["ticket_type"], "sla": e, "updated_at": updated,
             "reason": "sla" if near_breach else ("customer_reply" if customer_replied else None),
         })

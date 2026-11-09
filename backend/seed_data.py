@@ -64,15 +64,20 @@ def seed_demo_staff(conn) -> None:
     if os.environ.get("APP_ENV", "development").lower() == "production":
         return
     for person in DEMO_STAFF:
-        if conn.execute(
-            "SELECT 1 FROM staff WHERE email = ?", (person["email"],)
-        ).fetchone():
-            continue
-        prefix = "MGR" if person["role"] == "manager" else "TECH"
-        staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
         department = conn.execute(
             "SELECT department_id FROM departments WHERE name = ?", (person["department"],)
         ).fetchone() if person["department"] else None
+        if conn.execute(
+            "SELECT 1 FROM staff WHERE email = ?", (person["email"],)
+        ).fetchone():
+            # Demo databases from before technicians had departments: give the
+            # demo technician one, or its manager has nobody to reassign to.
+            if department and person["role"] == "technician":
+                conn.execute("UPDATE staff SET department_id = ? WHERE email = ? AND department_id IS NULL",
+                             (department["department_id"], person["email"]))
+            continue
+        prefix = "MGR" if person["role"] == "manager" else "TECH"
+        staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
         conn.execute(
             "INSERT INTO staff (staff_id, name, email, password_hash, role, department_id) "
             "VALUES (?, ?, ?, ?, ?, ?)",

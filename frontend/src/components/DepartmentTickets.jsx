@@ -5,6 +5,7 @@ import StaffTicketView from "./StaffTicketView";
 import SlaChip from "./ui/SlaChip";
 import { ConfidenceChip, RouteChip, StatusChip } from "./ui/StatusChip";
 import { ChatBadge } from "./ChatBadge";
+import { assigneeOptions } from "../lib/assigneeOptions";
 import { categoryLabel } from "../utils/categories";
 import { parseTicketText } from "../utils/parseTicketText";
 import { PRIORITIES, PRIORITY_LABELS } from "../utils/priorities";
@@ -43,10 +44,9 @@ function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
         onChange={handleChange}
         disabled={saving}
       >
-        <option value="">Unassigned</option>
-        {technicians.map((t) => (
-          <option key={t.staff_id} value={t.staff_id}>
-            {t.name}
+        {assigneeOptions(ticket, technicians).map((o) => (
+          <option key={o.value} value={o.value} disabled={o.disabled}>
+            {o.label}
           </option>
         ))}
       </select>

@@ -308,9 +308,9 @@ function IncidentDetail({ incidentId, onChanged }) {
                   <td className="wrap">
                     <span className="mono">{t.ticket_id}</span>
                     <br />
-                    {t.subject}
+                    {t.can_open ? t.subject : <span className="hint">Ticket in another department</span>}
                   </td>
-                  <td>{t.customer_name}</td>
+                  <td>{t.can_open ? t.customer_name : <span className="hint">—</span>}</td>
                   <td>{categoryLabel(t.category)}</td>
                   <td>
                     <StatusChip status={t.status} />
@@ -326,9 +326,11 @@ function IncidentDetail({ incidentId, onChanged }) {
                     </td>
                   )}
                   <td>
-                    <button type="button" onClick={() => setOpenTicket(t.ticket_id)}>
-                      Open
-                    </button>
+                    {t.can_open && (
+                      <button type="button" onClick={() => setOpenTicket(t.ticket_id)}>
+                        Open
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
