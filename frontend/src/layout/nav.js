@@ -19,9 +19,10 @@ import {
   Users,
 } from "lucide-react";
 
-/* The sidebar for each role: groups of links to whole screens (never
- * anchors into one page). The backend enforces the same boundaries: a
- * link missing here is a 403 there (tests/test_role_scope.py). */
+/* The menu for each role: `groups` is the full menu (the slide-in panel),
+ * links to whole screens (never anchors into one page); `primary` are the
+ * main screens shown in the top bar. The backend enforces the same
+ * boundaries: a link missing here is a 403 there (tests/test_role_scope.py). */
 
 // Technicians edit drafts and propose terms; managers also add sources,
 // run them and decide (kb_ingester/api.py).
@@ -39,6 +40,11 @@ const KNOWLEDGE_BASE = {
 export const NAV = {
   customer: {
     scope: "Customer support",
+    primary: [
+      { to: "/customer", label: "Get help", end: true },
+      { to: "/customer/tickets", label: "My tickets" },
+      { to: "/customer/chats", label: "Chats" },
+    ],
     groups: [
       {
         label: "Support",
@@ -53,6 +59,10 @@ export const NAV = {
   },
   technician: {
     scope: "Technician workspace",
+    primary: [
+      { to: "/technician", label: "Dashboard", end: true },
+      { to: "/technician/tickets", label: "Tickets" },
+    ],
     groups: [
       {
         label: "My work",
@@ -75,6 +85,10 @@ export const NAV = {
   // Everything a manager sees is limited to their own department.
   manager: {
     scope: "Manager",
+    primary: [
+      { to: "/manager", label: "Dashboard", end: true },
+      { to: "/manager/tickets", label: "Tickets" },
+    ],
     groups: [
       {
         label: "Overview",
@@ -98,6 +112,10 @@ export const NAV = {
   // People and system only: no tickets, dashboards or SLA (the managers').
   admin: {
     scope: "Admin console",
+    primary: [
+      { to: "/admin", label: "Users", end: true },
+      { to: "/admin/settings", label: "Settings" },
+    ],
     groups: [
       {
         label: "People",

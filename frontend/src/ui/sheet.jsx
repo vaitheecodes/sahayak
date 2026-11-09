@@ -24,7 +24,7 @@ export function SheetContent({ className, side = "left", title, children, ...pro
         <D.Description className="sr-only">{title}</D.Description>
         {children}
         <D.Close
-          className="absolute top-2.5 right-2.5 inline-flex size-8 items-center justify-center rounded-md text-muted-fg hover:bg-active hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="absolute top-2.5 right-2.5 inline-flex size-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted-fg shadow-none hover:bg-active hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           aria-label="Close menu"
         >
           <X className="size-4" aria-hidden="true" />

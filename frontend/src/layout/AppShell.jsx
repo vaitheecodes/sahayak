@@ -10,15 +10,20 @@ import ProductMark from "./ProductMark";
 import ThemeMenu from "./ThemeMenu";
 import UserMenu from "./UserMenu";
 
-/* The framed sheet: one tinted frame holds the sidebar and the 48px top bar
- * with no rule between them; the page sits on a white sheet inset 8px from
- * the window's right and bottom edges (16px corners, 1px edge, no shadow).
- * Under 768px the frame folds away: the sidebar becomes a drawer and the
- * sheet becomes the screen. */
+/* The framed sheet: a 48px top bar on the tinted frame and the page on a
+ * white sheet inset 8px from the window edges (16px corners, 1px edge).
+ *
+ * The full menu (every screen of the role, grouped) is hidden by default:
+ * the menu button at the far left opens it as a slide-in panel with a scrim
+ * (Radix Dialog: focus trapped, Escape or a scrim click closes it, the
+ * button carries aria-expanded; picking a screen closes it too). The top
+ * bar keeps only the role's main screens (nav.js `primary`); under 768px
+ * those fold into the panel as well. Nothing is remembered: it always
+ * starts closed. */
 
 function Brand({ scope }) {
   return (
-    <div className="flex h-12 items-center gap-2.5 px-4">
+    <div className="flex h-12 items-center gap-2.5 pr-12 pl-4">
       <ProductMark />
       <div className="min-w-0 leading-tight">
         <div className="truncate text-base font-semibold text-fg">Help Desk</div>
@@ -28,28 +33,24 @@ function Brand({ scope }) {
   );
 }
 
-function SidebarNav({ role, counts = {}, onNavigate }) {
+const itemClass = ({ isActive }) =>
+  cn(
+    "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-base text-muted-fg no-underline transition-colors outline-none",
+    "hover:bg-active/70 hover:text-fg focus-visible:ring-2 focus-visible:ring-ring",
+    isActive && "bg-active font-medium text-fg",
+  );
+
+function MenuNav({ role, counts = {}, onNavigate }) {
   const { groups } = NAV[role];
   return (
-    <nav aria-label="Main" className="flex flex-col gap-5 px-2.5 pt-3 pb-6">
+    <nav aria-label="Full menu" className="flex flex-col gap-5 px-2.5 pt-2 pb-6">
       {groups.map((group) => (
         <div key={group.label}>
           <div className="px-2.5 pb-1.5 text-xs font-medium text-muted-fg">{group.label}</div>
           <ul className="flex flex-col gap-0.5">
             {group.items.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-base text-muted-fg no-underline transition-colors outline-none",
-                      "hover:bg-active/70 hover:text-fg focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive && "bg-active font-medium text-fg",
-                    )
-                  }
-                >
+                <NavLink to={to} end={end} onClick={onNavigate} className={itemClass}>
                   <Icon aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
                   <span className="flex-1 truncate">{label}</span>
                   {counts[to] ? (
@@ -67,9 +68,36 @@ function SidebarNav({ role, counts = {}, onNavigate }) {
   );
 }
 
+// The role's main screens, inline in the top bar from 768px up.
+function PrimaryNav({ role }) {
+  return (
+    <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
+      {NAV[role].primary.map(({ to, label, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className={({ isActive }) =>
+            cn(
+              "inline-flex h-8 items-center rounded-md px-2.5 text-base font-medium text-muted-fg no-underline outline-none",
+              "hover:text-fg focus-visible:ring-2 focus-visible:ring-ring",
+              isActive && "bg-sheet text-fg shadow-[inset_0_0_0_1px_var(--border)]",
+            )
+          }
+        >
+          {label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 export default function AppShell({ role, title, actions, counts, children, sheetClassName }) {
   const [open, setOpen] = useState(false);
-  const { scope } = NAV[role];
+  const { scope, primary } = NAV[role];
+  // The title repeats nothing: on a main screen the highlighted top-bar item
+  // already names the page, so the title shows only on phones there.
+  const onPrimary = primary.some((p) => p.label === title);
 
   useEffect(() => {
     document.title = `${title} · Help Desk`;
@@ -77,7 +105,7 @@ export default function AppShell({ role, title, actions, counts, children, sheet
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="min-h-dvh bg-frame text-fg md:grid md:h-dvh md:grid-cols-[228px_minmax(0,1fr)] md:grid-rows-[48px_minmax(0,1fr)]">
+      <div className="flex min-h-dvh flex-col bg-frame text-fg md:h-dvh">
         <a
           href="#main"
           className="sr-only z-50 rounded-md bg-sheet px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
@@ -85,26 +113,32 @@ export default function AppShell({ role, title, actions, counts, children, sheet
           Skip to content
         </a>
 
-        <aside className="hidden md:row-span-2 md:flex md:flex-col md:overflow-y-auto">
-          <Brand scope={scope} />
-          <SidebarNav role={role} counts={counts} />
-        </aside>
-
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-frame px-2 md:static md:pr-4 md:pl-0">
+        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 bg-frame px-2 md:static md:pr-4">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+              <Button variant="ghost" size="icon" aria-label="Open the full menu">
                 <Menu aria-hidden="true" />
               </Button>
             </SheetTrigger>
             <SheetContent title="Menu">
               <Brand scope={scope} />
               <div className="overflow-y-auto">
-                <SidebarNav role={role} counts={counts} onNavigate={() => setOpen(false)} />
+                <MenuNav role={role} counts={counts} onNavigate={() => setOpen(false)} />
               </div>
             </SheetContent>
           </Sheet>
-          <h1 className="min-w-0 flex-1 truncate text-md font-semibold">{title}</h1>
+          <span className="mr-2 hidden md:inline-flex" title="Help Desk">
+            <ProductMark className="size-5" />
+          </span>
+          <PrimaryNav role={role} />
+          <h1
+            className={cn(
+              "min-w-0 flex-1 truncate text-md font-semibold md:ml-3 md:border-l md:border-border md:pl-4",
+              onPrimary && "md:invisible",
+            )}
+          >
+            {title}
+          </h1>
           {actions && <div className="hidden items-center gap-2 sm:flex">{actions}</div>}
           <ThemeMenu />
           <UserMenu role={role} />
@@ -114,7 +148,7 @@ export default function AppShell({ role, title, actions, counts, children, sheet
           id="main"
           tabIndex={-1}
           className={cn(
-            "min-h-[calc(100dvh-3rem)] bg-sheet outline-none md:mr-2 md:mb-2 md:min-h-0 md:overflow-y-auto md:rounded-sheet md:border md:border-border",
+            "min-h-[calc(100dvh-3rem)] flex-1 bg-sheet outline-none md:mx-2 md:mb-2 md:min-h-0 md:overflow-y-auto md:rounded-sheet md:border md:border-border",
             sheetClassName,
           )}
         >
