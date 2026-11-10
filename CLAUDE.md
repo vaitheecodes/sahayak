@@ -438,6 +438,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   Chats, Chat reviews, Incidents) · Knowledge base (+ Try a ticket).
   Reassign goes only to support engineers whose `department_id` is the
   manager's (support engineers may now "work" one department, set under Users).
+  A Platform Lead (see Manager types) has every department, a department
+  dropdown in the top bar and Teams.
   **Support engineer**: My work (Dashboard of their own tickets only, Tickets
   with tabs + counts + filters + Claim, Chats) · More (Chat reviews, KB
   review queue, Try a ticket); assigned incidents stay at
@@ -513,7 +515,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   Closed; then SLA breached and at risk; `by_status`, `created_sla`); a
   count filters the list below (`/api/manager/tickets` or
   `/api/staff/tickets?view=mine` with `period`, `status=new`, `assigned`;
-  same role scope; the SLA counts filter by each row's SLA state; the New
+  same role scope; an SLA count sends `sla=breached|at_risk`, filtered on
+  the server before the list limit; the New
   list shows a New chip); then charts for the period (by priority
   `by_priority`, by status, created vs resolved `over_time`; text
   alternatives: the bars' numbers are text, the day chart has a hidden
@@ -523,9 +526,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   "Runs on Sahayak"), `/login` and `/signup` (`pages/Login.jsx`: show /
   hide password, field errors, 429 countdown from Retry-After); `/docs`,
   `/incidents` use `PublicShell`. **Setup** (`components/SetupWizard.jsx`):
-  `/admin/settings` opens on a 4-step setup (product, categories and their
+  `/admin/settings` opens on a 5-step setup (product, categories and their
   departments, each support engineer's department with the count still missing,
-  done) while the product is unnamed and not skipped in this browser;
+  each manager's type and department with the count still missing (a
+  Platform Lead needs none), done) while the product is unnamed and not skipped in this browser;
   "Run setup again" brings it back. Colour only on data, status and the
   one primary action; every text token >= 4.5:1 in both themes (contrast
   table in `docs/DESIGN_SYSTEM.md` section 0).
@@ -725,9 +729,33 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   immediately. Emails are unique across all three tables. The legacy
   `agents` table / `assigned_agent_id` column are migrated in place to
   `staff` / `assigned_technician_id` by `db.init_db()`. Dev-only demo
-  manager + support engineer are seeded by `seed_data.seed_demo_staff`.
+  manager (Tech Lead) + support engineer + Platform Lead
+  (`seed_data.DEMO_PLATFORM_LEAD`, no department) are seeded by
+  `seed_data.seed_demo_staff`, never in production.
   bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Covered by
   `tests/test_roles_auth.py`.
+- **Manager types** (`backend/permissions.py`, `staff.manager_type`:
+  SQLite `_ADDED_COLUMNS` + startup backfill, Postgres
+  `0006_manager_types.sql` with CHECKs). Tech Lead (default; managers from
+  before types), Product Manager and Incident Manager are peers with the
+  department scope; a Platform Lead sees every department. One
+  `PERMISSIONS` table (tickets / reassign / incidents: `department` or
+  `all`; teams) decides; `manager_scope(conn, user, department_id)` gives
+  the categories (None = every ticket) used by manager.py, staff_tickets,
+  chats and incidents. The type is read in `auth._load_user` on every
+  request, never from the token (a demoted Platform Lead loses it on the
+  next request). Only the admin sets it (Users, setup wizard step
+  Managers; audited with `previous_manager_type`); a role change sets or
+  clears it; the admin account has none. Platform Lead: `department=<id>|all`
+  on /api/manager/{dashboard,sla,tickets,technicians} (403 for anyone
+  else), `/api/manager/teams`, every incident, reassign to any active
+  support engineer (the ticket stays with its category's department;
+  `ticket.reassigned_across_departments` audit with from/to user and
+  department). Incident Manager = Tech Lead for now; widening its
+  incidents is `"incidents": ALL` in the table. Frontend:
+  `lib/managerScope.js` (`?department=`), `components/manager/`
+  (DepartmentPicker, Teams), nav items with `needs` (from /auth/me's
+  `permissions`). Covered by `tests/test_manager_types.py`.
 - **Ticket lifecycle + support engineer workspace** (reconcile sub-stage B;
   `backend/staff_tickets.py`, `backend/ticket_lifecycle.py`,
   `frontend/src/components/StaffTicketView.jsx`). Statuses
@@ -788,6 +816,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   help by `tests/aws_cli_options.py`).
 - **Run locally**: `uvicorn backend.main:app --reload` (repo root, needs
   `.env`) + `npm run dev` in `frontend/` (proxies `/api` to `:8000`).
+  The web demo: `scripts/webdemo.sh start|stop|status` (backend :8010
+  with `.env`, frontend :5180; state in `.local/webdemo/`).
   SQLite uses the DELETE journal by default (`db._journal_mode`): WAL
   deadlocked every endpoint under concurrent requests with SQLite 3.51.0;
   `SQLITE_JOURNAL_MODE=WAL` opts back in.
@@ -810,6 +840,10 @@ start`, as 5433 may be ticketapp-ai-aws's server).
 
 **Ingester vertical slice** (`kb_ingester/`, see above): one URL to
 reviewed entries, checked in a browser with the mock AI.
+
+**Manager hierarchy** (see Manager types): Tech Lead / Product Manager /
+Incident Manager peers and the Platform Lead, with Teams and the
+department dropdown.
 
 **Next:** a real run against Bedrock (needs the user's go-ahead on cost
 and credentials), then crawl, sitemaps, forums, file upload, pasted text.

@@ -92,6 +92,25 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173. Vite proxies `/api` to `:8000`.
 
+**Local web demo (one command).** `scripts/webdemo.sh` starts the backend
+on `:8010` (settings from `.env`, so the demo database and AI provider
+there) and the frontend on `:5180`, leaving `:8000` / `:5173` free for
+other work; pid files and logs go to `.local/webdemo/`:
+
+```bash
+scripts/webdemo.sh start
+```
+
+```bash
+scripts/webdemo.sh status
+```
+
+```bash
+scripts/webdemo.sh stop
+```
+
+Then open http://localhost:5180.
+
 On first start the backend creates the database, seeds eight neutral
 categories (ACCOUNT, BILLING, DATA, SETUP, USAGE, ISSUE, INTEGRATION,
 OTHER) and three default departments covering them, and creates the admin
@@ -102,8 +121,9 @@ account:
   is logged (`backend/auth.py`). In production (`APP_ENV=production`) the
   server refuses to start without them.
 - **Demo staff** (development only, never in production): a manager
-  (Product Support department) and a support engineer; credentials in
-  `backend/seed_data.py`.
+  (a Tech Lead for the Product Support department), a support engineer
+  and a Platform Lead with no department ("Demo Platform Lead");
+  credentials in `backend/seed_data.py`.
 - **Customers** sign up on the login page (or the admin creates them).
 
 The knowledge base starts empty: until entries are approved, every
@@ -311,11 +331,19 @@ incident summary, post-incident summary draft, incident-question parsing):
 |---|---|---|
 | Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
 | Support engineer | → `/technician` | dashboard of their own tickets (counts by status for the period, the matching list, charts), tickets (unassigned / mine / all open / recently resolved, filters), read-only chats, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
-| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a support engineer, resolve & send the post-incident summary), dashboard and SLA for their department, department tickets (reassign to the department's support engineers, priority), chats, chat reviews, Try a ticket (`/try-a-ticket`) |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a support engineer, resolve & send the post-incident summary), dashboard and SLA for their department, department tickets (reassign to the department's support engineers, priority), chats, chat reviews, Try a ticket (`/try-a-ticket`). Types: Tech Lead, Product Manager and Incident Manager (same rights today) |
+| Platform Lead (a manager type) | → `/manager` | everything a manager can, for every department: a department dropdown (all or one) on Dashboard, SLA and Department tickets, every incident, reassign to any support engineer (the ticket stays with its department; audited), and Teams (each department's managers and support engineers) |
 | Anyone | `/incidents`, `/docs` | public incident history and the read-only docs (routing policy, ticket statuses), no login |
 | Admin (single account) | → `/admin` | SLA targets (in Settings), users (customers, support engineers, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to tickets, dashboards, SLA reports, chats, chat reviews, incidents or Try a ticket (403) |
 
 After upgrading, the admin must give each support engineer a department under Users, or a manager's reassign list stays empty.
+
+**Manager types** (`backend/permissions.py`, one table): the admin sets
+each manager's type under Users (or in the setup wizard's Managers step);
+managers from before types are Tech Leads. The type is read from the
+database on every request, so a demoted Platform Lead loses the wider view
+on their next request, with the same sign-in. The admin account never has
+a type.
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it

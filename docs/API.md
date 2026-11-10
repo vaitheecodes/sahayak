@@ -33,7 +33,7 @@ Roles: **C** customer · **T** support engineer · **M** manager · **A** admin 
 |---|---|---|---|
 | `POST /auth/customer/signup` | public | `{name, email, password}` (password ≥ 8) | `{user_id, role:"customer", name, must_change_password:false, token}` |
 | `POST /auth/login` | public | `{email, password}` | `{user_id, role, name, must_change_password, token}`. 401 bad credentials, 403 deactivated. Failures are audited. |
-| `GET /auth/me` | any | — | `{user_id, role, name, email, must_change_password}` |
+| `GET /auth/me` | any | — | `{user_id, role, name, email, must_change_password}`; a manager also `manager_type` and `permissions` (that type's row of `backend/permissions.py`, for the menu; the server checks every call) |
 | `POST /auth/change-password` | any | `{current_password, new_password}` | `{ok:true}`; clears `must_change_password` |
 
 There is no signup for staff or the admin: the admin is created from
@@ -80,7 +80,7 @@ message is kept and nothing else changed.
 
 | Method & path | Role | Request | Response / notes |
 |---|---|---|---|
-| `GET /staff/tickets?view=&q=&priority=&status=&ticket_type=&period=` | T | `view`: `unassigned` (oldest first) \| `mine` \| `recent` \| `open_pending` \| `resolved` (last 14 days); `q` matches subject, customer or `#id`; `ticket_type`: `ticket` \| `chat`; `status` also takes `new` (open, nobody assigned); `period`: created in that preset | `[{ticket_id, subject, status, priority, ticket_type, category, created_at, last_activity, customer_name, customer_email, assigned_technician_id, assignee_name, preview}]` (tickets with the support team only) |
+| `GET /staff/tickets?view=&q=&priority=&status=&ticket_type=&period=&sla=` | T | `view`: `unassigned` (oldest first) \| `mine` \| `recent` \| `open_pending` \| `resolved` (last 14 days); `q` matches subject, customer or `#id`; `ticket_type`: `ticket` \| `chat`; `status` also takes `new` (open, nobody assigned); `period`: created in that preset; `sla`: `breached` \| `at_risk` now, filtered before the 200 limit | `[{ticket_id, subject, status, priority, ticket_type, category, created_at, last_activity, customer_name, customer_email, assigned_technician_id, assignee_name, preview}]` (tickets with the support team only) |
 | `GET /staff/tickets/counts?q=&priority=&status=&ticket_type=` | T | — | `{unassigned, mine, open_pending, resolved}` with the same filters (the tab counts) |
 | `GET /staff/dashboard?period=` | T | `period`: a preset (below) | own tickets only: `{period, cards:{assigned, in_progress, pending_customer, resolved, sla_at_risk}, by_status:{total, new, open, in_progress, pending_customer, resolved, closed}, by_priority:{low, medium, high, urgent}, created_sla:{breached, at_risk}, over_time:[{date, created, resolved}], attention:[{ticket_id, subject, priority, status, ticket_type, sla, updated_at, reason:"sla"\|"customer_reply"\|null}], attention_total, numbers:{avg_first_response_minutes, avg_resolution_minutes, sla_met_percent, reopened, chats_reviewed}}` |
 | `GET /staff/tickets/{id}` | T, M (own department only; 403 otherwise) | — | `{ticket:{..., description, customer, assignee}, messages:[... visibility, customer_visible, author ...], ai:{summary, suggestions, case_summary}, chat, incidents, status_history, assignment_history, can:{claim, reply, change_status, note}}` |
@@ -96,16 +96,21 @@ message is kept and nothing else changed.
 
 | Method & path | Role | Response / notes |
 |---|---|---|
-| `GET /manager/departments` | M | `[{department_id, name, categories, manager_ids}]` (zero or one) |
-| `GET /manager/overview` | M | `{categories, tickets:[...], workload:[{staff_id, name, open, in_progress, pending_customer, resolved}], unassigned}` for the manager's department. Read-only. |
-| `GET /manager/dashboard?period=` | M | `{department, period, kpis:{open, in_progress, pending_customer, unassigned, sla_at_risk, sla_breached, avg_first_response_minutes, first_responses}, created, resolved, by_status:{total, new, open, in_progress, pending_customer, resolved, closed}, by_priority:{low, medium, high, urgent}, created_sla:{breached, at_risk}, technician_workload:[{technician_id, name, open, breached, resolved, avg_first_response_minutes}], open_by_priority, over_time:[{date, created, resolved}]}`. `by_status` counts tickets created in the period by current status (adds up to total; `new` = open with nobody assigned) |
-| `GET /manager/sla?period=&priority=` | M | compliance by priority, totals and the watch list (open tickets at risk or breached), department only |
-| `GET /manager/tickets?q=&status=&priority=&period=&assigned=` | M | `{department, technicians, tickets:[{..., sla}]}`, newest first; `status` also takes `new`; `period`: created in that preset; `assigned`: `true` \| `false` |
-| `GET /manager/technicians` | M | `{department, technicians:[{staff_id, name, email, active_count, resolved_count}]}`: support engineers whose department is this one |
-| `POST /manager/tickets/{id}/reassign` | M | `{technician_id\|null}`; human-routed tickets only (400), outside the department 403, a support engineer from another department 400 |
+| `GET /manager/departments` | M | `[{department_id, name, categories, manager_ids}]`: the manager's own (zero or one); every department for a Platform Lead |
+| `GET /manager/overview` | M | `{categories, tickets:[...], workload:[{staff_id, name, open, in_progress, pending_customer, resolved}], unassigned}` for the manager's department (a Platform Lead: every ticket, `categories` null). Read-only. |
+| `GET /manager/dashboard?period=&department=` | M | `{department, all_departments, period, kpis:{open, in_progress, pending_customer, unassigned, sla_at_risk, sla_breached, avg_first_response_minutes, first_responses}, created, resolved, by_status:{total, new, open, in_progress, pending_customer, resolved, closed}, by_priority:{low, medium, high, urgent}, created_sla:{breached, at_risk}, technician_workload:[{technician_id, name, open, breached, resolved, avg_first_response_minutes}], open_by_priority, over_time:[{date, created, resolved}]}`. `by_status` counts tickets created in the period by current status (adds up to total; `new` = open with nobody assigned) |
+| `GET /manager/sla?period=&priority=&department=` | M | compliance by priority, totals and the watch list (open tickets at risk or breached), department only |
+| `GET /manager/tickets?q=&status=&priority=&period=&assigned=&sla=&department=` | M | `{department, all_departments, technicians, tickets:[{..., sla}]}`, newest first, at most 500; `status` also takes `new`; `period`: created in that preset; `assigned`: `true` \| `false`; `sla`: `breached` \| `at_risk` now (filtered before the limit) |
+| `GET /manager/technicians?department=` | M | `{department, all_departments, technicians:[{staff_id, name, email, department_id, department_name, active_count, resolved_count}]}`: support engineers whose department is this one (a Platform Lead: all, or the department picked) |
+| `GET /manager/teams` | M (Platform Lead) | `{departments:[{department_id, name, managers:[{staff_id, name, email, manager_type}], engineers:[{staff_id, name, email, open, resolved}]}], no_department:{managers, engineers}}`; other manager types 403 |
+| `POST /manager/tickets/{id}/reassign` | M | `{technician_id\|null}`; human-routed tickets only (400), outside the department 403, a support engineer from another department 400 (a Platform Lead: any active one; the ticket stays with its department, audited as `ticket.reassigned_across_departments` with `from_user`, `to_user`, `from_department_id`, `to_department_id`) |
 | `POST /manager/tickets/{id}/priority` | M | `{priority}`; SLA due times recalculated from creation; audited |
 
 Every manager endpoint is limited to the manager's own department (`staff.department_id`), direct ids included.
+A manager's type (`staff.manager_type`, `backend/permissions.py`) is read from the
+database on every request: Tech Lead, Product Manager and Incident Manager have
+that department scope; a Platform Lead sees every department and may pass
+`department=<id>|all` (anyone else gets 403 for passing it).
 
 **Periods** (`backend/periods.py`): `today`, `yesterday`, `this_week` (default), `last_week`, `this_month`, `last_month`, `this_quarter`, `this_year`; IST calendar days, weeks start Monday; anything else is 422.
 
@@ -174,9 +179,9 @@ and the account must change it at first sign-in.
 
 | Method & path | Request | Notes |
 |---|---|---|
-| `GET /admin/users?role=&q=&status=active\|inactive` | — | customers, support engineers and managers: `[{user_id, role, name, email, active, must_change_password, department_id, department_name, ticket_count}]`. Never the admin |
-| `POST /admin/users` | `{name, email, role:"customer"\|"technician"\|"manager", department_id?}` | the user plus `temporary_password` (once); `role:"admin"` → 400 |
-| `PATCH /admin/users/{id}` | any of `{name, email, role, department_id}` | staff role support engineer↔manager only; a customer can't become staff (400); the admin account → 403 |
+| `GET /admin/users?role=&q=&status=active\|inactive` | — | customers, support engineers and managers: `[{user_id, role, name, email, active, must_change_password, department_id, department_name, manager_type, ticket_count}]`. Never the admin |
+| `POST /admin/users` | `{name, email, role:"customer"\|"technician"\|"manager", department_id?, manager_type?}` | the user plus `temporary_password` (once); `role:"admin"` → 400; `manager_type` (`tech_lead` default, `product_manager`, `incident_manager`, `platform_lead`) managers only, else 400 |
+| `PATCH /admin/users/{id}` | any of `{name, email, role, department_id, manager_type}` | staff role support engineer↔manager only (to support engineer clears the type, to manager makes a Tech Lead unless given one); a customer can't become staff (400); the admin account → 403; type changes audited with `manager_type` and `previous_manager_type` |
 | `POST /admin/users/{id}/deactivate` · `/activate` | — | deactivated: can't sign in, live sessions stop; tickets kept |
 | `POST /admin/users/{id}/reset-password` | — | `temporary_password` (once); the old password stops working |
 | `GET /admin/staff` | — | `[{staff_id, name, email, role, active, must_change_password, department_id, department_name}]` |
