@@ -25,6 +25,27 @@ import { StatusChip } from "./ui/StatusChip";
 const COLLAPSE_AFTER = 4;
 const COLLAPSE_KEEP_LATEST = 2;
 
+// The first message, the latest Support Bot reply (the answer the customer
+// came for stays in view) and the latest few; each run of the rest becomes
+// one "Show N earlier messages" gap.
+function collapsedThread(messages) {
+  const keep = new Set([0, ...messages.map((_, i) => i).slice(-COLLAPSE_KEEP_LATEST)]);
+  const lastBot = messages.map((m) => m.sender).lastIndexOf("ai");
+  if (lastBot >= 0) keep.add(lastBot);
+  const out = [];
+  let gap = 0;
+  messages.forEach((m, i) => {
+    if (!keep.has(i)) {
+      gap += 1;
+      return;
+    }
+    if (gap) out.push({ gap, key: `gap-${i}` });
+    gap = 0;
+    out.push(m);
+  });
+  return out;
+}
+
 function initials(name) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -251,10 +272,7 @@ export default function TicketThread({ ticketId, onChanged }) {
 
   const { ticket, messages, chat } = detail;
   const collapsible = messages.length > COLLAPSE_AFTER && !expanded;
-  const hiddenCount = collapsible ? messages.length - 1 - COLLAPSE_KEEP_LATEST : 0;
-  const visible = collapsible
-    ? [messages[0], null, ...messages.slice(-COLLAPSE_KEEP_LATEST)]
-    : messages;
+  const visible = collapsible ? collapsedThread(messages) : messages;
 
   return (
     <section className="thread" aria-labelledby={`thread-title-${ticket.ticket_id}`}>
@@ -295,10 +313,10 @@ export default function TicketThread({ ticketId, onChanged }) {
 
       <ol className="thread-messages">
         {visible.map((m) =>
-          m === null ? (
-            <li key="collapsed" className="thread-collapsed">
+          m.gap ? (
+            <li key={m.key} className="thread-collapsed">
               <button type="button" className="thread-expand" onClick={() => setExpanded(true)}>
-                Show {hiddenCount} earlier {hiddenCount === 1 ? "message" : "messages"}
+                Show {m.gap} earlier {m.gap === 1 ? "message" : "messages"}
               </button>
             </li>
           ) : (
