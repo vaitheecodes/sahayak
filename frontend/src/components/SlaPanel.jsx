@@ -157,13 +157,13 @@ function percent(value) {
   return value === null || value === undefined ? "—" : `${value}%`;
 }
 
-function SlaReport({ refreshKey }) {
+function SlaReport({ refreshKey, department }) {
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
   const [priority, setPriority] = useState("");
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const priorityId = useId();
-  const filters = useMemo(() => ({ period, priority }), [period, priority]);
+  const filters = useMemo(() => ({ period, priority, department }), [period, priority, department]);
 
   useEffect(() => {
     let current = true;
@@ -327,10 +327,10 @@ function SlaReport({ refreshKey }) {
 /* Manager SLA page: compliance and the near-breach list for the
  * manager's department (GET /api/manager/sla). The targets themselves are
  * the admin's (Settings → SLA targets, AdminSlaSettings below). */
-export default function SlaPanel() {
+export default function SlaPanel({ department }) {
   return (
     <div className="sla-panel">
-      <SlaReport refreshKey={0} />
+      <SlaReport refreshKey={0} department={department} />
     </div>
   );
 }

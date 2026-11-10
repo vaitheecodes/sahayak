@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { api } from "../api";
+import { MANAGER_TYPES, MANAGER_TYPE_HINTS, managerTypeLabel } from "../lib/managerTypes";
 import OneTimePassword from "./OneTimePassword";
 import Toast from "./Toast";
 
@@ -29,14 +30,39 @@ function DepartmentSelect({ id, value, onChange, departments }) {
   );
 }
 
+function ManagerTypeSelect({ id, value, onChange }) {
+  return (
+    <div className="field-group">
+      <label className="field-label" htmlFor={id}>
+        Manager type
+      </label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-describedby={`${id}-hint`}>
+        {Object.entries(MANAGER_TYPES).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <p id={`${id}-hint`} className="hint" style={{ margin: 0 }}>
+        {MANAGER_TYPE_HINTS[value]}
+      </p>
+    </div>
+  );
+}
+
+function roleText(user) {
+  return user.role === "manager" ? `Manager, ${managerTypeLabel(user.manager_type)}` : ROLES[user.role];
+}
+
 function AddUserForm({ departments, onCreated, onCancel }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("technician");
   const [departmentId, setDepartmentId] = useState("");
+  const [managerType, setManagerType] = useState("tech_lead");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const ids = { name: useId(), email: useId(), role: useId(), dept: useId() };
+  const ids = { name: useId(), email: useId(), role: useId(), dept: useId(), type: useId() };
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -48,6 +74,7 @@ function AddUserForm({ departments, onCreated, onCancel }) {
         email: email.trim(),
         role,
         department_id: role !== "customer" ? departmentId : null,
+        ...(role === "manager" ? { manager_type: managerType } : {}),
       });
       onCreated(created);
     } catch (err) {
@@ -96,6 +123,7 @@ function AddUserForm({ departments, onCreated, onCancel }) {
             )}
           </div>
         )}
+        {role === "manager" && <ManagerTypeSelect id={ids.type} value={managerType} onChange={setManagerType} />}
       </div>
       <p className="hint">A temporary password is generated and shown once; they change it at first sign-in.</p>
       <div className="row-actions">
@@ -116,9 +144,10 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
   const [departmentId, setDepartmentId] = useState(user.department_id || "");
+  const [managerType, setManagerType] = useState(user.manager_type || "tech_lead");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const ids = { name: useId(), email: useId(), role: useId(), dept: useId() };
+  const ids = { name: useId(), email: useId(), role: useId(), dept: useId(), type: useId() };
   const isStaff = user.role !== "customer";
 
   async function handleSubmit(e) {
@@ -129,6 +158,9 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
     if (isStaff && role !== user.role) changes.role = role;
     if (role !== "customer" && (departmentId || null) !== (user.department_id || null)) {
       changes.department_id = departmentId || null;
+    }
+    if (role === "manager" && managerType !== (user.role === "manager" ? user.manager_type || "tech_lead" : "tech_lead")) {
+      changes.manager_type = managerType;
     }
     if (Object.keys(changes).length === 0) return onCancel();
     setSaving(true);
@@ -181,6 +213,7 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
             )}
           </div>
         )}
+        {role === "manager" && <ManagerTypeSelect id={ids.type} value={managerType} onChange={setManagerType} />}
       </div>
       {isStaff && role !== user.role && (
         <p className="hint">Changing the role signs them out; they sign in again with the new role.</p>
@@ -335,7 +368,7 @@ export default function UsersPanel() {
                     <span>{u.name}</span>
                     <span className="hint">{u.email}</span>
                   </td>
-                  <td>{ROLES[u.role]}</td>
+                  <td>{roleText(u)}</td>
                   <td>{u.department_name || <span className="hint">—</span>}</td>
                   <td className="num">{u.ticket_count ?? 0}</td>
                   <td>

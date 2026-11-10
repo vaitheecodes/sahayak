@@ -2,11 +2,16 @@
  * department's technicians. A ticket claimed by someone outside the
  * department keeps its owner visible as one extra, disabled option, so the
  * select never falls back to "Unassigned" for a ticket that has an owner.
- * Tested under Node by tests/test_frontend_assignee.py. */
-export function assigneeOptions(ticket, technicians) {
+ * `withDepartment` (a Platform Lead, who may pick anyone) names each one's
+ * department. Tested under Node by tests/test_frontend_assignee.py. */
+export function assigneeOptions(ticket, technicians, { withDepartment = false } = {}) {
   const options = [
     { value: "", label: "Unassigned", disabled: false },
-    ...technicians.map((t) => ({ value: t.staff_id, label: t.name, disabled: false })),
+    ...technicians.map((t) => ({
+      value: t.staff_id,
+      label: withDepartment ? `${t.name} (${t.department_name || "no department"})` : t.name,
+      disabled: false,
+    })),
   ];
   const owner = ticket.assigned_technician_id;
   if (owner && !technicians.some((t) => t.staff_id === owner)) {

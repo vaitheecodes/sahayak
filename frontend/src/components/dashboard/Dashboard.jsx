@@ -96,7 +96,7 @@ function CountButton({ count, value, pressed, onSelect, compact }) {
   );
 }
 
-function TicketList({ role, period, selected, label }) {
+function TicketList({ role, period, selected, label, department }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [tickets, setTickets] = useState(null);
@@ -104,7 +104,7 @@ function TicketList({ role, period, selected, label }) {
   const searchId = useId();
   useEffect(() => {
     let current = true;
-    const filters = { period, q: q.trim(), ...listFilters(selected, role) };
+    const filters = { period, q: q.trim(), department, ...listFilters(selected, role) };
     const timer = setTimeout(() => {
       const load =
         role === "manager"
@@ -123,7 +123,7 @@ function TicketList({ role, period, selected, label }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [role, period, selected, q]);
+  }, [role, period, selected, q, department]);
 
   function open(t) {
     const id = encodeURIComponent(t.ticket_id);
@@ -253,7 +253,7 @@ function SupportEngineers({ rows, period }) {
   );
 }
 
-export default function Dashboard({ role, onDepartment }) {
+export default function Dashboard({ role, department, onDepartment }) {
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
   const [selected, setSelected] = useState("total");
   const [data, setData] = useState(null);
@@ -261,22 +261,22 @@ export default function Dashboard({ role, onDepartment }) {
 
   useEffect(() => {
     let current = true;
-    (role === "manager" ? api.managerDashboard(period) : api.staffDashboard(period))
+    (role === "manager" ? api.managerDashboard(period, department) : api.staffDashboard(period))
       .then((d) => {
         if (!current) return;
         setData(d);
         setError("");
-        onDepartment?.(d.department?.name || null);
+        onDepartment?.(d.all_departments ? "All departments" : d.department?.name || null);
       })
       .catch((err) => current && setError(err.message));
     return () => {
       current = false;
     };
-  }, [role, period, onDepartment]);
+  }, [role, period, department, onDepartment]);
 
   if (error) return <Alert tone="negative">{error}</Alert>;
   if (!data) return <Skeleton className="h-64" />;
-  if (role === "manager" && !data.department)
+  if (role === "manager" && !data.department && !data.all_departments)
     return (
       <Alert tone="info" title="No department yet">
         Ask your administrator to assign you a department. Your dashboard shows its tickets only.
@@ -323,7 +323,7 @@ export default function Dashboard({ role, onDepartment }) {
         </div>
       </section>
 
-      <TicketList role={role} period={period} selected={selected} label={label} />
+      <TicketList role={role} period={period} selected={selected} label={label} department={department} />
       <Charts data={data} />
       {role === "manager" && <SupportEngineers rows={data.technician_workload} period={data.period} />}
     </div>

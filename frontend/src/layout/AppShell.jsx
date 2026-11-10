@@ -9,6 +9,8 @@ import { NAV } from "./nav";
 import ProductMark from "./ProductMark";
 import ThemeMenu from "./ThemeMenu";
 import UserMenu from "./UserMenu";
+import { useMe } from "./useMe";
+import { managerTypeLabel } from "@/lib/managerTypes";
 
 /* The framed sheet: a 48px top bar on the tinted frame and the page on a
  * white sheet inset 8px from the window edges (16px corners, 1px edge).
@@ -22,6 +24,9 @@ import UserMenu from "./UserMenu";
  * starts closed. */
 
 function Brand({ scope }) {
+  const me = useMe();
+  // A manager's type names the menu: "Manager, Platform Lead".
+  if (me?.manager_type) scope = `${scope}, ${managerTypeLabel(me.manager_type)}`;
   return (
     <div className="flex h-12 items-center gap-2.5 pr-12 pl-4">
       <ProductMark />
@@ -41,7 +46,11 @@ const itemClass = ({ isActive }) =>
   );
 
 function MenuNav({ role, counts = {}, onNavigate }) {
-  const { groups } = NAV[role];
+  const me = useMe();
+  const groups = NAV[role].groups.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => !item.needs || me?.permissions?.[item.needs]),
+  }));
   return (
     <nav aria-label="Full menu" className="flex flex-col gap-5 px-2.5 pt-2 pb-6">
       {groups.map((group) => (

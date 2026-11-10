@@ -227,9 +227,15 @@ export const api = {
       auth: true,
     }),
   managerOverview: () => request("/manager/overview", { auth: true }),
-  // Manager pages, limited to the manager's department (backend/manager.py).
-  managerDashboard: (period) => request(`/manager/dashboard?${query({ period })}`, { auth: true }),
-  managerSla: ({ period, priority } = {}) => request(`/manager/sla?${query({ period, priority })}`, { auth: true }),
+  // Manager pages, limited to the manager's department (backend/manager.py);
+  // `department` (an id or "all") only for a Platform Lead.
+  managerDashboard: (period, department) =>
+    request(`/manager/dashboard?${query({ period, department })}`, { auth: true }),
+  managerSla: ({ period, priority, department } = {}) =>
+    request(`/manager/sla?${query({ period, priority, department })}`, { auth: true }),
+  managerDepartments: () => request("/manager/departments", { auth: true }),
+  managerTechnicians: (department) => request(`/manager/technicians?${query({ department })}`, { auth: true }),
+  managerTeams: () => request("/manager/teams", { auth: true }),
   managerTickets: (filters = {}) => request(`/manager/tickets?${query(filters)}`, { auth: true }),
   managerReassignTicket: (ticketId, technicianId) =>
     request(`/manager/tickets/${ticketId}/reassign`, {

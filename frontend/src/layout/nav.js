@@ -11,6 +11,7 @@ import {
   LifeBuoy,
   MessageSquareText,
   MessagesSquare,
+  Network,
   Radar,
   Settings2,
   Siren,
@@ -22,7 +23,9 @@ import {
 /* The menu for each role: `groups` is the full menu (the slide-in panel),
  * links to whole screens (never anchors into one page); `primary` are the
  * main screens shown in the top bar. The backend enforces the same
- * boundaries: a link missing here is a 403 there (tests/test_role_scope.py). */
+ * boundaries: a link missing here is a 403 there (tests/test_role_scope.py).
+ * An item with `needs` shows only when /auth/me's `permissions` has it
+ * (a manager type's, backend/permissions.py). */
 
 // Technicians edit drafts and propose terms; managers also add sources,
 // run them and decide (kb_ingester/api.py).
@@ -82,7 +85,8 @@ export const NAV = {
       },
     ],
   },
-  // Everything a manager sees is limited to their own department.
+  // Everything a manager sees is limited to their own department (a
+  // Platform Lead: every department, and Teams).
   manager: {
     scope: "Manager",
     primary: [
@@ -104,6 +108,7 @@ export const NAV = {
           { to: "/manager/chats", label: "Chats", icon: MessagesSquare },
           { to: "/manager/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
           { to: "/manager/incidents", label: "Incidents", icon: Siren },
+          { to: "/manager/teams", label: "Teams", icon: Network, needs: "teams" },
         ],
       },
       KNOWLEDGE_BASE,

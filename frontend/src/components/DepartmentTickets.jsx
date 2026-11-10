@@ -14,9 +14,10 @@ import { STATUS_KEYS, statusLabel } from "../utils/statusLabels";
 import { absoluteTime, relativeTime } from "../utils/time";
 
 /* Manager: Department tickets (the old admin All tickets table, limited
- * to the manager's department by the server). */
+ * to the manager's department by the server; a Platform Lead's to the
+ * department picked, or all of them). */
 
-function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
+function TechnicianAssignCell({ ticket, technicians, onReassigned, withDepartment }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,7 +46,7 @@ function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
         onChange={handleChange}
         disabled={saving}
       >
-        {assigneeOptions(ticket, technicians).map((o) => (
+        {assigneeOptions(ticket, technicians, { withDepartment }).map((o) => (
           <option key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
           </option>
@@ -98,12 +99,15 @@ function PriorityCell({ ticket, onChanged }) {
 /* The department's tickets, one compact row each (GET /api/manager/tickets:
  * search and status are applied by the server, so counts are the
  * department's only). Reassign offers only technicians who work the
- * department. The long text lives in the detail panel opened from the row. */
-export default function DepartmentTickets() {
+ * department; for a Platform Lead (`acrossDepartments`) every support
+ * engineer, named with their department (the ticket stays with its own).
+ * The long text lives in the detail panel opened from the row. */
+export default function DepartmentTickets({ department, acrossDepartments = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [everyone, setEveryone] = useState(null);
   const [params] = useSearchParams();
   // ?open=<id> (a link from Chats) opens that ticket.
   const [openId, setOpenId] = useState(params.get("open"));
@@ -113,13 +117,22 @@ export default function DepartmentTickets() {
 
   const refresh = useCallback(() => {
     api
-      .managerTickets({ q: query.trim(), status })
+      .managerTickets({ q: query.trim(), status, department })
       .then((d) => {
         setData(d);
         setError("");
       })
       .catch((err) => setError(err.message));
-  }, [query, status]);
+  }, [query, status, department]);
+
+  // A Platform Lead may hand a ticket to any support engineer.
+  useEffect(() => {
+    if (!acrossDepartments) return;
+    api
+      .managerTechnicians()
+      .then((d) => setEveryone(d.technicians))
+      .catch(() => {});
+  }, [acrossDepartments]);
 
   useEffect(() => {
     const timer = setTimeout(refresh, 250);
@@ -133,10 +146,11 @@ export default function DepartmentTickets() {
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <p className="hint">Loading tickets…</p>;
-  if (!data.department)
+  if (!data.department && !data.all_departments)
     return <p className="empty-state">You don't have a department yet. Ask your administrator to assign one.</p>;
   const tickets = data.tickets;
-  const technicians = data.technicians;
+  const technicians = (acrossDepartments && everyone) || data.technicians;
+  const where = data.all_departments ? "all departments" : data.department.name;
 
   const visible = tickets;
   const opened = tickets.find((t) => t.ticket_id === openId);
@@ -167,7 +181,7 @@ export default function DepartmentTickets() {
           </select>
         </label>
         <span className="hint">
-          {visible.length} ticket{visible.length === 1 ? "" : "s"} in {data.department.name}
+          {visible.length} ticket{visible.length === 1 ? "" : "s"} in {where}
           {technicians.length === 0 && ". No support engineers work this department yet, so nothing can be reassigned."}
         </span>
       </div>
@@ -243,7 +257,7 @@ export default function DepartmentTickets() {
                 </td>
                 <td>{t.sla ? <SlaChip sla={t.sla} compact /> : <span className="hint">—</span>}</td>
                 <td>
-                  <TechnicianAssignCell ticket={t} technicians={technicians} onReassigned={refresh} />
+                  <TechnicianAssignCell ticket={t} technicians={technicians} onReassigned={refresh} withDepartment={acrossDepartments} />
                 </td>
                 <td>
                   <time dateTime={t.created_at} title={absoluteTime(t.created_at)}>
@@ -272,7 +286,7 @@ export default function DepartmentTickets() {
               <div className="mb-4 flex flex-wrap items-end gap-4 border-b border-border pb-4">
                 <div className="flex flex-col gap-1">
                   <span className="text-sm text-muted-fg">Support engineer</span>
-                  <TechnicianAssignCell ticket={opened} technicians={technicians} onReassigned={refresh} />
+                  <TechnicianAssignCell ticket={opened} technicians={technicians} onReassigned={refresh} withDepartment={acrossDepartments} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-sm text-muted-fg">Priority</span>
