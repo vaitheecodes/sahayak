@@ -31,7 +31,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from backend import ai_failures, app_settings, audit, auth, db, runtime, sla
+from backend import ai_failures, app_settings, audit, auth, db, permissions, runtime, sla
 from backend import ticket_lifecycle as lifecycle
 from backend.categories import names as category_names
 from backend.conversation import insert_ticket_message
@@ -44,11 +44,16 @@ _admin = auth.get_current_admin
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+ManagerType = Literal["tech_lead", "product_manager", "incident_manager", "platform_lead"]
+
+
 class CreateStaffRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=254)
     role: Literal["technician", "manager"]
     department_id: str | None = None
+    # Managers only; a new manager is a Tech Lead unless given another type.
+    manager_type: ManagerType | None = None
 
 
 class UpdateStaffRequest(BaseModel):
@@ -60,6 +65,7 @@ class UpdateStaffRequest(BaseModel):
     email: str | None = Field(default=None, min_length=3, max_length=254)
     role: Literal["technician", "manager"] | None = None
     department_id: str | None = None
+    manager_type: ManagerType | None = None
 
 
 class CreateCustomerRequest(BaseModel):
@@ -110,7 +116,7 @@ def _department_exists(conn, department_id: str) -> bool:
 def _staff_rows(conn, staff_id: str | None = None) -> list[dict]:
     rows = conn.execute(
         "SELECT s.staff_id, s.name, s.email, s.role, s.active, s.must_change_password, "
-        "s.department_id, d.name AS department_name FROM staff s "
+        "s.department_id, s.manager_type, d.name AS department_name FROM staff s "
         "LEFT JOIN departments d ON d.department_id = s.department_id "
         + ("WHERE s.staff_id = ? " if staff_id else "")
         + "ORDER BY s.role, lower(s.name)",
@@ -146,6 +152,16 @@ def admin_create_staff(body: CreateStaffRequest, response: Response, admin_id: s
     return create_staff(body, admin_id, response)
 
 
+def _manager_type(role: str, requested: str | None, current: str | None = None) -> str | None:
+    """A manager's type (the requested one, else the current one, else Tech
+    Lead); None for a support engineer, who may not be given one."""
+    if role != "manager":
+        if requested:
+            raise HTTPException(status_code=400, detail="Only managers have a manager type")
+        return None
+    return requested or current or permissions.DEFAULT_MANAGER_TYPE
+
+
 def create_staff(body: CreateStaffRequest, admin_id: str, response: Response | None = None) -> dict:
     password = auth.generate_temporary_password()
     email = body.email.strip()
@@ -155,16 +171,17 @@ def create_staff(body: CreateStaffRequest, admin_id: str, response: Response | N
             raise HTTPException(status_code=400, detail="Email already registered")
         if body.department_id and not _department_exists(conn, body.department_id):
             raise HTTPException(status_code=404, detail="Department not found")
+        manager_type = _manager_type(body.role, body.manager_type)
         prefix = "MGR" if body.role == "manager" else "TECH"
         staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
         conn.execute(
             "INSERT INTO staff (staff_id, name, email, password_hash, role, active, "
-            "must_change_password, department_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?)",
+            "must_change_password, department_id, manager_type) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)",
             (staff_id, body.name.strip(), email, auth.hash_password(password),
-             body.role, body.department_id),
+             body.role, body.department_id, manager_type),
         )
         audit.record(conn, admin_id, "staff.created", "staff", staff_id,
-                     role=body.role, department_id=body.department_id)
+                     role=body.role, department_id=body.department_id, manager_type=manager_type)
         conn.commit()
         return with_temporary_password(_staff_rows(conn, staff_id)[0], password, response)
     finally:
@@ -210,6 +227,9 @@ def update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str) -> dict
             if changes["department_id"] and not _department_exists(conn, changes["department_id"]):
                 raise HTTPException(status_code=404, detail="Department not found")
             updates["department_id"] = changes["department_id"]
+        # A role change sets or clears the type; only a manager has one.
+        updates["manager_type"] = _manager_type(role, changes.get("manager_type"),
+                                                person["manager_type"] if role == person["role"] else None)
 
         updates = {k: v for k, v in updates.items() if person[k] != v}
         if updates:
@@ -218,7 +238,8 @@ def update_staff(staff_id: str, body: UpdateStaffRequest, admin_id: str) -> dict
                 (*updates.values(), staff_id),
             )
             audit.record(conn, admin_id, "staff.updated", "staff", staff_id, fields=sorted(updates),
-                         **{k: updates[k] for k in ("role", "department_id") if k in updates})
+                         **{k: updates[k] for k in ("role", "department_id", "manager_type") if k in updates},
+                         **({"previous_manager_type": person["manager_type"]} if "manager_type" in updates else {}))
             conn.commit()
         return _staff_rows(conn, staff_id)[0]
     finally:

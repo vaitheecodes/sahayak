@@ -371,6 +371,9 @@ def _load_user(credentials: HTTPAuthorizationCredentials | None) -> dict:
         "name": row["name"],
         "email": row["email"],
         "must_change_password": bool(row.get("must_change_password", 0)),
+        # From the database on every request, never the token
+        # (backend/permissions.py): a demoted Platform Lead loses it at once.
+        "manager_type": row.get("manager_type") if role == "manager" else None,
     }
 
 

@@ -48,6 +48,7 @@ DEMO_STAFF = [
         "email": "manager@example.com",
         "password": "manager-demo-pass",
         "role": "manager",
+        "manager_type": "tech_lead",
         "department": "Product Support",
     },
     {
@@ -60,10 +61,23 @@ DEMO_STAFF = [
 ]
 
 
+# A second demo manager, apart from DEMO_STAFF (one demo account per role):
+# a Platform Lead with no department, who sees every department.
+DEMO_PLATFORM_LEAD = {
+    "name": "Demo Platform Lead",
+    "email": "platform-lead@example.com",
+    "password": "platform-lead-demo-pass",
+    "role": "manager",
+    "manager_type": "platform_lead",
+    "department": None,
+}
+
+
 def seed_demo_staff(conn) -> None:
+    """Demo accounts for development only; never in production."""
     if os.environ.get("APP_ENV", "development").lower() == "production":
         return
-    for person in DEMO_STAFF:
+    for person in [*DEMO_STAFF, DEMO_PLATFORM_LEAD]:
         department = conn.execute(
             "SELECT department_id FROM departments WHERE name = ?", (person["department"],)
         ).fetchone() if person["department"] else None
@@ -82,8 +96,8 @@ def seed_demo_staff(conn) -> None:
         prefix = "MGR" if person["role"] == "manager" else "TECH"
         staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
         conn.execute(
-            "INSERT INTO staff (staff_id, name, email, password_hash, role, department_id) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO staff (staff_id, name, email, password_hash, role, department_id, manager_type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 staff_id,
                 person["name"],
@@ -91,6 +105,7 @@ def seed_demo_staff(conn) -> None:
                 bcrypt.hashpw(person["password"].encode(), bcrypt.gensalt()).decode(),
                 person["role"],
                 department["department_id"] if department else None,
+                person.get("manager_type"),
             ),
         )
     conn.commit()

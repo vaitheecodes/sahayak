@@ -65,8 +65,10 @@ CREATE TABLE IF NOT EXISTS staff (
     role                 TEXT NOT NULL DEFAULT 'technician',
     active               INTEGER NOT NULL DEFAULT 1,
     must_change_password INTEGER NOT NULL DEFAULT 0,
-    -- Managers only: the one department they manage. Technicians have none.
-    department_id        TEXT REFERENCES departments(department_id) ON DELETE SET NULL
+    -- Managers: the one department they manage; support engineers: the one they work.
+    department_id        TEXT REFERENCES departments(department_id) ON DELETE SET NULL,
+    -- Managers only (backend/permissions.py MANAGER_TYPES); NULL for anyone else.
+    manager_type         TEXT
 );
 
 CREATE TABLE IF NOT EXISTS admins (
@@ -633,7 +635,11 @@ _ADDED_COLUMNS = {
         ("active", "INTEGER NOT NULL DEFAULT 1"),
         ("must_change_password", "INTEGER NOT NULL DEFAULT 0"),
     ],
-    "staff": [("department_id", "TEXT REFERENCES departments(department_id) ON DELETE SET NULL")],
+    "staff": [
+        ("department_id", "TEXT REFERENCES departments(department_id) ON DELETE SET NULL"),
+        # Postgres: 0006_manager_types.sql (with CHECKs on the values).
+        ("manager_type", "TEXT"),
+    ],
     "incident_clusters": [
         ("started_at", "TIMESTAMP"),
         ("resolved_at", "TIMESTAMP"),
@@ -698,6 +704,10 @@ def _add_missing_columns(conn) -> None:
         "  WHERE md.manager_id = staff.staff_id ORDER BY md.rowid LIMIT 1) "
         "WHERE role = 'manager' AND department_id IS NULL"
     )
+    # Manager types: a manager without one (from before them) is a Tech Lead;
+    # anyone else has none.
+    conn.execute("UPDATE staff SET manager_type = 'tech_lead' WHERE role = 'manager' AND manager_type IS NULL")
+    conn.execute("UPDATE staff SET manager_type = NULL WHERE role != 'manager' AND manager_type IS NOT NULL")
     # Incidents from before post-incident fields: started_at = first report.
     conn.execute(
         "UPDATE incident_clusters SET started_at = ("

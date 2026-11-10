@@ -3,7 +3,7 @@ managers (admin role only, enforced on every endpoint).
 
   GET    /api/admin/users                       ?role= &q= &status=active|inactive
   POST   /api/admin/users                       create (role customer/technician/manager)
-  PATCH  /api/admin/users/{user_id}             name, email, staff role, department (staff)
+  PATCH  /api/admin/users/{user_id}             name, email, staff role, department, manager type
   POST   /api/admin/users/{user_id}/deactivate  blocks sign-in and live sessions
   POST   /api/admin/users/{user_id}/activate
   POST   /api/admin/users/{user_id}/reset-password
@@ -42,6 +42,7 @@ class CreateUserRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     role: str
     department_id: str | None = None
+    manager_type: admin.ManagerType | None = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -51,6 +52,7 @@ class UpdateUserRequest(BaseModel):
     email: str | None = Field(default=None, min_length=3, max_length=254)
     role: str | None = None
     department_id: str | None = None
+    manager_type: admin.ManagerType | None = None
 
 
 def _user(row: dict, role: str) -> dict:
@@ -64,6 +66,7 @@ def _user(row: dict, role: str) -> dict:
         "must_change_password": row["must_change_password"],
         "department_id": row.get("department_id"),
         "department_name": row.get("department_name"),
+        "manager_type": row.get("manager_type"),
         "ticket_count": row.get("ticket_count"),
         **({"temporary_password": row["temporary_password"]} if "temporary_password" in row else {}),
     }
@@ -139,11 +142,14 @@ def create_user(body: CreateUserRequest, response: Response, admin_id: str = Dep
     if role == "customer":
         if body.department_id:
             raise HTTPException(status_code=400, detail="Only staff belong to a department")
+        if body.manager_type:
+            raise HTTPException(status_code=400, detail="Only managers have a manager type")
         row = admin.create_customer(admin.CreateCustomerRequest(name=body.name, email=body.email),
                                     admin_id, response)
     else:
         row = admin.create_staff(admin.CreateStaffRequest(name=body.name, email=body.email, role=role,
-                                                          department_id=body.department_id),
+                                                          department_id=body.department_id,
+                                                          manager_type=body.manager_type),
                                  admin_id, response)
     return _user(row, role)
 
@@ -158,6 +164,8 @@ def update_user(user_id: str, body: UpdateUserRequest, admin_id: str = Depends(_
             raise HTTPException(status_code=400, detail="A customer account can't become staff; create a staff account")
         if changes.get("department_id"):
             raise HTTPException(status_code=400, detail="Only staff belong to a department")
+        if changes.get("manager_type"):
+            raise HTTPException(status_code=400, detail="Only managers have a manager type")
         row = admin.update_customer(user_id, admin.UpdateCustomerRequest(
             **{k: v for k, v in changes.items() if k in ("name", "email")}), admin_id)
         return _user(row, "customer")
