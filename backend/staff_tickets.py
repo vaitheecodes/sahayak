@@ -11,9 +11,10 @@ Technicians work tickets that are with the support team (route 'human'):
   - the AI hand-off brief, suggested steps and chat transcript, kept
     apart from the conversation
 
-Managers see only their own department (the categories it owns): this
-workspace read-only, and reassignment / priority on the Department
-tickets page (backend/manager.py). The admin has no ticket access.
+Managers see only their own department (the categories it owns), a
+Platform Lead every department (backend/permissions.py): this workspace
+read-only, and reassignment / priority on the Department tickets page
+(backend/manager.py). The admin has no ticket access.
 
 Every status/owner change goes through backend/ticket_lifecycle.py, so
 history is always written.
@@ -28,7 +29,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import admin_reports, audit, auth, chats, db, periods, sla
+from backend import admin_reports, audit, auth, chats, db, periods, permissions, sla
 from backend import ticket_lifecycle as lifecycle
 from backend.repositories import tickets as tickets_repo
 from backend.conversation import (
@@ -67,40 +68,21 @@ class StaffMessageRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Scope helpers
 # ---------------------------------------------------------------------------
-def manager_department(conn, manager_id: str) -> dict | None:
-    """The manager's one department {department_id, name, categories}, or
-    None while the admin hasn't given them one."""
-    row = conn.execute(
-        "SELECT d.department_id, d.name, d.categories FROM departments d "
-        "JOIN staff s ON s.department_id = d.department_id WHERE s.staff_id = ?",
-        (manager_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    return {"department_id": row["department_id"], "name": row["name"],
-            "categories": set(json.loads(row["categories"]))}
-
-
-def manager_categories(conn, manager_id: str) -> set[str]:
-    """Categories owned by the manager's (single) department: everything a
-    manager sees or changes is limited to tickets and chats in them."""
-    department = manager_department(conn, manager_id)
-    return department["categories"] if department else set()
-
-
 def _ticket_category(ticket) -> str | None:
     return ticket["category"] or ticket["requested_category"]
 
 
 def _ticket_for_staff(conn, ticket_id: str, user: dict):
     """The ticket if this staff member may see it: technicians see every
-    ticket with the support team; managers only those in their own
-    department's categories (also when they come from an incident). The
-    admin has no ticket access. AI-handled tickets aren't in the workspace."""
+    ticket with the support team; managers only those in their scope (their
+    own department's categories, a Platform Lead's all; also when they come
+    from an incident). The admin has no ticket access. AI-handled tickets
+    aren't in the workspace."""
     ticket = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if user["role"] == "manager" and _ticket_category(ticket) not in manager_categories(conn, user["id"]):
+    if user["role"] == "manager" and not permissions.in_scope(permissions.manager_scope(conn, user),
+                                                              _ticket_category(ticket)):
         raise HTTPException(status_code=403, detail="Ticket is outside your department")
     if ticket["route"] != "human":
         raise HTTPException(status_code=403, detail="This ticket is being handled by the AI assistant")
@@ -482,17 +464,18 @@ def post_staff_message(
 # Manager oversight
 # ---------------------------------------------------------------------------
 @router.get("/api/manager/overview")
-def manager_overview(manager_id: str = Depends(auth.get_current_manager)):
-    """Tickets in the manager's departments and each technician's
-    workload on them. Read-only: managers oversee, technicians claim."""
+def manager_overview(user: dict = Depends(auth.require_user("manager"))):
+    """Tickets in the manager's scope and each technician's workload on
+    them. Read-only: managers oversee, technicians claim."""
     conn = db.get_connection()
     try:
-        categories = sorted(manager_categories(conn, manager_id))
-        if not categories:
+        scope = permissions.manager_scope(conn, user)
+        categories = sorted(scope.categories) if scope.categories is not None else None
+        if categories == []:
             return {"categories": [], "tickets": [], "workload": [], "unassigned": 0}
-        marks = ", ".join(f":c{i}" for i in range(len(categories)))
-        params = {f"c{i}": c for i, c in enumerate(categories)}
-        in_scope = f"COALESCE(t.category, t.requested_category) IN ({marks})"
+        marks = ", ".join(f":c{i}" for i in range(len(categories or ())))
+        params = {f"c{i}": c for i, c in enumerate(categories or ())}
+        in_scope = f"COALESCE(t.category, t.requested_category) IN ({marks})" if categories else "1 = 1"
         tickets = _list_rows(conn, in_scope, "last_activity DESC", dict(params))
 
         workload = [

@@ -41,7 +41,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend import app_settings, audit, auth, db, incident_memory, kb_retrieval
+from backend import app_settings, audit, auth, db, incident_memory, kb_retrieval, permissions
 from backend.ai_service import AIError, correlate_incidents, provider, summarize_incident
 from backend.ai_service.schemas import (
     CorrelateInput,
@@ -408,11 +408,12 @@ def _cluster_departments(conn, incident_id: str) -> list[dict]:
 def _can_see(conn, cluster, user: dict) -> bool:
     """A manager sees clusters linked to one of
     their departments, plus unrouted ("Needs routing") ones so they can
-    claim them for the right department. A technician sees the clusters
-    assigned to them."""
+    claim them for the right department; one whose incidents permission is
+    ALL (a Platform Lead) sees every cluster. A technician sees the
+    clusters assigned to them."""
     if user["role"] == "technician":
         return cluster["assigned_technician_id"] == user["id"]
-    if cluster["needs_routing"]:
+    if cluster["needs_routing"] or permissions.sees_all(user, "incidents"):
         return True
     mine = manager_department_ids(conn, user["id"])
     return any(d["department_id"] in mine for d in _cluster_departments(conn, cluster["incident_id"]))
@@ -513,21 +514,16 @@ def incident_detail(incident_id: str, user: dict = Depends(_viewer)):
         cluster = _cluster_or_404(conn, incident_id, user)
         # A ticket opens only where the workspace would let it
         # (staff_tickets._ticket_for_staff): with the support team, and for a
-        # manager in their own department. Others stay countable, without
-        # subject or customer.
-        if user["role"] == "manager":
-            from backend.staff_tickets import manager_categories  # staff_tickets imports chats -> here
-
-            mine = manager_categories(conn, user["id"])
-        else:
-            mine = None
+        # manager in their scope (permissions.manager_scope). Others stay
+        # countable, without subject or customer.
+        scope = permissions.manager_scope(conn, user) if user["role"] == "manager" else None
         tickets = []
         for t in conn.execute(
                 "SELECT t.*, c.name AS customer_name, it.added_at FROM incident_tickets it "
                 "JOIN tickets t ON t.ticket_id = it.ticket_id JOIN customers c ON c.customer_id = t.customer_id "
                 "WHERE it.incident_id = ? ORDER BY t.created_at", (incident_id,)):
             category = t["category"] or t["requested_category"]
-            can_open = t["route"] == "human" and (mine is None or category in mine)
+            can_open = t["route"] == "human" and (scope is None or permissions.in_scope(scope, category))
             tickets.append({
                 "ticket_id": t["ticket_id"], "status": t["status"], "priority": t["priority"],
                 "created_at": t["created_at"], "category": category, "added_at": t["added_at"],
@@ -616,7 +612,8 @@ def set_incident_departments(
 ):
     """Correct the department association: replaces every link with
     confirmed ones (source 'manager') that later AI runs won't touch. A
-    manager must keep at least one of their own departments on it."""
+    manager must keep at least one of their own departments on it (a
+    Platform Lead, who sees every incident, need not)."""
     conn = db.get_connection()
     try:
         _cluster_or_404(conn, incident_id, user)
@@ -625,7 +622,7 @@ def set_incident_departments(
             "SELECT department_id, name FROM departments")}
         if not wanted <= known.keys():
             raise HTTPException(status_code=404, detail="Unknown department")
-        if not wanted & manager_department_ids(conn, user["id"]):
+        if not permissions.sees_all(user, "incidents") and not wanted & manager_department_ids(conn, user["id"]):
             raise HTTPException(
                 status_code=400, detail="Keep at least one of your departments on it")
         conn.execute("DELETE FROM incident_departments WHERE incident_id = ?", (incident_id,))

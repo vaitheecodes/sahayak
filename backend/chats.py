@@ -32,7 +32,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from backend import admin_reports, ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, runtime
+from backend import admin_reports, ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, permissions, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, provider, summarize_conversation
 from backend.conversation import (
@@ -587,13 +587,11 @@ _REVIEW_TRANSITIONS = {"pending_review": {"verified", "closed"}, "verified": {"c
 
 
 def _chat_scope(conn, user: dict, params: list) -> str:
-    """Managers see only chats in their own department's categories;
-    technicians every chat."""
+    """Managers see only chats in their scope (their own department's
+    categories; a Platform Lead every chat); technicians every chat."""
     if user["role"] != "manager":
         return "1 = 1"
-    from backend.staff_tickets import manager_categories  # staff_tickets imports this module
-
-    return admin_reports.scope_sql(manager_categories(conn, user["id"]), params,
+    return admin_reports.scope_sql(permissions.manager_scope(conn, user).categories, params,
                                    "COALESCE(s.category, s.requested_category)")
 
 

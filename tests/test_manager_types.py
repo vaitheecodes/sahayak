@@ -7,6 +7,13 @@ sees every department.
   the admin sets it, never on the admin account; changes are audited with
   the old and new type. The demo Platform Lead is a dev seed only.
 - The type is read from the database on every request, never the token.
+- Scope: the three peer types keep the department scope (lists, opening a
+  ticket by id, reassign inside the department, no department picker, no
+  Teams); a Platform Lead sees every department or one it picks, opens any
+  ticket and incident, hands a ticket to any support engineer (the ticket
+  stays with its department; audited) and sees Teams. A demoted Platform
+  Lead's token loses all of that on the next request, demoting the last one
+  breaks nothing, and the admin gets 403 everywhere here.
 
 Runs on SQLite and, with DB_BACKEND=postgres, on Postgres (tests/conftest.py).
 """
@@ -14,25 +21,31 @@ Runs on SQLite and, with DB_BACKEND=postgres, on Postgres (tests/conftest.py).
 from __future__ import annotations
 
 import itertools
+import json
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, main, permissions, runtime, seed_data
+from backend import db, main, permissions, runtime, seed_data, sla
 
 _counter = itertools.count()
 
 
 class _Human:
+    category = "ISSUE"
+
     def invoke(self, state):
-        return {"route": "human", "category": "ISSUE", "confidence": 0.5, "clarification_attempts": 0}
+        return {"route": "human", "category": self.category, "confidence": 0.5, "clarification_attempts": 0}
+
+
+_graph = _Human()
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
     with TestClient(main.app) as c:
-        runtime.set_graph(_Human())
+        runtime.set_graph(_graph)
         yield c
 
 
@@ -170,3 +183,180 @@ def test_the_demo_platform_lead_is_a_dev_seed_only(client, monkeypatch):
     finally:
         conn.close()
     assert not _sql("SELECT 1 FROM staff WHERE email = ?", (lead["email"],))
+
+
+# ---------------------------------------------------------------------------
+# Scope
+# ---------------------------------------------------------------------------
+def _department_id(client, name):
+    departments = client.get("/api/admin/departments", headers=_admin(client)).json()["departments"]
+    return next(d["department_id"] for d in departments if d["name"] == name)
+
+
+def _signed_in(client, role, department=None, **extra):
+    """A new staff member (past the forced password change) and their id."""
+    body = {"department_id": _department_id(client, department)} if department else {}
+    res = _create(client, role, **body, **extra)
+    assert res.status_code == 200, res.text
+    user = res.json()
+    headers = _login(client, user["email"], user["temporary_password"])
+    client.post("/api/auth/change-password", json={"current_password": user["temporary_password"],
+                                                   "new_password": "real-pass-456"}, headers=headers)
+    return headers, user["user_id"]
+
+
+def _raise(client, category):
+    customer = client.post("/api/auth/customer/signup", json={
+        "name": "Dana", "email": f"mt-cust-{next(_counter)}@example.com", "password": "password123"}).json()
+    _graph.category = category
+    res = client.post("/api/tickets", json={"subject": f"{category} problem", "description": "It is broken.",
+                                            "priority": "medium"},
+                      headers=_bearer(customer["token"]))
+    assert res.status_code == 200, res.text
+    return res.json()["ticket_id"]
+
+
+def _ids(client, headers, **params):
+    res = client.get("/api/manager/tickets", params=params, headers=headers)
+    assert res.status_code == 200, res.text
+    return {t["ticket_id"] for t in res.json()["tickets"]}
+
+
+def _incident(other_department_id, ticket_id):
+    """A confirmed incident linked to one department only."""
+    incident_id = f"INC-mt{next(_counter)}"
+    now = sla.iso(sla.now())
+    _sql("INSERT INTO incident_clusters (incident_id, title, status, summary, confidence, created_at, updated_at) "
+         "VALUES (?, 'Billing outage', 'confirmed', ?, 0.9, ?, ?)",
+         (incident_id, json.dumps({"summary": "Invoices fail."}), now, now))
+    _sql("INSERT INTO incident_departments (incident_id, department_id, source, confirmed) VALUES (?, ?, 'ai', 1)",
+         (incident_id, other_department_id))
+    _sql("INSERT INTO incident_tickets (incident_id, ticket_id, added_at) VALUES (?, ?, ?)", (incident_id, ticket_id, now))
+    return incident_id
+
+
+@pytest.mark.parametrize("kind", ["tech_lead", "product_manager", "incident_manager"])
+def test_peer_types_keep_the_department_scope(client, kind):
+    manager, _ = _signed_in(client, "manager", "Product Support", manager_type=kind)
+    _, insider = _signed_in(client, "technician", "Product Support")
+    _, outsider = _signed_in(client, "technician", "Accounts & Billing")
+    mine, theirs = _raise(client, "ISSUE"), _raise(client, "BILLING")
+    incident = _incident(_department_id(client, "Accounts & Billing"), theirs)
+
+    assert _ids(client, manager) == {mine}
+    assert client.get(f"/api/staff/tickets/{theirs}", headers=manager).status_code == 403
+    assert client.post(f"/api/manager/tickets/{theirs}/reassign", json={"technician_id": insider},
+                       headers=manager).status_code == 403
+    assert client.post(f"/api/manager/tickets/{mine}/reassign", json={"technician_id": outsider},
+                       headers=manager).status_code == 400
+    assert client.post(f"/api/manager/tickets/{mine}/reassign", json={"technician_id": insider},
+                       headers=manager).status_code == 200
+    for path in ("/api/manager/tickets", "/api/manager/dashboard", "/api/manager/sla", "/api/manager/technicians"):
+        assert client.get(path, params={"department": "all"}, headers=manager).status_code == 403, path
+    assert client.get("/api/manager/teams", headers=manager).status_code == 403
+    assert [d["name"] for d in client.get("/api/manager/departments", headers=manager).json()] == ["Product Support"]
+    assert client.get(f"/api/incidents/{incident}", headers=manager).status_code == 403
+    me = client.get("/api/auth/me", headers=manager).json()
+    assert me["manager_type"] == kind and me["permissions"]["tickets"] == "department"
+
+
+def test_platform_lead_sees_every_department_or_the_one_it_picks(client):
+    lead, _ = _signed_in(client, "manager", manager_type="platform_lead")
+    issue, billing = _raise(client, "ISSUE"), _raise(client, "BILLING")
+    billing_id = _department_id(client, "Accounts & Billing")
+
+    assert {issue, billing} <= _ids(client, lead)
+    assert {issue, billing} <= _ids(client, lead, department="all")
+    assert _ids(client, lead, department=billing_id) == {billing}
+    assert client.get("/api/manager/tickets", params={"department": "DEPT-nope"}, headers=lead).status_code == 404
+    dashboard = client.get("/api/manager/dashboard", params={"period": "this_year"}, headers=lead).json()
+    assert dashboard["all_departments"] is True and dashboard["by_status"]["total"] >= 2
+    picked = client.get("/api/manager/dashboard", params={"period": "this_year", "department": billing_id},
+                        headers=lead).json()
+    assert picked["department"]["department_id"] == billing_id and picked["by_status"]["total"] == 1
+    assert client.get("/api/manager/sla", params={"department": billing_id}, headers=lead).status_code == 200
+    assert client.get(f"/api/staff/tickets/{billing}", headers=lead).status_code == 200
+    names = {d["name"] for d in client.get("/api/manager/departments", headers=lead).json()}
+    assert {"Product Support", "Accounts & Billing", "General"} <= names
+    incident = _incident(billing_id, billing)
+    detail = client.get(f"/api/incidents/{incident}", headers=lead).json()
+    assert detail["tickets"][0]["can_open"] is True
+    assert incident in {i["incident_id"] for i in client.get("/api/incidents", headers=lead).json()}
+    me = client.get("/api/auth/me", headers=lead).json()
+    assert me["manager_type"] == "platform_lead" and me["permissions"]["teams"] is True
+
+
+def test_platform_lead_reassigns_across_departments_without_moving_the_ticket(client):
+    lead, lead_id = _signed_in(client, "manager", manager_type="platform_lead")
+    manager, _ = _signed_in(client, "manager", "Product Support")
+    _, billing_engineer = _signed_in(client, "technician", "Accounts & Billing")
+    _, nobody_engineer = _signed_in(client, "technician")
+    ticket = _raise(client, "ISSUE")
+    engineers = {t["staff_id"] for t in client.get("/api/manager/technicians", headers=lead).json()["technicians"]}
+    assert {billing_engineer, nobody_engineer} <= engineers
+
+    res = client.post(f"/api/manager/tickets/{ticket}/reassign", json={"technician_id": billing_engineer},
+                      headers=lead)
+    assert res.status_code == 200, res.text
+    assert ticket in _ids(client, manager)  # still Product Support's ticket
+    (event,) = [e for e in client.get("/api/admin/audit", params={"entity_id": ticket}, headers=_admin(client))
+                .json()["events"] if e["action"] == "ticket.reassigned_across_departments"]
+    assert event["actor_id"] == lead_id
+    assert event["detail"] == {"from_user": None, "to_user": billing_engineer,
+                               "from_department_id": _department_id(client, "Product Support"),
+                               "to_department_id": _department_id(client, "Accounts & Billing")}
+    assert client.post(f"/api/manager/tickets/{ticket}/reassign", json={"technician_id": nobody_engineer},
+                       headers=lead).status_code == 200
+
+
+def test_platform_lead_sees_every_team(client):
+    lead, _ = _signed_in(client, "manager", manager_type="platform_lead")
+    _, engineer = _signed_in(client, "technician", "Accounts & Billing")
+    teams = client.get("/api/manager/teams", headers=lead).json()
+    (billing,) = [d for d in teams["departments"] if d["name"] == "Accounts & Billing"]
+    assert engineer in {e["staff_id"] for e in billing["engineers"]}
+    (support,) = [d for d in teams["departments"] if d["name"] == "Product Support"]
+    assert [(m["email"], m["manager_type"]) for m in support["managers"]] == [("manager@example.com", "tech_lead")]
+    assert seed_data.DEMO_PLATFORM_LEAD["email"] in {m["email"] for m in teams["no_department"]["managers"]}
+
+
+def test_a_stale_token_loses_platform_lead_access_at_once(client):
+    lead, lead_id = _signed_in(client, "manager", "Product Support", manager_type="platform_lead")
+    billing = _raise(client, "BILLING")
+    assert client.get(f"/api/staff/tickets/{billing}", headers=lead).status_code == 200
+
+    client.patch(f"/api/admin/users/{lead_id}", json={"manager_type": "tech_lead"}, headers=_admin(client))
+    # The same token: the type is read from the database, not the token.
+    assert client.get(f"/api/staff/tickets/{billing}", headers=lead).status_code == 403
+    assert client.get("/api/manager/tickets", params={"department": "all"}, headers=lead).status_code == 403
+    assert billing not in _ids(client, lead)
+    assert client.get("/api/manager/teams", headers=lead).status_code == 403
+    assert client.get("/api/auth/me", headers=lead).json()["manager_type"] == "tech_lead"
+    # A role change signs them out altogether.
+    client.patch(f"/api/admin/users/{lead_id}", json={"role": "technician"}, headers=_admin(client))
+    assert client.get("/api/manager/tickets", headers=lead).status_code == 401
+
+
+def test_demoting_the_last_platform_lead_breaks_nothing(client):
+    admin = _admin(client)
+    for user in client.get("/api/admin/users", params={"role": "manager"}, headers=admin).json():
+        if user["manager_type"] == "platform_lead":
+            res = client.patch(f"/api/admin/users/{user['user_id']}", json={"manager_type": "tech_lead"}, headers=admin)
+            assert res.status_code == 200
+    assert not _sql("SELECT 1 FROM staff WHERE manager_type = 'platform_lead'")
+    # A Tech Lead with no department: an empty scope, not an error.
+    former = _login(client, seed_data.DEMO_PLATFORM_LEAD["email"], seed_data.DEMO_PLATFORM_LEAD["password"])
+    ticket = _raise(client, "ISSUE")
+    assert _ids(client, former) == set()
+    assert client.get("/api/manager/dashboard", headers=former).json()["by_status"]["total"] == 0
+    assert client.get("/api/manager/technicians", headers=former).json()["technicians"] == []
+    manager = _login(client, "manager@example.com", "manager-demo-pass")
+    assert ticket in _ids(client, manager)
+    assert client.get("/api/admin/users", headers=admin).status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/api/manager/teams", "/api/manager/dashboard?department=all",
+                                  "/api/manager/tickets?department=all", "/api/manager/technicians",
+                                  "/api/manager/departments"])
+def test_the_admin_gets_403_on_manager_pages(client, path):
+    assert client.get(path, headers=_admin(client)).status_code == 403

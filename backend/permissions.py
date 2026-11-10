@@ -18,6 +18,11 @@ may do is one line in PERMISSIONS.
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+
+from fastapi import HTTPException
+
 MANAGER_TYPES = ("tech_lead", "product_manager", "incident_manager", "platform_lead")
 DEFAULT_MANAGER_TYPE = "tech_lead"
 LABELS = {
@@ -59,3 +64,47 @@ def allowed(user: dict, permission: str):
 
 def sees_all(user: dict, permission: str = "tickets") -> bool:
     return allowed(user, permission) == ALL
+
+
+# ---------------------------------------------------------------------------
+# Scope: which tickets and chats a manager sees
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Scope:
+    categories: frozenset[str] | None  # None: every ticket (also those in no department)
+    department: dict | None            # the department in view; None: all of them
+
+
+def _department(conn, where: str, value: str) -> dict | None:
+    row = conn.execute(f"SELECT d.department_id, d.name, d.categories FROM departments d {where}",
+                       (value,)).fetchone()
+    return {"department_id": row["department_id"], "name": row["name"],
+            "categories": set(json.loads(row["categories"]))} if row else None
+
+
+def own_department(conn, staff_id: str) -> dict | None:
+    """The staff member's one department {department_id, name, categories},
+    or None while the admin hasn't given them one."""
+    return _department(conn, "JOIN staff s ON s.department_id = d.department_id WHERE s.staff_id = ?", staff_id)
+
+
+def manager_scope(conn, user: dict, department_id: str | None = None) -> Scope:
+    """A manager's tickets: their own department's categories, or with
+    tickets: ALL every ticket, narrowed to one department by
+    `department_id` ("all" or None: every one). Only a manager whose type
+    sees all may pick a department (403 otherwise)."""
+    if not sees_all(user):
+        if department_id is not None:
+            raise HTTPException(status_code=403, detail="Only a Platform Lead can pick a department")
+        own = own_department(conn, user["id"])
+        return Scope(frozenset(own["categories"]) if own else frozenset(), own)
+    if department_id in (None, ALL):
+        return Scope(None, None)
+    picked = _department(conn, "WHERE d.department_id = ?", department_id)
+    if picked is None:
+        raise HTTPException(status_code=404, detail="Department not found")
+    return Scope(frozenset(picked["categories"]), picked)
+
+
+def in_scope(scope: Scope, category: str | None) -> bool:
+    return scope.categories is None or category in scope.categories

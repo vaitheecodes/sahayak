@@ -26,7 +26,7 @@ from backend import handoff_signals
 from backend import categories as kb_categories
 from backend import incidents, kb_retrieval, product
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
-from backend import manager, try_ticket
+from backend import manager, permissions, try_ticket
 from backend.ai_service import backends as ai_backends
 from backend.ai_service import provider as ai_provider
 from backend import ticket_lifecycle as lifecycle
@@ -577,6 +577,11 @@ def me(user: dict = Depends(auth.get_current_user)):
         "name": user["name"],
         "email": user["email"],
         "must_change_password": user["must_change_password"],
+        # Managers: their type and what it may do (backend/permissions.py),
+        # for the menu and the department dropdown; the server checks again.
+        **({"manager_type": permissions.manager_type(user),
+            "permissions": permissions.PERMISSIONS[permissions.manager_type(user)]}
+           if user["role"] == "manager" else {}),
     }
 
 
@@ -1162,15 +1167,18 @@ def _attachment_disposition(filename: str) -> str:
 # Manager endpoints
 # ---------------------------------------------------------------------------
 @app.get("/api/manager/departments")
-def manager_departments(manager_id: str = Depends(auth.get_current_manager)):
-    """The manager's department (a list of zero or one) and the KB
-    categories it owns — the scope of their dashboard."""
+def manager_departments(user: dict = Depends(auth.require_user("manager"))):
+    """The departments a manager can look at, with the KB categories each
+    owns: their own (a list of zero or one), or every one for a Platform
+    Lead (backend/permissions.py; the department dropdown)."""
     conn = db.get_connection()
     try:
+        if permissions.sees_all(user):
+            return admin.department_rows(conn)
         return admin.department_rows(
             conn,
             "WHERE department_id = (SELECT department_id FROM staff WHERE staff_id = ?)",
-            (manager_id,),
+            (user["id"],),
         )
     finally:
         conn.close()
