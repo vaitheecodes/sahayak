@@ -14,7 +14,7 @@ import DepartmentTickets from "../components/DepartmentTickets";
 import IncidentsPanel from "../components/IncidentsPanel";
 import SlaPanel from "../components/SlaPanel";
 import StaffChats from "../components/StaffChats";
-import ManagerDashboard from "../components/dashboard/ManagerDashboard";
+import Dashboard from "../components/dashboard/Dashboard";
 
 const SECTIONS = {
   dashboard: "Dashboard",
@@ -34,7 +34,7 @@ export default function ManagerPortal() {
   return (
     <AppShell role="manager" title={title}>
       <div className="p-4 md:p-6">
-        {section === "dashboard" && <ManagerDashboard onDepartment={setDepartment} />}
+        {section === "dashboard" && <Dashboard role="manager" onDepartment={setDepartment} />}
         {section === "sla" && <SlaPanel />}
         {section === "tickets" && <DepartmentTickets />}
         {section === "chats" && <StaffChats />}

@@ -12,7 +12,7 @@ import ChatReviews from "../components/ChatReviews";
 import IncidentsPanel from "../components/IncidentsPanel";
 import StaffChats from "../components/StaffChats";
 import TechnicianTickets from "../components/TechnicianTickets";
-import TechnicianDashboard from "../components/dashboard/TechnicianDashboard";
+import Dashboard from "../components/dashboard/Dashboard";
 
 const SECTIONS = {
   dashboard: "Dashboard",
@@ -29,7 +29,7 @@ export default function TechnicianPortal() {
   return (
     <AppShell role="technician" title={SECTIONS[section]}>
       <div className="p-4 md:p-6">
-        {section === "dashboard" && <TechnicianDashboard />}
+        {section === "dashboard" && <Dashboard role="technician" />}
         {section === "tickets" && <TechnicianTickets />}
         {section === "chats" && <StaffChats />}
         {section === "chat-reviews" && <ChatReviews />}

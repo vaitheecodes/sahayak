@@ -505,16 +505,19 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   only for at risk); priority is signal bars, red only for urgent; the
   legacy StatusChip / SlaChip render the same. Support Bot replies (chat
   and ticket threads) get the `--bot-bg` tint, a left rule, a bot icon and
-  "Automatic reply"; staff replies stay plain. **Dashboards**
-  (`components/dashboard/`): Classic | Kanban switch (per user,
-  localStorage `dashboardStyle:<sub>`, default Classic) + period. Classic:
-  "Created <period>" strip (created in the period by current status, adds
-  up to Total; `by_status`, `created_sla` from the API), a "Now" strip,
-  then the role's detail (manager: per-technician table from
-  `technician_workload`). Kanban: status rail (Total, New (unassigned),
-  Open, ...) + that status's tickets below (`/api/manager/tickets` or
+  "Automatic reply"; staff replies stay plain. **Dashboard**
+  (`components/dashboard/Dashboard.jsx`, one for managers and support
+  engineers): the period selector and ONE line of counts, "Created
+  <period>" (created in the period by current status, adding up to Total:
+  Total, New (unassigned), Open, In progress, Pending customer, Resolved,
+  Closed; then SLA breached and at risk; `by_status`, `created_sla`); a
+  count filters the list below (`/api/manager/tickets` or
   `/api/staff/tickets?view=mine` with `period`, `status=new`, `assigned`;
-  same role scope). Ticket lists (`components/TicketRows.jsx`): a table
+  same role scope; the SLA counts filter by each row's SLA state; the New
+  list shows a New chip); then charts for the period (by priority
+  `by_priority`, by status, created vs resolved `over_time`; text
+  alternatives: the bars' numbers are text, the day chart has a hidden
+  table); managers then get "Support engineers" (`technician_workload`). Ticket lists (`components/TicketRows.jsx`): a table
   from 768px, two-line items on phones. **Public**: `/` landing page for
   signed-out visitors (`pages/Landing.jsx`, product name from /api/meta,
   "Runs on Sahayak"), `/login` and `/signup` (`pages/Login.jsx`: show /

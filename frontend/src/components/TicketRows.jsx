@@ -7,8 +7,9 @@ import { absoluteTime, relativeTime } from "@/utils/time";
 /* Staff ticket rows: ID, Subject, Customer, Status, Priority, SLA, Updated.
  * From 768px a table; on a phone each ticket is two lines (ID and status,
  * then the subject), so nothing scrolls sideways. A row opens the ticket
- * (onOpen); `action` adds one trailing control (Claim). */
-export default function TicketRows({ tickets, onOpen, selectedId, action, actionLabel }) {
+ * (onOpen); `action` adds one trailing control (Claim); `statusFor` picks the
+ * status shown (the dashboard's New list shows New for open, unassigned). */
+export default function TicketRows({ tickets, onOpen, selectedId, action, actionLabel, statusFor = (t) => t.status }) {
   const updated = (t) => t.last_activity || t.updated_at || t.created_at;
   return (
     <>
@@ -64,7 +65,7 @@ export default function TicketRows({ tickets, onOpen, selectedId, action, action
                   </span>
                 </TableCell>
                 <TableCell>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={statusFor(t)} />
                 </TableCell>
                 <TableCell>
                   <PriorityBadge priority={t.priority} />
@@ -100,7 +101,7 @@ export default function TicketRows({ tickets, onOpen, selectedId, action, action
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="font-mono text-sm text-primary">{t.ticket_id}</span>
-                <StatusBadge status={t.status} />
+                <StatusBadge status={statusFor(t)} />
                 {t.ticket_type === "chat" && <ChatBadge />}
               </span>
               <span className="mt-1 block truncate text-base">{t.subject}</span>

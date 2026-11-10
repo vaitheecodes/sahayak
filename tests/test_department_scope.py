@@ -362,6 +362,9 @@ def test_manager_dashboard_counts_created_tickets_by_status_and_technician(clien
                                  "resolved": 1, "closed": 0}
     assert sum(v for k, v in data["by_status"].items() if k != "total") == data["by_status"]["total"]
     assert data["created_sla"] == {"breached": 0, "at_risk": 0}  # SLA is off by default
+    # The charts: created in the period by priority (adds up too) and per day.
+    assert data["by_priority"] == {"low": 0, "medium": 4, "high": 0, "urgent": 0}
+    assert sum(day["created"] for day in data["over_time"]) == 4
     (row,) = [w for w in data["technician_workload"] if w["technician_id"] == insider]
     assert row["open"] == 2 and row["resolved"] == 1 and row["breached"] == 0
     assert "avg_first_response_minutes" in row
@@ -389,6 +392,8 @@ def test_technician_dashboard_and_kanban_list_are_their_own_tickets(client, grap
     data = client.get("/api/staff/dashboard?period=this_week", headers=me).json()
     assert data["by_status"]["total"] == 1 and data["by_status"]["in_progress"] == 1
     assert data["by_status"]["new"] == 0
+    assert data["by_priority"]["medium"] == 1 and sum(data["by_priority"].values()) == 1
+    assert sum(day["created"] for day in data["over_time"]) == 1
 
     def ids(**filters):
         query = "&".join(f"{k}={v}" for k, v in {"view": "mine", **filters}.items())

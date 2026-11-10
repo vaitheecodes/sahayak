@@ -63,16 +63,15 @@ Tickets, admin Users and Settings, customer Get help / My tickets / Chats),
 the page title, the theme menu and the user menu; under 768px the main
 screens fold into the panel.
 
-**Dashboards** (`components/dashboard/`). A Classic | Kanban switch
-(remembered per user in this browser) and the period selector, which
-applies to both. Classic: a "Created <period>" strip (tickets created in
-the period by current status; adds up to Total, plus SLA breached / at
-risk), a "Now" strip, then the role's detail (manager: how each technician
-is doing, open by priority, created and resolved per day; technician:
-needs my attention, my numbers). Kanban: one joined status rail (Total,
-New (unassigned), Open, In progress, Pending customer, Resolved, Closed),
-a thin strip under it showing the split, and the selected status's tickets
-below with search. Ticket lists (`components/TicketRows.jsx`) are a table
+**Dashboard** (`components/dashboard/Dashboard.jsx`, one for managers
+and support engineers). The period selector and one joined line of counts,
+"Created <period>": Total, New (unassigned), Open, In progress, Pending
+customer, Resolved, Closed (they add up to Total), then SLA breached and
+at risk as two compact counts. A count is a toggle button that filters the
+ticket list below it (search and period apply; the New list shows New
+chips). Then charts for the period: by priority, by status, created and
+resolved per day; then, for managers, "Support engineers". Nothing repeats
+the line of counts. Ticket lists (`components/TicketRows.jsx`) are a table
 from 768px and two-line items on phones (id and status, then subject).
 
 **Public pages.** `/` is the landing page for signed-out visitors (what

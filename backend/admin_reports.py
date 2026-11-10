@@ -85,6 +85,19 @@ def by_status(rows: list[dict]) -> dict:
     return {"total": len(rows), **counts}
 
 
+def by_priority(rows: list[dict]) -> dict:
+    return {p: sum(1 for t in rows if t["priority"] == p) for p in sla.PRIORITIES}
+
+
+def over_time(period: Period, created: list[dict], resolved: list[dict]) -> list[dict]:
+    """Tickets created and resolved per IST day of the period, up to today."""
+    made = _per_day([sla.parse(t["created_at"]) for t in created])
+    done = _per_day([sla.parse(t["resolved_at"]) for t in resolved])
+    last_day = ist_day(period.until())
+    return [{"date": d.isoformat(), "created": made.get(d, 0), "resolved": done.get(d, 0)}
+            for d in period.days if d <= last_day]
+
+
 def _sla_counts(rows: list[dict], at, settings) -> dict:
     states = [e["state"] for t in rows if (e := sla.evaluate(t, at, settings))]
     return {"breached": states.count("breached"), "at_risk": states.count("at_risk")}
@@ -135,9 +148,6 @@ def dashboard_data(period: Period, categories=None, technicians: list[dict] | No
             m for t in created
             if t["assigned_technician_id"] == key and (m := _minutes(t["created_at"], t["first_response_at"])) is not None])
 
-    made = _per_day([sla.parse(t["created_at"]) for t in created])
-    done = _per_day([sla.parse(t["resolved_at"]) for t in resolved])
-    last_day = ist_day(period.until())
     return {
         "period": period.as_dict(),
         "kpis": {
@@ -153,11 +163,11 @@ def dashboard_data(period: Period, categories=None, technicians: list[dict] | No
         "created": len(created),
         "resolved": len(resolved),
         "by_status": by_status(created),
+        "by_priority": by_priority(created),
         "created_sla": _sla_counts(created, at, settings),
         "technician_workload": sorted(workload.values(), key=lambda w: (-w["open"], w["name"].lower())),
         "open_by_priority": {p: sum(1 for t in open_now if t["priority"] == p) for p in sla.PRIORITIES},
-        "over_time": [{"date": d.isoformat(), "created": made.get(d, 0), "resolved": done.get(d, 0)}
-                      for d in period.days if d <= last_day],
+        "over_time": over_time(period, created, resolved),
     }
 
 
@@ -302,7 +312,9 @@ def technician_data(period: Period, technician_id: str) -> dict:
             "sla_at_risk": open_states.count("at_risk") + open_states.count("breached"),
         },
         "by_status": by_status(created),
+        "by_priority": by_priority(created),
         "created_sla": _sla_counts(created, at, settings),
+        "over_time": over_time(period, created, resolved),
         "attention": attention[:_ATTENTION_LIMIT],
         "attention_total": len(attention),
         "numbers": {

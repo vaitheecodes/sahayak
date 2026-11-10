@@ -15,5 +15,3 @@ function claim(token, name) {
 }
 
 export const roleFromToken = (token) => claim(token, "role");
-// The signed-in user's id, for per-user conveniences kept in this browser.
-export const subjectFromToken = (token) => claim(token, "sub");
