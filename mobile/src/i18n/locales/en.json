@@ -27,7 +27,7 @@
     "forgotPassword": "Forgot your password? Ask your administrator to reset it.",
     "emailRequired": "Enter your email address.",
     "passwordRequired": "Enter your password.",
-    "sessionExpired": "Your session has ended. Please sign in again.",
+    "sessionExpired": "Your session expired, so you've been signed out to keep your account safe. Sign in again to carry on.",
     "staffAccount": "This app is for customers. Technicians, managers and admins, please use the web portal.",
     "signedOut": "You've been signed out."
   },
@@ -69,7 +69,8 @@
     "title": "Can't reach the help desk",
     "body": "Check your connection and try again. You're still signed in.",
     "configTitle": "App not configured",
-    "configBody": "This build has no valid server address. Please contact your administrator."
+    "configBody": "This build has no valid server address. Please contact your administrator.",
+    "banner": "You're offline. Showing what was last loaded; sending needs a connection."
   },
   "errors": {
     "network": "Can't reach the help desk. Check your connection and try again.",
@@ -88,7 +89,9 @@
     "fieldTooShort": "{{field}} is too short (at least {{min}} characters).",
     "fieldRequired": "{{field}} is required.",
     "fieldInvalid": "{{field}} isn't valid.",
-    "unknown": "Something went wrong. Please try again."
+    "unknown": "Something went wrong. Please try again.",
+    "deactivated": "This account has been turned off. Please contact your support team.",
+    "passwordChangeRequired": "Please choose a new password to continue."
   },
   "fields": {
     "email": "Email",
@@ -118,6 +121,13 @@
     "medium": "Medium",
     "high": "High",
     "urgent": "Urgent"
+  },
+  "status": {
+    "open": "Open",
+    "in_progress": "In progress",
+    "pending_customer": "Pending",
+    "resolved": "Resolved",
+    "closed": "Closed"
   },
   "tickets": {
     "title": "Tickets",
@@ -268,5 +278,9 @@
     "fixAndRetry": "Remove or replace the file it names, then retry.",
     "downloadFailed": "Couldn't open {{name}}: {{reason}}",
     "noViewer": "No app on this device can open {{name}}."
+  },
+  "crash": {
+    "title": "Something went wrong",
+    "body": "This screen ran into a problem. Your tickets and chats are safe. Try again, or close and reopen the app."
   }
 }

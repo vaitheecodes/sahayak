@@ -1,5 +1,5 @@
-import { screen, waitFor } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Pressable, Text } from 'react-native';
 import { useSession } from '../../src/auth/SessionProvider';
 import { fakeFetch } from '../../test/fakeFetch';
 import { renderWithSession, storeToken, storedToken } from '../../test/render';
@@ -49,5 +49,26 @@ describe('SessionProvider', () => {
     await renderWithSession(<Probe />, impl);
     await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('unreachable||'));
     expect(storedToken()).toBe('tok');
+  });
+
+  it('ends an expired session mid-use and keeps the email for signing in again', async () => {
+    await storeToken('tok');
+    const { impl } = fakeFetch({
+      'GET /api/auth/me': { body: me },
+      'GET /api/tickets/mine': { status: 401, body: { detail: 'Invalid or expired token' } },
+    });
+    function Expiring() {
+      const { status, notice, lastEmail, api } = useSession();
+      return (
+        <Pressable testID="load" onPress={() => api.get('/api/tickets/mine').catch(() => undefined)}>
+          <Text testID="probe">{`${status}|${notice ?? ''}|${lastEmail}`}</Text>
+        </Pressable>
+      );
+    }
+    await renderWithSession(<Expiring />, impl);
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('signedIn||'));
+    fireEvent.press(screen.getByTestId('load'));
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('signedOut|expired|asha@example.com'));
+    expect(storedToken()).toBeNull();
   });
 });

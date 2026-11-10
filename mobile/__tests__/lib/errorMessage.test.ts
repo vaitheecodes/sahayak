@@ -41,4 +41,25 @@ describe('errorMessage', () => {
   it('has a fallback for non-API errors', () => {
     expect(errorMessage(t, new Error('boom'))).toBe('Something went wrong. Please try again.');
   });
+
+  it('never shows developer text from the server', () => {
+    expect(errorMessage(t, new ApiError('bad_request', { detail: 'message cannot be empty' }))).toBe(
+      'Something went wrong. Please try again.',
+    );
+    expect(errorMessage(t, new ApiError('too_large', { detail: 'Content-Length required for uploads' }))).toBe(
+      'That upload is too large.',
+    );
+    expect(errorMessage(t, new ApiError('forbidden', { detail: 'Customer role required' }))).toBe(
+      "You don't have access to that.",
+    );
+    expect(errorMessage(t, new ApiError('not_found', { detail: 'Ticket not found' }))).toBe(
+      "We couldn't find that. It may have been removed.",
+    );
+    expect(errorMessage(t, new TypeError("Cannot read properties of undefined (reading 'x')"))).toBe(
+      'Something went wrong. Please try again.',
+    );
+    expect(errorMessage(t, new ApiError('conflict', { detail: 'Only resolved tickets can be reopened' }))).toBe(
+      'Only resolved tickets can be reopened',
+    );
+  });
 });

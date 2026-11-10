@@ -1,11 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { metaApi } from '../../api/tickets';
 import type { Meta, TicketStatus } from '../../api/types';
 import { useApi } from '../../auth/SessionProvider';
 
 // Display config from /api/meta: the admin's status labels and the
 // categories (they are data on the server, not a fixed list).
-const DEFAULT_STATUS_LABELS: Record<TicketStatus, string> = {
+//
+// The server's default labels are staff words ("In Progress", "Pending
+// Customer"). Customers see the app's own words instead (status.* in the
+// locale: Open / In progress / Pending / Resolved / Closed, translatable);
+// a label the admin has renamed in Settings still wins.
+const SERVER_DEFAULT_LABELS: Record<TicketStatus, string> = {
   open: 'Open',
   in_progress: 'In Progress',
   pending_customer: 'Pending Customer',
@@ -34,6 +40,7 @@ export function MetaProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const [meta, setMeta] = useState<Meta | null>(null);
   const [failed, setFailed] = useState(false);
+  const { t } = useTranslation();
 
   const reload = useCallback(async () => {
     try {
@@ -51,17 +58,21 @@ export function MetaProvider({ children }: { children: ReactNode }) {
   }, [reload]);
 
   const value = useMemo<MetaValue>(() => {
-    const statusLabels = { ...DEFAULT_STATUS_LABELS, ...(meta?.status_labels ?? {}) };
+    const renamed: Partial<Record<TicketStatus, string>> = meta?.status_labels ?? {};
     const categoryLabels = meta?.category_labels ?? {};
     return {
       categories: meta?.categories ?? [],
       loaded: meta !== null,
       failed,
-      statusLabel: (s) => statusLabels[s as TicketStatus] ?? s,
+      statusLabel: (s) => {
+        const admin = renamed[s as TicketStatus];
+        if (admin && admin !== SERVER_DEFAULT_LABELS[s as TicketStatus]) return admin;
+        return t(`status.${s}`, { defaultValue: s });
+      },
       categoryLabel: (c) => (c ? categoryLabels[c] ?? categoryPhrase(c) : '—'),
       reload,
     };
-  }, [meta, failed, reload]);
+  }, [meta, failed, reload, t]);
 
   return <MetaContext.Provider value={value}>{children}</MetaContext.Provider>;
 }

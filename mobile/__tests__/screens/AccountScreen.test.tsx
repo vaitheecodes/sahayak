@@ -33,7 +33,9 @@ describe('AccountScreen', () => {
   it('shows who is signed in and the server host', async () => {
     await setup();
     expect(screen.getByText('asha@example.com')).toBeOnTheScreen();
-    expect(screen.getByText('AR')).toBeOnTheScreen();
+    // The initials are decoration: hidden from screen readers.
+    expect(screen.getByText('AR', { includeHiddenElements: true })).toBeOnTheScreen();
+    expect(screen.queryByText('AR')).toBeNull();
     expect(screen.getByText('api.test')).toBeOnTheScreen();
   });
 

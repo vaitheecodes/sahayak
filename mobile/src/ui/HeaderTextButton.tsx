@@ -24,6 +24,6 @@ export function HeaderTextButton({ label, onPress, icon, accessibilityLabel }: P
 }
 
 const styles = StyleSheet.create({
-  button: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.lg },
+  button: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.lg, minHeight: 44 },
   pressed: { opacity: 0.6 },
 });

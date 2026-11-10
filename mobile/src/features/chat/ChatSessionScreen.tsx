@@ -24,6 +24,7 @@ import { relativeTime } from '../../lib/time';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius, space, type as typeScale } from '../../theme/tokens';
 import { Banner } from '../../ui/Banner';
+import { OfflineBanner } from '../../ui/OfflineBanner';
 import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { Markdown } from '../../ui/Markdown';
@@ -163,6 +164,7 @@ export function ChatSessionScreen({ sessionId, initial, keyboardOffset = 0, onOp
           <EmptyState title={t('chat.notFound')} body={loadError.message} />
         ) : (
           <View style={styles.pad}>
+            <OfflineBanner />
             <Banner
               testID="chat-load-error"
               tone={loadError.tone}
@@ -189,6 +191,7 @@ export function ChatSessionScreen({ sessionId, initial, keyboardOffset = 0, onOp
       keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardOffset : 0}
     >
       <View style={[styles.bar, { backgroundColor: colors.sheet, borderBottomColor: colors.border }]}>
+        <OfflineBanner />
         <View style={styles.barTop}>
           <ChatStatusChip status={session.status} label={t(`chatStatus.${session.status}`, { defaultValue: session.status })} />
           <Text variant="body" numberOfLines={1} style={styles.flex}>
@@ -439,7 +442,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerText: { textAlign: 'center' },
-  pad: { padding: space.lg },
+  pad: { padding: space.lg, gap: space.md },
   bar: {
     paddingHorizontal: space.lg,
     paddingVertical: space.md,

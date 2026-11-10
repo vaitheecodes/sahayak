@@ -13,6 +13,21 @@ export function fieldErrorMessage(t: TFunction, e: FieldError): string {
   return t('errors.fieldInvalid', { field });
 }
 
+// The server's 400/409/413 details are mostly written for the customer
+// ("At most 5 attachments per message", "photo.jpg is larger than 10 MB"),
+// but a few are developer text ("message cannot be empty", "Customer role
+// required", "Content-Length required for uploads"). Only a detail that
+// reads as a sentence for a person is shown; anything else gets the app's
+// own wording for that kind of error. A sentence may start with a file
+// name ("photo.jpg is larger than 10 MB").
+const TECHNICAL = /token|bearer|role required|content-length|header|traceback|exception|null|undefined|sql|json|[{}<>[\]]/i;
+
+export function customerDetail(detail: string | null): string | null {
+  const text = detail?.trim();
+  if (!text || text.length > 200 || !/^([A-Z0-9"']|\S+\.\w+ )/.test(text) || TECHNICAL.test(text)) return null;
+  return text;
+}
+
 /**
  * The sentence to show for a failed request. `remainingSeconds` overrides
  * Retry-After for a live countdown on 429.
@@ -35,22 +50,22 @@ export function errorMessage(t: TFunction, error: unknown, remainingSeconds?: nu
     case 'validation':
       return error.fieldErrors.length
         ? error.fieldErrors.map((f) => fieldErrorMessage(t, f)).join('\n')
-        : error.detail ?? t('errors.validation');
+        : customerDetail(error.detail) ?? t('errors.validation');
     case 'too_large':
-      return error.detail ?? t('errors.tooLarge');
+      return customerDetail(error.detail) ?? t('errors.tooLarge');
     case 'unavailable':
       return t('errors.unavailable');
     case 'server':
       return t('errors.server');
+    // "Ticket not found", "Not your chat": the app's own sentence reads better.
     case 'not_found':
-      return error.detail ?? t('errors.notFound');
+      return t('errors.notFound');
     case 'forbidden':
-      return error.detail ?? t('errors.forbidden');
-    // The server's 400/409 details are already written for the customer
-    // ("At most 5 attachments per message", "Current password is incorrect").
+      return error.detail === 'This account has been deactivated' ? t('errors.deactivated') : t('errors.forbidden');
+    case 'password_change_required':
+      return t('errors.passwordChangeRequired');
     case 'bad_request':
     case 'conflict':
-    case 'password_change_required':
-      return error.detail ?? t('errors.unknown');
+      return customerDetail(error.detail) ?? t('errors.unknown');
   }
 }

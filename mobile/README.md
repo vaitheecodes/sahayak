@@ -147,6 +147,21 @@ asks for a new password.
   reply stays and only the upload is retried. Tapping an attachment
   downloads it with the session's token and opens it (Android: a viewer
   app; iOS: the share sheet).
+- Status: the web app's colour, icon and word for each status (Open: blue
+  circle, In progress: teal half circle, Pending: purple hourglass,
+  Resolved: green check, Closed: slate lock). Customers see Open /
+  In progress / Pending / Resolved / Closed, never the staff-only "New";
+  a label the admin renamed in Settings still wins.
+- States: loading spinners, empty lists that say what to do next, an
+  offline strip on every screen (lists reload by themselves when the
+  connection is back), a clear sign-in notice when the session expired
+  (email kept), and only friendly error sentences: server text is shown
+  only when it reads as a sentence for a customer, and a screen that
+  crashes shows "Something went wrong" with Try again.
+- Accessibility: every control has a role and a label, touch targets are
+  at least 44 pt, text follows the system font size, decorative avatars
+  are hidden from screen readers, and every text colour is at least 4.5:1
+  on its surface in light and dark (`__tests__/theme/contrast.test.ts`).
 - Not yet: push notifications.
 - API gaps the app works around: `BACKEND_WISHLIST.md`.
 
@@ -156,9 +171,8 @@ The URL comes only from `EXPO_PUBLIC_API_URL` (`app.config.ts`), never the
 source. Plain `http://` is allowed only when `APP_VARIANT` is
 `development` (the default). The EAS `preview` profile sets
 `APP_VARIANT=preview`, and `app.config.ts` then refuses to load (so the
-build fails) unless the URL is `https://`. Set it as an EAS environment
-variable for the `preview` environment (EAS dashboard or `eas env:create`).
-A release JS bundle also refuses http at runtime.
+build fails) unless the URL is `https://`; see "Android preview APK"
+below. A release JS bundle also refuses http at runtime.
 
 ## Tests
 
@@ -177,12 +191,75 @@ src/auth/       SessionProvider (token in expo-secure-store), tokenStore
 src/features/   screens by area
 src/i18n/       i18next setup + locales/en.json (add ta.json / hi.json later)
 src/lib/        error messages, 429 countdown hook, prefs
-src/theme/      colour tokens (shared with the web app), ThemeProvider
-src/ui/         shared components
+src/theme/      colour tokens incl. status colours (shared with the web app),
+                ThemeProvider
+src/ui/         shared components (StatusChip, Banner, OfflineBanner, ...)
+scripts/        devstack.sh (emulator stack), make-icons.py (app icons)
 __tests__/      Jest tests; test/ has the fake fetch and render helpers
 ```
 
-## Android APK (internal)
+## App identity
 
-`eas.json` has a `preview` profile that builds an APK for internal
-distribution. Building runs on EAS (cloud); it is not run from here.
+Name, version and ids live in `app.config.ts` (`VERSION`, `BUILD_NUMBER`,
+`IDENTITY`). Each variant has its own id so they can be installed side by
+side: `development` is "Sahayak (dev)", `com.vaitheeswaran.sahayak.dev`;
+`preview` is "Sahayak", `com.vaitheeswaran.sahayak.preview`; `production`
+is "Sahayak", `com.vaitheeswaran.sahayak`. Raise `BUILD_NUMBER` for every
+build you upload or hand out (Android refuses to update to a lower
+versionCode), and `VERSION` for each release users should see.
+
+The icon, Android adaptive icon (foreground, background, themed
+monochrome), splash mark and favicon are drawn by a script from plain
+shapes (a speech bubble with a check, in the app's teal):
+
+```bash
+python3 scripts/make-icons.py
+```
+
+## Android preview APK (EAS, not run from here)
+
+`eas.json`'s `preview` profile builds an installable APK for internal
+testers. It sets `APP_VARIANT=preview` and reads the EAS environment
+"preview", where `EXPO_PUBLIC_API_URL` must be an `https://` URL:
+`app.config.ts` fails the build otherwise (or if it's missing).
+
+Create first:
+
+1. The backend running on a public `https://` address with a valid
+   certificate (phones can't use the dev server through `adb reverse`),
+   and customer accounts on it.
+2. A free Expo account (expo.dev).
+
+Then, from `mobile/`:
+
+```bash
+npx eas-cli@latest login
+```
+
+```bash
+npx eas-cli@latest init
+```
+
+`init` creates the EAS project and prints its id; it can't write to a
+dynamic config, so paste the id into `EAS_PROJECT_ID` in `app.config.ts`
+and commit it (it isn't a secret).
+
+```bash
+npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_API_URL --value https://YOUR-HELP-DESK-HOST --visibility plaintext
+```
+
+Check the config locally before spending a build (fails on http):
+
+```bash
+APP_VARIANT=preview EXPO_PUBLIC_API_URL=https://YOUR-HELP-DESK-HOST npx expo config --type public
+```
+
+Build in the cloud (counts against your EAS plan's build quota; the first
+build asks to generate an Android keystore: answer yes, EAS keeps it):
+
+```bash
+npx eas-cli@latest build --platform android --profile preview
+```
+
+EAS prints a link and QR code to install the APK on a phone (allow
+installs from unknown sources when Android asks).

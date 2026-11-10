@@ -22,8 +22,12 @@ export type Palette = {
   warning: string;
   info: string;
   pill: Record<'neutral' | 'positive' | 'negative' | 'warning' | 'info' | 'accent', { bg: string; fg: string }>;
+  /** Ticket status chips, the web's --status-<key>-fg / -bg. */
+  status: Record<StatusKey, { bg: string; fg: string }>;
   scrim: string;
 };
+
+export type StatusKey = 'open' | 'in_progress' | 'pending_customer' | 'resolved' | 'closed';
 
 export const palettes: Record<ColorScheme, Palette> = {
   light: {
@@ -50,6 +54,13 @@ export const palettes: Record<ColorScheme, Palette> = {
       info: { bg: '#e4eef9', fg: '#163f6e' },
       accent: { bg: '#dcf0f4', fg: '#0f4652' },
     },
+    status: {
+      open: { bg: '#e6edfb', fg: '#1e4fb8' },
+      in_progress: { bg: '#ddf2ef', fg: '#0b6b66' },
+      pending_customer: { bg: '#efe8fb', fg: '#6a3fb5' },
+      resolved: { bg: '#e1f1e6', fg: '#1d6b3d' },
+      closed: { bg: '#e7eaef', fg: '#3d4a5c' },
+    },
     scrim: 'rgba(19,20,22,0.4)',
   },
   dark: {
@@ -75,6 +86,13 @@ export const palettes: Record<ColorScheme, Palette> = {
       warning: { bg: '#3a2810', fg: '#f3c58c' },
       info: { bg: '#14263d', fg: '#a9cbf3' },
       accent: { bg: '#0f2e35', fg: '#8fd6e6' },
+    },
+    status: {
+      open: { bg: '#1f2a3d', fg: '#a9c3f2' },
+      in_progress: { bg: '#16302d', fg: '#7fd6cc' },
+      pending_customer: { bg: '#2a2340', fg: '#c6aef5' },
+      resolved: { bg: '#1c2e22', fg: '#8fd3a5' },
+      closed: { bg: '#252a31', fg: '#b5c0d0' },
     },
     scrim: 'rgba(0,0,0,0.6)',
   },

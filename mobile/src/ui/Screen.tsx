@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
 import { space } from '../theme/tokens';
+import { OfflineBanner } from './OfflineBanner';
 
 type Props = {
   children: ReactNode;
@@ -15,7 +16,12 @@ type Props = {
 
 export function Screen({ children, scroll = true, edges = ['top', 'bottom'], narrow }: Props) {
   const { colors } = useTheme();
-  const inner = <View style={[styles.inner, narrow && styles.narrow]}>{children}</View>;
+  const inner = (
+    <View style={[styles.inner, narrow && styles.narrow]}>
+      <OfflineBanner />
+      {children}
+    </View>
+  );
   return (
     <SafeAreaView edges={edges} style={[styles.flex, { backgroundColor: colors.frame }]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

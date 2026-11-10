@@ -35,6 +35,8 @@ type SessionValue = {
   status: SessionStatus;
   user: Me | null;
   notice: SignedOutNotice;
+  /** The email of the session that just expired, to fill in on sign-in. */
+  lastEmail: string;
   api: ApiClient;
   signIn: (email: string, password: string) => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
@@ -56,11 +58,14 @@ export function SessionProvider({ baseUrl, children, fetchImpl, timeoutMs }: Pro
   const [status, setStatus] = useState<SessionStatus>('loading');
   const [user, setUser] = useState<Me | null>(null);
   const [notice, setNotice] = useState<SignedOutNotice>(null);
+  const [lastEmail, setLastEmail] = useState('');
   const tokenRef = useRef<string | null>(null);
+  const emailRef = useRef('');
 
   const endSession = useCallback(async (why: SignedOutNotice) => {
     tokenRef.current = null;
     await tokenStore.clear().catch(() => undefined);
+    setLastEmail(why === 'expired' ? emailRef.current : '');
     setUser(null);
     setNotice(why);
     setStatus('signedOut');
@@ -99,6 +104,7 @@ export function SessionProvider({ baseUrl, children, fetchImpl, timeoutMs }: Pro
         await endSession('staff');
         return;
       }
+      emailRef.current = me.email;
       setUser(me);
       setStatus('signedIn');
     } catch (e) {
@@ -136,6 +142,7 @@ export function SessionProvider({ baseUrl, children, fetchImpl, timeoutMs }: Pro
       const res = await authApi.login(api, email.trim(), password);
       if (res.role !== 'customer') throw new StaffAccountError();
       tokenRef.current = res.token;
+      emailRef.current = email.trim();
       await tokenStore.set(res.token);
       setUser({
         user_id: res.user_id,
@@ -166,8 +173,8 @@ export function SessionProvider({ baseUrl, children, fetchImpl, timeoutMs }: Pro
   }, [restore]);
 
   const value = useMemo<SessionValue>(
-    () => ({ status, user, notice, api, signIn, changePassword, signOut, retry }),
-    [status, user, notice, api, signIn, changePassword, signOut, retry],
+    () => ({ status, user, notice, lastEmail, api, signIn, changePassword, signOut, retry }),
+    [status, user, notice, lastEmail, api, signIn, changePassword, signOut, retry],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -83,7 +83,7 @@ describe('attachments in a new ticket', () => {
     await newTicket({ body: [] });
     await fireEvent.press(screen.getByRole('button', { name: 'Camera' }));
     expect(screen.getByText('Camera access is off for this app.')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Open settings to allow it' })).toBeOnTheScreen();
+    expect(screen.getByRole('link', { name: 'Open settings to allow it' })).toBeOnTheScreen();
   });
 
   it('creates the ticket, then uploads its files to the first message', async () => {

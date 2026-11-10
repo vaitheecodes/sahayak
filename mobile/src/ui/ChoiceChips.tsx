@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: space.md,
     paddingVertical: space.sm - 2,
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
   },
 });

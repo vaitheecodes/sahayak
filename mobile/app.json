@@ -1,18 +1,14 @@
 {
   "expo": {
-    "name": "Sahayak",
     "slug": "sahayak",
     "scheme": "sahayak",
-    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.vaitheeswaran.sahayak"
+      "supportsTablet": true
     },
     "android": {
-      "package": "com.vaitheeswaran.sahayak",
       "adaptiveIcon": {
         "backgroundColor": "#17687B",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -48,6 +44,9 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }

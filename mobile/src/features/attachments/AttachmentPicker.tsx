@@ -103,7 +103,7 @@ export function AttachmentPicker({ files, onChange, disabled }: Props) {
                 accessibilityLabel={t('attachments.remove', { name: f.name })}
                 disabled={disabled}
                 onPress={() => remove(f.key)}
-                hitSlop={10}
+                style={styles.remove}
               >
                 <X size={18} color={colors.mutedFg} />
               </Pressable>
@@ -122,7 +122,7 @@ export function AttachmentPicker({ files, onChange, disabled }: Props) {
           <Text variant="caption" tone="negative">
             {t('attachments.cameraDenied')}
           </Text>
-          <Pressable accessibilityRole="button" onPress={() => Linking.openSettings()} hitSlop={8}>
+          <Pressable accessibilityRole="link" onPress={() => Linking.openSettings()} style={styles.settings}>
             <Text variant="caption" tone="primary" style={styles.link}>
               {t('attachments.openSettings')}
             </Text>
@@ -193,6 +193,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   name: { flex: 1 },
+  remove: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginRight: -space.md },
+  settings: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   denied: { gap: 2 },
   link: { textDecorationLine: 'underline' },
 });

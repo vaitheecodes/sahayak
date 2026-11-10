@@ -90,3 +90,26 @@ jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn(async () => true),
   shareAsync: jest.fn(async () => undefined),
 }));
+
+// expo-network: online unless a test calls __setConnected(false).
+jest.mock('expo-network', () => {
+  const { useEffect, useState } = jest.requireActual('react');
+  let connected = true;
+  const listeners = new Set<React.Dispatch<boolean>>();
+  return {
+    useNetworkState: () => {
+      const [isConnected, set] = useState(connected);
+      useEffect(() => {
+        listeners.add(set);
+        return () => {
+          listeners.delete(set);
+        };
+      }, []);
+      return { isConnected, isInternetReachable: isConnected, type: isConnected ? 'WIFI' : 'NONE' };
+    },
+    __setConnected: (next: boolean) => {
+      connected = next;
+      listeners.forEach((l) => l(next));
+    },
+  };
+});

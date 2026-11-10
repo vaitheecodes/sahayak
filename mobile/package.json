@@ -14,6 +14,7 @@
     "expo-intent-launcher": "~58.0.3",
     "expo-linking": "~58.0.16",
     "expo-localization": "~58.0.5",
+    "expo-network": "~58.0.4",
     "expo-router": "~58.0.30",
     "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.22",

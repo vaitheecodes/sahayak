@@ -3,6 +3,13 @@
 API gaps the mobile app works around today. Nothing here has been changed
 in the backend; each item says what the app does meanwhile.
 
+**Re-checked 2026-11-10 against `main` at f844336.** Since the pinned
+commit c7cb29c the backend gained manager dashboards, staff chat views
+(`/api/staff/chats`), department scoping and KB-ingester work; no
+customer endpoint changed (`/api/tickets/*`, `/api/chats/*`, `/api/auth/*`,
+`/api/meta` are the same). Every item below is still open. The test
+server can stay on the pin.
+
 ## Safety of retries
 
 1. **Idempotency key for `POST /api/tickets`.** A timed-out create can't be
@@ -87,3 +94,12 @@ in the backend; each item says what the app does meanwhile.
     doesn't look like a PDF file") are English and parsed by eye only; a
     `code` plus the offending filename would let the app mark the right
     file and translate the message.
+
+## Display
+
+18. **Customer-facing status labels in `/api/meta`.** `status_labels` are
+    the staff words ("In Progress", "Pending Customer"), and the web
+    customer portal shows them as is. The app shows its own customer words
+    (Open / In progress / Pending / Resolved / Closed) unless the admin
+    renamed a label. A separate `customer_status_labels` (admin-editable,
+    defaulting to those words) would let both apps say the same thing.

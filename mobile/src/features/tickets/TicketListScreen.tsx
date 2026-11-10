@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import { relativeTime } from '../../lib/time';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius, space, type as typeScale } from '../../theme/tokens';
 import { Banner } from '../../ui/Banner';
+import { OfflineBanner, useOffline } from '../../ui/OfflineBanner';
 import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { Segmented } from '../../ui/Segmented';
@@ -54,6 +55,17 @@ export function TicketListScreen({ onOpen, onNew }: Props) {
 
   // Reload whenever the tab comes back into view: after reading a ticket
   // (clears its unread dot), replying, reopening or raising a new one.
+  // Back online after a failed load: try again without waiting for a pull.
+  const offline = useOffline();
+  const failed = !!apiError.error;
+  useEffect(() => {
+    // The request is async: state is only set after it answers.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!offline && failed) load();
+    // Only the offline -> online change should trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -78,6 +90,7 @@ export function TicketListScreen({ onOpen, onNew }: Props) {
 
   const header = (
     <View style={styles.header}>
+      <OfflineBanner />
       {apiError.message ? (
         <Banner
           testID="tickets-error"
@@ -110,7 +123,12 @@ export function TicketListScreen({ onOpen, onNew }: Props) {
               style={[styles.searchInput, typeScale.body, { color: colors.fg }]}
             />
             {query ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={t('tickets.clearSearch')} onPress={() => setQuery('')} hitSlop={8}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('tickets.clearSearch')}
+                onPress={() => setQuery('')}
+                style={styles.clear}
+              >
                 <X size={18} color={colors.mutedFg} />
               </Pressable>
             ) : null}
@@ -222,5 +240,6 @@ const styles = StyleSheet.create({
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  clear: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   time: { marginLeft: 'auto' },
 });

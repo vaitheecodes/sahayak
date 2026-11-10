@@ -57,5 +57,6 @@ const styles = StyleSheet.create({
   },
   icon: { marginTop: 2 },
   text: { flex: 1, gap: space.sm },
-  action: { alignSelf: 'flex-start' },
+  // 44pt tall to tap, without pushing the text around.
+  action: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginVertical: -space.sm },
 });

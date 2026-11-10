@@ -34,8 +34,12 @@ export function AccountScreen({ onChangePassword }: Props) {
   return (
     <Screen edges={[]}>
       <View style={[styles.profile, { backgroundColor: colors.sheet, borderColor: colors.border }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.pill.accent.bg }]}>
-          <Text style={[styles.avatarText, { color: colors.pill.accent.fg }]}>{initials(user?.name ?? '')}</Text>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.avatar, { backgroundColor: colors.pill.accent.bg }]}
+        >
+          <Text maxFontSizeMultiplier={1.3} style={[styles.avatarText, { color: colors.pill.accent.fg }]}>{initials(user?.name ?? '')}</Text>
         </View>
         <View style={styles.profileText}>
           <Text variant="title" numberOfLines={1}>

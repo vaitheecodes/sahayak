@@ -19,8 +19,8 @@ const NOTICE_KEY: Record<Exclude<SignedOutNotice, null>, string> = {
 
 export function SignInScreen() {
   const { t } = useTranslation();
-  const { signIn, notice } = useSession();
-  const [email, setEmail] = useState('');
+  const { signIn, notice, lastEmail } = useSession();
+  const [email, setEmail] = useState(lastEmail);
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [staff, setStaff] = useState(false);

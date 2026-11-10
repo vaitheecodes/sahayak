@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Download, Paperclip } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, Download, Megaphone, Paperclip } from 'lucide-react-native';
 import { isApiError } from '../../api/errors';
 import { REPLY_MAX, ticketsApi } from '../../api/tickets';
 import type { Attachment, ChatTranscriptMessage, ThreadMessage, TicketDetail } from '../../api/types';
@@ -24,6 +24,7 @@ import { absoluteTime, relativeTime } from '../../lib/time';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius, space, type as typeScale } from '../../theme/tokens';
 import { Banner } from '../../ui/Banner';
+import { OfflineBanner } from '../../ui/OfflineBanner';
 import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { Markdown } from '../../ui/Markdown';
@@ -109,6 +110,7 @@ export function TicketDetailScreen({ ticketId, onLoaded }: Props) {
           <EmptyState title={t('ticket.notFound')} body={loadError.message} />
         ) : (
           <View style={styles.pad}>
+            <OfflineBanner />
             <Banner
               testID="ticket-load-error"
               tone={loadError.tone}
@@ -138,6 +140,7 @@ export function TicketDetailScreen({ ticketId, onLoaded }: Props) {
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} colors={[colors.primary]} />
         }
       >
+        <OfflineBanner />
         <View style={styles.headerBlock}>
           <View style={styles.metaRow}>
             <Text variant="caption" tone="muted">
@@ -238,7 +241,7 @@ function MessageCard({ message, ticketId }: { message: ThreadMessage; ticketId: 
 
   if (message.sender === 'system') {
     return (
-      <View style={styles.system} accessibilityRole="text">
+      <View style={styles.system} accessible accessibilityRole="text">
         <View style={[styles.rule, { backgroundColor: colors.border }]} />
         <Text variant="caption" tone="muted" style={styles.systemText}>
           {message.message} · {relativeTime(t, message.created_at)}
@@ -259,12 +262,15 @@ function MessageCard({ message, ticketId }: { message: ThreadMessage; ticketId: 
   return (
     <View
       testID={`message-${message.message_id}`}
-      accessibilityLabel={`${message.sender_name}, ${when}`}
       style={[styles.card, styles.email, { backgroundColor: colors.sheet, borderColor: colors.border, borderLeftColor: accent }]}
     >
       <View style={styles.emailHead}>
-        <View style={[styles.avatar, { backgroundColor: isAi ? colors.pill.accent.bg : colors.raised }]}>
-          <Text variant="caption" style={{ color: isAi ? colors.pill.accent.fg : colors.mutedFg }}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.avatar, { backgroundColor: isAi ? colors.pill.accent.bg : colors.raised }]}
+        >
+          <Text variant="caption" maxFontSizeMultiplier={1.2} style={{ color: isAi ? colors.pill.accent.fg : colors.mutedFg }}>
             {isAi ? 'AI' : initials(message.sender_name)}
           </Text>
         </View>
@@ -288,7 +294,7 @@ function MessageCard({ message, ticketId }: { message: ThreadMessage; ticketId: 
 
       {message.incident_update && message.subject ? (
         <View style={styles.fromLine}>
-          <Chip tone="info" label={t('ticket.serviceUpdate')} />
+          <Chip colors={colors.pill.info} icon={Megaphone} label={t('ticket.serviceUpdate')} />
           <Text variant="label" style={styles.shrink}>
             {message.subject}
           </Text>
@@ -575,7 +581,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   shrink: { flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pad: { padding: space.lg },
+  pad: { padding: space.lg, gap: space.md },
   content: { padding: space.lg, gap: space.lg, paddingBottom: space.xxl },
   headerBlock: { gap: space.sm },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
@@ -597,6 +603,8 @@ const styles = StyleSheet.create({
   rule: { flex: 1, height: StyleSheet.hairlineWidth },
   expand: {
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
     paddingVertical: space.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderStyle: 'dashed',
@@ -610,12 +618,13 @@ const styles = StyleSheet.create({
     gap: space.xs + 2,
     alignSelf: 'flex-start',
     maxWidth: '100%',
+    minHeight: 44,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.sm,
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
   },
-  transcriptHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  transcriptHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
   bubbles: { gap: space.sm },
   bubble: { maxWidth: '88%', borderRadius: radius.md, padding: space.md, gap: 2 },
   textarea: {

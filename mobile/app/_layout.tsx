@@ -17,6 +17,8 @@ import { ConfigErrorScreen } from '../src/features/auth/StatusScreens';
 import { MetaProvider } from '../src/features/meta/MetaProvider';
 import { HeaderTextButton } from '../src/ui/HeaderTextButton';
 
+export { CrashScreen as ErrorBoundary } from '../src/features/auth/CrashScreen';
+
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {

@@ -85,5 +85,5 @@ const styles = StyleSheet.create({
   },
   focused: { borderWidth: 1.5 },
   input: { flex: 1, paddingHorizontal: space.md, paddingVertical: space.md },
-  toggle: { paddingHorizontal: space.md },
+  toggle: { paddingHorizontal: space.md, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
 });

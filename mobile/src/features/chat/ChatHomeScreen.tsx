@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,7 @@ import { relativeTime } from '../../lib/time';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius, space, type as typeScale } from '../../theme/tokens';
 import { Banner } from '../../ui/Banner';
+import { OfflineBanner, useOffline } from '../../ui/OfflineBanner';
 import { Button } from '../../ui/Button';
 import { ChoiceChips } from '../../ui/ChoiceChips';
 import { ChatStatusChip } from '../../ui/StatusChip';
@@ -51,6 +52,17 @@ export function ChatHomeScreen({ onStarted, onOpen }: Props) {
   }, [api]);
 
   // Back from a chat: its status (resolved, escalated) may have changed.
+  // Back online after a failed load: try again without waiting for a pull.
+  const offline = useOffline();
+  const failed = !!listError.error;
+  useEffect(() => {
+    // The request is async: state is only set after it answers.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!offline && failed) load();
+    // Only the offline -> online change should trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -65,6 +77,7 @@ export function ChatHomeScreen({ onStarted, onOpen }: Props) {
 
   const header = (
     <View style={styles.header}>
+      <OfflineBanner />
       <StartChatForm onStarted={onStarted} onMaybeStarted={load} />
       <Text variant="label" tone="muted" accessibilityRole="header" style={styles.historyTitle}>
         {t('chat.history')}

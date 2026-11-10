@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { TicketListScreen } from '../../src/features/tickets/TicketListScreen';
 import { renderSignedIn, summary } from '../../test/tickets';
 
@@ -12,6 +12,7 @@ const TICKETS = [
   summary({ ticket_id: 'TCK-a', subject: 'Login fails on mobile', status: 'open', escalated: true, unread: true }),
   summary({ ticket_id: 'TCK-b', subject: 'Invoice copy', status: 'pending_customer', ticket_type: 'chat' }),
   summary({ ticket_id: 'TCK-c', subject: 'Password reset email', status: 'resolved' }),
+  summary({ ticket_id: 'TCK-d', subject: 'Payslip export', status: 'in_progress' }),
 ];
 
 async function setup(routes = {}) {
@@ -35,6 +36,31 @@ describe('TicketListScreen', () => {
     // The admin's label for pending_customer, not the built-in one.
     expect(await within(chatRow).findByText('Waiting on you')).toBeOnTheScreen();
     expect(within(chatRow).queryByTestId('unread-dot')).not.toBeOnTheScreen();
+    // The server's default staff label ("In Progress") becomes the customer word.
+    expect(within(screen.getByTestId('ticket-TCK-d')).getByText('In progress')).toBeOnTheScreen();
+  });
+
+  it('shows an offline strip and reloads by itself when the connection comes back', async () => {
+    const network = jest.requireMock('expo-network') as { __setConnected: (c: boolean) => void };
+    let online = false;
+    network.__setConnected(false);
+    try {
+      await setup({
+        'GET /api/tickets/mine': () => {
+          if (!online) throw new TypeError('Network request failed');
+          return { body: TICKETS };
+        },
+      });
+      expect(await screen.findByTestId('offline-banner')).toBeOnTheScreen();
+      expect(await screen.findByTestId('tickets-error')).toBeOnTheScreen();
+      online = true;
+      await act(async () => network.__setConnected(true));
+      expect(await screen.findByTestId('ticket-TCK-a')).toBeOnTheScreen();
+      expect(screen.queryByTestId('offline-banner')).not.toBeOnTheScreen();
+      expect(screen.queryByTestId('tickets-error')).not.toBeOnTheScreen();
+    } finally {
+      network.__setConnected(true);
+    }
   });
 
   it('filters by tab', async () => {

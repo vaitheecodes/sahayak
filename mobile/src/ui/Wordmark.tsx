@@ -11,7 +11,9 @@ export function Wordmark() {
   return (
     <View style={styles.row} accessible accessibilityLabel={`${t('app.name')}, ${t('app.tagline')}`}>
       <View style={[styles.tile, { backgroundColor: colors.primary }]}>
-        <Text style={[styles.initial, { color: colors.primaryFg }]}>S</Text>
+        <Text maxFontSizeMultiplier={1.2} style={[styles.initial, { color: colors.primaryFg }]}>
+          S
+        </Text>
       </View>
       <View>
         <Text variant="title">{t('app.name')}</Text>

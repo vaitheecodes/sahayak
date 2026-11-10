@@ -90,7 +90,7 @@ describe('SignInScreen', () => {
     });
     await renderWithSession(<SignInScreen />, impl);
     await fillAndSubmit();
-    expect(await screen.findByText('This account has been deactivated')).toBeOnTheScreen();
+    expect(await screen.findByText('This account has been turned off. Please contact your support team.')).toBeOnTheScreen();
   });
 
   it('counts down a rate limit and blocks the button until it ends', async () => {
