@@ -103,6 +103,15 @@ def _sla_counts(rows: list[dict], at, settings) -> dict:
     return {"breached": states.count("breached"), "at_risk": states.count("at_risk")}
 
 
+def in_sla_state(rows, state: str | None) -> list[tuple]:
+    """(row, its SLA) pairs, only those whose SLA is in `state` when given.
+    The SLA state is worked out in Python, so a list filtered by it is
+    filtered before any LIMIT: the caller drops the LIMIT from its query."""
+    settings, at = app_settings.get("sla"), sla.now()
+    pairs = ((r, sla.evaluate(r, at, settings)) for r in rows)
+    return [(r, e) for r, e in pairs if not state or (e and e["state"] == state)]
+
+
 def _per_day(values: list[datetime | None]) -> Counter:
     return Counter(ist_day(v) for v in values if v)
 

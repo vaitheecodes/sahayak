@@ -410,3 +410,61 @@ def test_technician_dashboard_and_kanban_list_are_their_own_tickets(client, grap
     _set(mine, created_at=sla.iso(sla.now() - timedelta(days=60)))
     assert ids(period="this_week") == []
     assert client.get("/api/staff/tickets?view=mine&period=last_decade", headers=me).status_code == 422
+
+
+def _copies(template, count, *, minutes_ago, target_minutes, **columns):
+    """`count` copies of a ticket row with an SLA of `target_minutes`,
+    created `minutes_ago` (a second apart, newest first)."""
+    conn = db.get_connection()
+    try:
+        row = dict(conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (template,)).fetchone())
+        ids = []
+        for i in range(count):
+            ticket_id = f"{template}-{minutes_ago}-{i}"
+            created = sla.now() - timedelta(minutes=minutes_ago, seconds=i)
+            values = {**row, "ticket_id": ticket_id, "created_at": sla.iso(created), "first_response_at": None,
+                      "sla_first_response_minutes": target_minutes, "sla_resolution_minutes": target_minutes,
+                      "sla_first_response_due": sla.iso(created + timedelta(minutes=target_minutes)),
+                      "sla_resolution_due": sla.iso(created + timedelta(minutes=target_minutes)), **columns}
+            conn.execute(f"INSERT INTO tickets ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+                         list(values.values()))
+            ids.append(ticket_id)
+        conn.commit()
+        return set(ids)
+    finally:
+        conn.close()
+
+
+def test_sla_counts_and_filter_cover_more_than_one_page(client, graph):
+    """The SLA filter is applied on the server before the list limit (500
+    for managers, 200 for support engineers): older breached tickets behind
+    a full page of on-track ones are still found, and match the counts."""
+    customer = _customer(client)
+    headers, engineer = _technician(client, "Product Support")
+    template = _raise(client, graph, customer, "ISSUE")
+    _set(template, status="resolved")  # keeps the template out of the SLA counts
+    mine = {"assigned_technician_id": engineer, "status": "in_progress", "route": "human"}
+    breached = _copies(template, 30, minutes_ago=15, target_minutes=1, **mine)
+    at_risk = _copies(template, 5, minutes_ago=50, target_minutes=60, **mine)
+    _copies(template, 520, minutes_ago=0, target_minutes=600, **mine)  # newer and on track
+
+    manager = _demo(client, "manager")
+    data = client.get("/api/manager/dashboard?period=this_year", headers=manager).json()
+    assert data["created_sla"] == {"breached": 30, "at_risk": 5}
+
+    def manager_ids(state):
+        res = client.get(f"/api/manager/tickets?period=this_year&sla={state}", headers=manager)
+        assert res.status_code == 200, res.text
+        return {t["ticket_id"] for t in res.json()["tickets"]}
+
+    assert manager_ids("breached") == breached
+    assert manager_ids("at_risk") == at_risk
+    assert len(client.get("/api/manager/tickets?period=this_year", headers=manager).json()["tickets"]) == 500
+
+    data = client.get("/api/staff/dashboard?period=this_year", headers=headers).json()
+    assert data["created_sla"] == {"breached": 30, "at_risk": 5}
+    res = client.get("/api/staff/tickets?view=mine&period=this_year&sla=breached", headers=headers)
+    assert {t["ticket_id"] for t in res.json()} == breached
+    assert all(t["sla"]["state"] == "breached" for t in res.json())
+    assert len(client.get("/api/staff/tickets?view=mine&period=this_year", headers=headers).json()) == 200
+    assert client.get("/api/staff/tickets?view=mine&sla=paused", headers=headers).status_code == 422

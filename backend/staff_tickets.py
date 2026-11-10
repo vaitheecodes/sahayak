@@ -190,11 +190,13 @@ def _filters(clauses: list, params: dict, *, q=None, priority=None, status=None,
 
 
 def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=None,
-               status=None, ticket_type=None, period=None, limit: int = 200) -> list[dict]:
+               status=None, ticket_type=None, period=None, sla_state=None, limit: int = 200) -> list[dict]:
     clauses = ["t.route = 'human'", where]
     _filters(clauses, params, q=q, priority=priority, status=status, ticket_type=ticket_type, period=period)
+    if sla_state:
+        clauses.append("t.sla_resolution_minutes IS NOT NULL")
     rows = conn.execute(
-        f"{_LIST_SELECT} WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT {int(limit)}",
+        f"{_LIST_SELECT} WHERE {' AND '.join(clauses)} ORDER BY {order}{'' if sla_state else f' LIMIT {int(limit)}'}",
         params,
     ).fetchall()
     return [
@@ -203,9 +205,9 @@ def _list_rows(conn, where: str, order: str, params: dict, *, q=None, priority=N
             "subject": subject_for(row),
             # The hand-off brief (if any) is what a technician scans for.
             "preview": row["ticket_text"].split(f"\n\n{ESCALATION_MARKER}\n", 1)[-1][:300],
-            "sla": sla.evaluate(row),
+            "sla": e,
         }
-        for row in rows
+        for row, e in admin_reports.in_sla_state(rows, sla_state)[:limit]
     ]
 
 
@@ -217,15 +219,17 @@ def staff_ticket_list(
     status: ListStatus | None = None,
     ticket_type: Literal["ticket", "chat"] | None = None,
     period: PeriodPreset | None = None,
+    sla_state: Literal["breached", "at_risk"] | None = Query(default=None, alias="sla"),
     technician_id: str = Depends(auth.get_current_technician),
 ):
     """One list (view); ticket_type "chat" = escalated chats; `period`:
-    created in that preset (the dashboards' kanban list)."""
+    created in that preset (the dashboard's list); `sla`: in that SLA state
+    now (worked out before the 200 limit)."""
     where, order = _VIEWS[view]
     conn = db.get_connection()
     try:
         return _list_rows(conn, where, order, _view_params(technician_id), q=q, priority=priority,
-                          status=status, ticket_type=ticket_type, period=period)
+                          status=status, ticket_type=ticket_type, period=period, sla_state=sla_state)
     finally:
         conn.close()
 

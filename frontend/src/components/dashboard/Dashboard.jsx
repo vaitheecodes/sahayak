@@ -43,7 +43,9 @@ const SLA_COUNTS = [
 ];
 
 function listFilters(key, role) {
-  if (key === "total" || key.startsWith("sla_")) return {};
+  if (key === "total") return {};
+  const sla = SLA_COUNTS.find((c) => c.key === key);
+  if (sla) return { sla: sla.state };
   if (key === "open" && role === "manager") return { status: "open", assigned: "true" };
   return { status: key };
 }
@@ -100,8 +102,6 @@ function TicketList({ role, period, selected, label }) {
   const [tickets, setTickets] = useState(null);
   const [error, setError] = useState("");
   const searchId = useId();
-  const sla = SLA_COUNTS.find((c) => c.key === selected);
-
   useEffect(() => {
     let current = true;
     const filters = { period, q: q.trim(), ...listFilters(selected, role) };
@@ -111,8 +111,6 @@ function TicketList({ role, period, selected, label }) {
           ? api.managerTickets(filters).then((d) => d.tickets)
           : api.staffTickets({ view: "mine", ...filters });
       load
-        // SLA counts: the period's tickets in that SLA state (the lists carry each ticket's SLA).
-        .then((rows) => (sla ? rows.filter((t) => t.sla?.state === sla.state) : rows))
         .then((rows) => {
           if (current) {
             setTickets(rows);
@@ -125,7 +123,7 @@ function TicketList({ role, period, selected, label }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [role, period, selected, q, sla]);
+  }, [role, period, selected, q]);
 
   function open(t) {
     const id = encodeURIComponent(t.ticket_id);

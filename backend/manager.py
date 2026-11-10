@@ -9,7 +9,7 @@ be assigned its tickets.
 
   GET  /api/manager/dashboard?period=          KPIs, workload, created vs resolved, open by priority
   GET  /api/manager/sla?period=&priority=      compliance and the near-breach list
-  GET  /api/manager/tickets?q=&status=&priority=&period=&assigned=   Department tickets
+  GET  /api/manager/tickets?q=&status=&priority=&period=&assigned=&sla=   Department tickets
   GET  /api/manager/technicians                 the department's technicians, with counts
   POST /api/manager/tickets/{id}/reassign       {technician_id | null}
   POST /api/manager/tickets/{id}/priority       {priority}
@@ -38,6 +38,7 @@ Priority = Literal["low", "medium", "high", "urgent"]
 # "new" = open with nobody assigned (not a stored status).
 Status = Literal["new", "open", "in_progress", "pending_customer", "resolved", "closed"]
 PeriodPreset = Literal[periods.PRESETS]  # type: ignore[valid-type]
+SlaState = Literal["breached", "at_risk"]
 
 
 # The SLA columns not already in the Department tickets SELECT.
@@ -102,10 +103,12 @@ def manager_sla(period: PeriodPreset = periods.DEFAULT, priority: Priority | Non
 @router.get("/api/manager/tickets")
 def manager_tickets(q: str | None = Query(default=None, max_length=200), status: Status | None = None,
                     priority: Priority | None = None, period: PeriodPreset | None = None,
-                    assigned: bool | None = None, manager_id: str = Depends(_manager)):
+                    assigned: bool | None = None, sla_state: SlaState | None = Query(default=None, alias="sla"),
+                    manager_id: str = Depends(_manager)):
     """The department's tickets (AI-handled ones too, without reassign),
     newest first. `period`: created in that preset; status "new": open with
-    nobody assigned; `assigned`: someone has it (true) or nobody (false)."""
+    nobody assigned; `assigned`: someone has it (true) or nobody (false);
+    `sla`: in that SLA state now (worked out before the 500 limit)."""
     department = _department(manager_id)
     params: list = []
     clauses = [admin_reports.scope_sql(department["categories"] if department else set(), params)]
@@ -128,6 +131,8 @@ def manager_tickets(q: str | None = Query(default=None, max_length=200), status:
         p = periods.period_range(period)
         clauses.append("t.created_at >= ? AND t.created_at < ?")
         params.extend([sla.iso(p.start), sla.iso(p.end)])
+    if sla_state:
+        clauses.append("t.sla_resolution_minutes IS NOT NULL")
     conn = db.get_connection()
     try:
         rows = conn.execute(
@@ -137,7 +142,9 @@ def manager_tickets(q: str | None = Query(default=None, max_length=200), status:
             f"s.name AS technician_name, {_SLA_EXTRA} "
             "FROM tickets t JOIN customers c ON c.customer_id = t.customer_id "
             "LEFT JOIN staff s ON s.staff_id = t.assigned_technician_id "
-            f"WHERE {' AND '.join(clauses)} ORDER BY t.created_at DESC LIMIT 500", params).fetchall()
+            f"WHERE {' AND '.join(clauses)} ORDER BY t.created_at DESC{'' if sla_state else ' LIMIT 500'}",
+            params).fetchall()
+        rows = admin_reports.in_sla_state(rows, sla_state)[:500]
         technicians = _technicians(conn, department and department["department_id"])
     finally:
         conn.close()
@@ -149,8 +156,8 @@ def manager_tickets(q: str | None = Query(default=None, max_length=200), status:
                                  "confidence", "created_at", "assigned_technician_id", "customer_name",
                                  "customer_email", "technician_name", "ticket_text")},
             "subject": subject_for(r),
-            "sla": sla.evaluate(r),
-        } for r in rows],
+            "sla": e,
+        } for r, e in rows],
     }
 
 
