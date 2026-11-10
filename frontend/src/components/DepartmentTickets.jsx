@@ -6,6 +6,7 @@ import SlaChip from "./ui/SlaChip";
 import { ConfidenceChip, RouteChip, StatusChip } from "./ui/StatusChip";
 import { ChatBadge } from "./ChatBadge";
 import { assigneeOptions } from "../lib/assigneeOptions";
+import { cn } from "../lib/utils";
 import { categoryLabel } from "../utils/categories";
 import { parseTicketText } from "../utils/parseTicketText";
 import { PRIORITIES, PRIORITY_LABELS } from "../utils/priorities";
@@ -138,6 +139,7 @@ export default function DepartmentTickets() {
   const technicians = data.technicians;
 
   const visible = tickets;
+  const opened = tickets.find((t) => t.ticket_id === openId);
 
   return (
     <div className="admin-tickets">
@@ -170,7 +172,29 @@ export default function DepartmentTickets() {
         </span>
       </div>
 
-      <div className="table-wrap">
+      {/* Phones: two lines per ticket (id and status, then subject); reassign
+          and priority sit above the opened ticket. */}
+      <ul className="m-0 list-none rounded-lg border border-border p-0 md:hidden">
+        {visible.map((t) => (
+          <li key={t.ticket_id} className={cn("border-b border-rule last:border-0", openId === t.ticket_id && "bg-active")}>
+            <button
+              type="button"
+              aria-expanded={openId === t.ticket_id}
+              onClick={() => open(t.ticket_id)}
+              className="flex w-full cursor-pointer flex-col items-stretch rounded-none border-0 bg-transparent px-4 py-3 text-left text-fg shadow-none"
+            >
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="font-mono text-sm text-primary">{t.ticket_id}</span>
+                <StatusChip status={t.status} />
+                {t.ticket_type === "chat" && <ChatBadge />}
+              </span>
+              <span className="mt-1 block truncate text-base">{subjectOf(t)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="table-wrap hidden md:block">
         <table className="tickets-table">
           <thead>
             <tr>
@@ -244,6 +268,18 @@ export default function DepartmentTickets() {
       <div ref={detailRef} className="admin-ticket-detail">
         {openId && (
           <div className="card">
+            {opened && (
+              <div className="mb-4 flex flex-wrap items-end gap-4 border-b border-border pb-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm text-muted-fg">Support engineer</span>
+                  <TechnicianAssignCell ticket={opened} technicians={technicians} onReassigned={refresh} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm text-muted-fg">Priority</span>
+                  <PriorityCell ticket={opened} onChanged={refresh} />
+                </div>
+              </div>
+            )}
             <StaffTicketView key={openId} ticketId={openId} />
           </div>
         )}
