@@ -22,7 +22,7 @@ endpoint, the database is busy or unreachable (`Retry-After: 2`; with
 `DB_BACKEND=postgres`, when no pooled connection frees up within
 `DB_POOL_TIMEOUT`).
 
-Roles: **C** customer · **T** technician · **M** manager · **A** admin ·
+Roles: **C** customer · **T** support engineer · **M** manager · **A** admin ·
 **public** no token.
 
 ---
@@ -76,7 +76,7 @@ message is kept and nothing else changed.
 | `POST /tickets/{id}/attachments` | C (own) | multipart: `message_id`, `files` (≤5 per message, ≤10 MB, png/jpg/pdf/txt/log, contents must match) | `[{attachment_id, filename, content_type, size_bytes}]`. A request declaring more than 55 MB gets `413`, one with no `Content-Length` `411`, before the body is read. |
 | `GET /tickets/{id}/attachments/{attachment_id}` | C (own, visible messages) / T, M (tickets they may open in the workspace: with the support team; a manager's departments only) / A | — | file download (`Content-Disposition: attachment`) |
 
-## Technician workspace
+## Support engineer workspace
 
 | Method & path | Role | Request | Response / notes |
 |---|---|---|---|
@@ -86,7 +86,7 @@ message is kept and nothing else changed.
 | `GET /staff/tickets/{id}` | T, M (own department only; 403 otherwise) | — | `{ticket:{..., description, customer, assignee}, messages:[... visibility, customer_visible, author ...], ai:{summary, suggestions, case_summary}, chat, incidents, status_history, assignment_history, can:{claim, reply, change_status, note}}` |
 | `POST /staff/tickets/{id}/claim` | T | — | workspace. 409 if someone else claimed it first (atomic). |
 | `POST /staff/tickets/{id}/status` | T (owner) | `{status}` | workspace; adds a customer-visible status event |
-| `POST /staff/tickets/{id}/messages` | T | `{body, visibility:"public_reply"\|"internal_note", subject?, set_status?}` | workspace. Public replies: owner only. Notes: any technician; never shown to customers. |
+| `POST /staff/tickets/{id}/messages` | T | `{body, visibility:"public_reply"\|"internal_note", subject?, set_status?}` | workspace. Public replies: owner only. Notes: any support engineer; never shown to customers. |
 | `GET /staff/chats?filter=active\|escalated\|resolved&q=` | T, M (own department) | — | `[{session_id, status, customer_name, first_message, category, ticket_id, message_count, created_at, updated_at}]`; customers and the admin get 403 |
 | `GET /staff/chats/{id}` | T, M (own department; 404 otherwise) | — | the read-only transcript `{..., messages:[{message_id, role, content, created_at}], ticket_id}` |
 | `GET /chat-reviews?status=` | T, M (own department) | — | AI-resolved chats with summary + transcript |
@@ -101,23 +101,23 @@ message is kept and nothing else changed.
 | `GET /manager/dashboard?period=` | M | `{department, period, kpis:{open, in_progress, pending_customer, unassigned, sla_at_risk, sla_breached, avg_first_response_minutes, first_responses}, created, resolved, by_status:{total, new, open, in_progress, pending_customer, resolved, closed}, by_priority:{low, medium, high, urgent}, created_sla:{breached, at_risk}, technician_workload:[{technician_id, name, open, breached, resolved, avg_first_response_minutes}], open_by_priority, over_time:[{date, created, resolved}]}`. `by_status` counts tickets created in the period by current status (adds up to total; `new` = open with nobody assigned) |
 | `GET /manager/sla?period=&priority=` | M | compliance by priority, totals and the watch list (open tickets at risk or breached), department only |
 | `GET /manager/tickets?q=&status=&priority=&period=&assigned=` | M | `{department, technicians, tickets:[{..., sla}]}`, newest first; `status` also takes `new`; `period`: created in that preset; `assigned`: `true` \| `false` |
-| `GET /manager/technicians` | M | `{department, technicians:[{staff_id, name, email, active_count, resolved_count}]}`: technicians whose department is this one |
-| `POST /manager/tickets/{id}/reassign` | M | `{technician_id\|null}`; human-routed tickets only (400), outside the department 403, a technician from another department 400 |
+| `GET /manager/technicians` | M | `{department, technicians:[{staff_id, name, email, active_count, resolved_count}]}`: support engineers whose department is this one |
+| `POST /manager/tickets/{id}/reassign` | M | `{technician_id\|null}`; human-routed tickets only (400), outside the department 403, a support engineer from another department 400 |
 | `POST /manager/tickets/{id}/priority` | M | `{priority}`; SLA due times recalculated from creation; audited |
 
 Every manager endpoint is limited to the manager's own department (`staff.department_id`), direct ids included.
 
 **Periods** (`backend/periods.py`): `today`, `yesterday`, `this_week` (default), `last_week`, `this_month`, `last_month`, `this_quarter`, `this_year`; IST calendar days, weeks start Monday; anything else is 422.
 
-## Incidents (managers; technicians for incidents assigned to them; the admin gets 403)
+## Incidents (managers; support engineers for incidents assigned to them; the admin gets 403)
 
 | Method & path | Request | Response / notes |
 |---|---|---|
-| `GET /incidents?include_dismissed=` | — | `[{incident_id, title, status, category, confidence, started_at, resolved_at, summary_status, visibility, needs_routing, ticket_count, customer_count, first_report, latest_report, departments}]` — managers see their department's clusters and unrouted ones, technicians only those assigned to them; open first, then resolved, then dismissed |
+| `GET /incidents?include_dismissed=` | — | `[{incident_id, title, status, category, confidence, started_at, resolved_at, summary_status, visibility, needs_routing, ticket_count, customer_count, first_report, latest_report, departments}]` — managers see their department's clusters and unrouted ones, support engineers only those assigned to them; open first, then resolved, then dismissed |
 | `GET /incidents/{id}` | — | list fields + `summary` (narrative, why_related, common_symptoms, affected_services, observed_facts, hypotheses, possible_shared_cause, confidence_reasons, suggested_next_steps), `tickets` (each with `delivery: {status:"sent"\|"failed", error, attempted_at}` once a summary was sent), `affected_customers`, `reviews`, `all_departments`, `assignee`, `technicians`, `resolution` {resolution_note, root_cause, customer_summary, internal_summary, resolved_by}, `can` {review, departments, assign, resolve, visibility} |
 | `POST /incidents/{id}/review` | `{action:"confirm"\|"investigate"\|"dismiss", note}` | M. detail. Never changes the linked tickets; not on a resolved incident. |
-| `PUT /incidents/{id}/assignee` | `{technician_id \| null}` | M. The technician who may resolve it. |
-| `POST /incidents/{id}/resolution/draft` | `{resolution_note, fixed_at, root_cause?}` | A manager or the assigned technician; **confirmed incidents only**. `fixed_at` is ISO; no offset = IST. Saves the inputs and asks the AI for a draft (customer + internal summary) from the incident facts and the note only. Returns detail + `ai_error` (null, or a message: inputs kept, write the summary by hand). |
+| `PUT /incidents/{id}/assignee` | `{technician_id \| null}` | M. The support engineer who may resolve it. |
+| `POST /incidents/{id}/resolution/draft` | `{resolution_note, fixed_at, root_cause?}` | A manager or the assigned support engineer; **confirmed incidents only**. `fixed_at` is ISO; no offset = IST. Saves the inputs and asks the AI for a draft (customer + internal summary) from the incident facts and the note only. Returns detail + `ai_error` (null, or a message: inputs kept, write the summary by hand). |
 | `PUT /incidents/{id}/resolution/summary` | `{customer_summary, internal_summary?, visibility?}` | Edit the draft before it's sent. |
 | `POST /incidents/{id}/resolution/send` | `{customer_summary, mark_tickets_resolved=false}` | Approve & send. `customer_summary` must equal the saved text (409 otherwise). Posts it as a public reply from the Support Team on every linked ticket (email too if `EMAIL_ENABLED=true`), one delivery record per ticket; already-sent tickets are skipped, failures are recorded and don't stop the rest; calling again retries failures only. Incident → `resolved`, summary → `sent`. Optional: mark linked tickets Resolved. Never closes or merges tickets. |
 | `PUT /incidents/{id}/visibility` | `{visibility:"affected_only"\|"public"}` | M. |
@@ -125,15 +125,15 @@ Every manager endpoint is limited to the manager's own department (`staff.depart
 | `PUT /incidents/{id}/departments` | `{department_ids:[...]}` | M. detail. The manager must keep their own department on it. |
 | `POST /incidents/run` | — | M. `{touched:[incident_id,...]}` — one correlation pass now |
 
-## Try a ticket (technicians, managers)
+## Try a ticket (support engineers, managers)
 
 | Method & path | Request | Response / notes |
 |---|---|---|
 | `POST /try-a-ticket` | `{ticket_text, channel?, customer_id?}` | pipeline trace without saving (category, confidence, route, route_reason, language_tags, ai_response); 503 if the AI is down. Customers and the admin get 403. The page is `/try-a-ticket`. |
 
-## Knowledge base (technicians, managers; the admin gets 403)
+## Knowledge base (support engineers, managers; the admin gets 403)
 
-T = technicians and managers, M = managers only. Errors are 400 (invalid),
+T = support engineers and managers, M = managers only. Errors are 400 (invalid),
 404, 409 (state or version conflict), 429 (caps, runs per hour).
 
 | Method & path | Request | Response / notes |
@@ -163,7 +163,7 @@ T = technicians and managers, M = managers only. Errors are 400 (invalid),
 ## Admin
 
 Every admin endpoint checks the admin role on the server: a customer,
-technician or manager gets 403, no token 401. The admin runs people and
+support engineer or manager gets 403, no token 401. The admin runs people and
 the system only: tickets, dashboards and SLA reports are the managers'
 (`/manager/*`), and the admin gets 403 there.
 
@@ -174,14 +174,14 @@ and the account must change it at first sign-in.
 
 | Method & path | Request | Notes |
 |---|---|---|
-| `GET /admin/users?role=&q=&status=active\|inactive` | — | customers, technicians and managers: `[{user_id, role, name, email, active, must_change_password, department_id, department_name, ticket_count}]`. Never the admin |
+| `GET /admin/users?role=&q=&status=active\|inactive` | — | customers, support engineers and managers: `[{user_id, role, name, email, active, must_change_password, department_id, department_name, ticket_count}]`. Never the admin |
 | `POST /admin/users` | `{name, email, role:"customer"\|"technician"\|"manager", department_id?}` | the user plus `temporary_password` (once); `role:"admin"` → 400 |
-| `PATCH /admin/users/{id}` | any of `{name, email, role, department_id}` | staff role technician↔manager only; a customer can't become staff (400); the admin account → 403 |
+| `PATCH /admin/users/{id}` | any of `{name, email, role, department_id}` | staff role support engineer↔manager only; a customer can't become staff (400); the admin account → 403 |
 | `POST /admin/users/{id}/deactivate` · `/activate` | — | deactivated: can't sign in, live sessions stop; tickets kept |
 | `POST /admin/users/{id}/reset-password` | — | `temporary_password` (once); the old password stops working |
 | `GET /admin/staff` | — | `[{staff_id, name, email, role, active, must_change_password, department_id, department_name}]` |
 | `POST /admin/staff` | `{name, email, role:"technician"\|"manager", department_id?}` | plus `temporary_password` (once); forced change at first sign-in |
-| `PATCH /admin/staff/{id}` | any of `{name, email, role, department_id}` | 409 if a technician with open tickets would change role; a role change signs them out |
+| `PATCH /admin/staff/{id}` | any of `{name, email, role, department_id}` | 409 if a support engineer with open tickets would change role; a role change signs them out |
 | `POST /admin/staff/{id}/deactivate` · `/activate` · `/reset-password` | — | reset returns `temporary_password` (once) |
 | `GET /admin/customers?q=` | — | `[{customer_id, name, email, active, must_change_password, ticket_count, chat_count}]` |
 | `POST /admin/customers` | `{name, email}` | plus `temporary_password` (once) |

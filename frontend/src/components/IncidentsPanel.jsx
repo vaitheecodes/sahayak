@@ -175,7 +175,7 @@ function AssigneePicker({ incident, onSaved }) {
   return (
     <div className="field-group assignee-picker">
       <label className="field-label" htmlFor={pickerId}>
-        Assigned technician
+        Assigned support engineer
       </label>
       <select id={pickerId} value={incident.assignee?.id || ""} onChange={(e) => change(e.target.value)}>
         <option value="">Unassigned</option>

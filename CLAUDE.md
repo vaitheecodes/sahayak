@@ -1,6 +1,6 @@
 # Sahayak
 
-An AI help desk for any product: ticketing, AI chat, a technician
+An AI help desk for any product: ticketing, AI chat, a support engineer
 workspace, incident correlation and an admin console, plus a generic KB
 ingester (`kb_ingester/`) and a mobile app (`mobile/`,
 untracked, not part of this work). Started as a copy of ticketapp-ai-aws
@@ -117,7 +117,7 @@ review. Module map in `kb_ingester/__init__.py`.
   / `_PER_DAY`), plus runs per hour per manager and one active run per
   source. Near-duplicates (`dedupe.py`, TF-IDF cosine >= 0.8 over title,
   questions, answer, steps vs. every draft/approved entry) are flagged.
-- **Review** (`review.py`, `api.py`): technicians + managers read,
+- **Review** (`review.py`, `api.py`): support engineers + managers read,
   edit drafts (version-checked; an edited step's quote must still be in
   the chunk and loses its AI check) and propose terms; managers add
   sources (with the public/allowed confirmation, stored with who/when),
@@ -189,7 +189,7 @@ page), `kb_chunks` (text purged after review/retention).
 
 ## Ticket Resolution Agent — live app (`backend/`, `frontend/`)
 
-A four-role app (customer / technician / manager / admin) with real
+A four-role app (customer / support engineer / manager / admin) with real
 persistence, auth and LLM calls. The bullets below are the detailed design notes per area; the
 end-to-end journey is pinned by `tests/test_e2e_helpdesk.py` (real
 pipeline, scripted model).
@@ -202,17 +202,17 @@ FastAPI backend (backend/main.py, :8000)
   /api/auth/login (all roles), /api/auth/customer/signup,
   /api/auth/{me,change-password}            JWT (backend/auth.py)
   /api/chats, /api/chats/{id}/{messages,resolve,escalate}   AI chat
-  /api/chat-reviews, /api/chat-reviews/{id}   technician/manager
+  /api/chat-reviews, /api/chat-reviews/{id}   support engineer/manager
   /api/tickets/mine, POST /api/tickets (raise ticket), GET /api/tickets/{id} (thread),
   /{id}/{reply,reopen,attachments}            customer-facing
   /api/staff/tickets[?view=unassigned|mine|recent|open_pending]
-  /api/staff/tickets/{id}, /{id}/{claim,status,messages}   technician workspace
+  /api/staff/tickets/{id}, /{id}/{claim,status,messages}   support engineer workspace
   /api/manager/overview, /api/manager/departments          manager (read-only)
   /api/incidents[/{id}[/review|/departments|/assignee|/visibility]], /run
   /api/incidents/{id}/resolution/{draft,summary,send}      manager/assigned tech (no admin)
-  /api/try-a-ticket                           technician/manager (backend/try_ticket.py)
+  /api/try-a-ticket                           support engineer/manager (backend/try_ticket.py)
   /api/public/incidents                       public: visibility=public history
-  /api/admin/{tickets,technicians,staff,customers,
+  /api/admin/{users,staff,customers,
               departments,settings,audit}            admin (backend/admin.py)
   /api/meta                                   public: status labels, categories + labels, product name
   /api/public/routing-policy                  public, read-only (/docs); /api/debug/... alias
@@ -330,7 +330,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   **Resolved**: only on the customer's confirmation (a bare "thanks"
   after an AI answer, or "My issue is solved") — the session closes with
   an AI resolution summary and a `chat_reviews` row
-  (`pending_review -> verified -> closed`, technicians/admin via
+  (`pending_review -> verified -> closed`, support engineers/admin via
   `/api/chat-reviews`, "Chat Reviews" tab); **no ticket is created**.
   **Escalated** (customer accepts a hand-off, AI admits a limitation,
   decide_route says human, or the customer clicks "Raise a ticket"):
@@ -436,13 +436,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   403, `chats._chat_scope` 404): Overview (Dashboard "Dashboard ·
   <department>", SLA) · Work (Department tickets with reassign + priority,
   Chats, Chat reviews, Incidents) · Knowledge base (+ Try a ticket).
-  Reassign goes only to technicians whose `department_id` is the
-  manager's (technicians may now "work" one department, set under Users).
-  **Technician**: My work (Dashboard of their own tickets only, Tickets
+  Reassign goes only to support engineers whose `department_id` is the
+  manager's (support engineers may now "work" one department, set under Users).
+  **Support engineer**: My work (Dashboard of their own tickets only, Tickets
   with tabs + counts + filters + Claim, Chats) · More (Chat reviews, KB
   review queue, Try a ticket); assigned incidents stay at
   `/technician/incidents`. **Chats** (`GET /api/staff/chats[/{id}]`,
-  `StaffChats.jsx`): read-only transcripts, technicians + managers;
+  `StaffChats.jsx`): read-only transcripts, support engineers + managers;
   "Take this chat" is a placeholder. **Periods** (`backend/periods.py`,
   `components/dashboard/PeriodSelect.jsx`): Today … This year, IST, weeks
   from Monday, default This week. Covered by
@@ -451,7 +451,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `backend/admin_reports.py`, `backend/sla.py`; `UsersPanel`,
   `components/dashboard/`, `SlaPanel`, `OneTimePassword`, `ui/SlaChip`).
   **Users** (admin-only): one list of customers,
-  technicians and managers (`/api/admin/users`, same functions as the
+  support engineers and managers (`/api/admin/users`, same functions as the
   older `/api/admin/staff` and `/api/admin/customers`); never the admin
   (env-seeded) and never role `admin`. Create and reset generate the
   temporary password server-side (`auth.generate_temporary_password`),
@@ -524,7 +524,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   hide password, field errors, 429 countdown from Retry-After); `/docs`,
   `/incidents` use `PublicShell`. **Setup** (`components/SetupWizard.jsx`):
   `/admin/settings` opens on a 4-step setup (product, categories and their
-  departments, each technician's department with the count still missing,
+  departments, each support engineer's department with the count still missing,
   done) while the product is unnamed and not skipped in this browser;
   "Run setup again" brings it back. Colour only on data, status and the
   one primary action; every text token >= 4.5:1 in both themes (contrast
@@ -534,7 +534,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   from the role inside the token (`lib/tokenRole.js`, `api.getRole`), never
   a separately stored role, and a sign-in/out in another tab reloads the
   others (`api.onSessionChange`): a stale stored role once showed the admin
-  the technician workspace, all 403s (`tests/test_frontend_session.py`).
+  the support engineer workspace, all 403s (`tests/test_frontend_session.py`).
   Pages not yet rebuilt still use
   the old stylesheets, imported into a lower cascade layer
   (`src/styles/legacy/`) until they are converted.
@@ -645,8 +645,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   (none/draft/approved/sent), `visibility` (affected_only/public),
   `assigned_technician_id`, `resolved_by`. Only a **confirmed** incident
   can be resolved, by a manager who can see it, the admin, or the
-  technician it's assigned to (`PUT /api/incidents/{id}/assignee`;
-  technicians see only assigned incidents). The draft op gets the
+  support engineer it's assigned to (`PUT /api/incidents/{id}/assignee`;
+  support engineers see only assigned incidents). The draft op gets the
   incident's facts + the staff note only; code composes the When line
   and the Cause line (staff root cause verbatim or "still being
   reviewed"), and `_check` rejects model text with times/dates/relative
@@ -670,13 +670,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `backend/admin.py`, `backend/app_settings.py`, `backend/audit.py`).
   All admin endpoints live in `admin.py` (admin role on every one):
   simulator, Team (`PATCH /api/admin/staff/{id}`:
-  name/email/role/department; a technician with open tickets can't change
+  name/email/role/department; a support engineer with open tickets can't change
   role; a role change invalidates their token), Customers (create with a
   forced password change, edit, deactivate — live sessions blocked —
   reset password), departments, settings, audit log. **A manager belongs
   to one department** (`staff.department_id`; the legacy
   `manager_departments` table is read once by the migration — first
-  mapping kept — and no longer written); a technician may work one
+  mapping kept — and no longer written); a support engineer may work one
   (optional; the manager can assign them there).
   **Settings** (`app_settings`): `routing` (confidence bars, high-risk
   categories, escalation language tags, max clarifying rounds — read by
@@ -707,8 +707,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `EMAIL_ENABLED=true` + SMTP (`Outbox.flush` / `email_utils.email_enabled`).
   Attachments are only served by the authorised download endpoint (no
   static mount). Covered by `tests/test_admin_console.py`.
-- **Auth / roles** (`backend/auth.py`): customer, technician, manager,
-  admin. Tables: `customers`, `staff` (technicians + managers, `role`
+- **Auth / roles** (`backend/auth.py`): customer, support engineer, manager,
+  admin. **Names**: people read "Support Engineer" ("Technical Support
+  Engineer" in the Users role dropdown); the role value stays `technician`
+  in the database, tokens, URLs (`/technician`) and API paths. Tables: `customers`, `staff` (support engineers + managers, `role`
   column, `active`, `must_change_password`), `admins`. One login page /
   `POST /api/auth/login` for every role; the token carries the role and
   the frontend routes to `/customer`, `/technician`, `/manager` or
@@ -723,10 +725,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   immediately. Emails are unique across all three tables. The legacy
   `agents` table / `assigned_agent_id` column are migrated in place to
   `staff` / `assigned_technician_id` by `db.init_db()`. Dev-only demo
-  manager + technician are seeded by `seed_data.seed_demo_staff`.
+  manager + support engineer are seeded by `seed_data.seed_demo_staff`.
   bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Covered by
   `tests/test_roles_auth.py`.
-- **Ticket lifecycle + technician workspace** (reconcile sub-stage B;
+- **Ticket lifecycle + support engineer workspace** (reconcile sub-stage B;
   `backend/staff_tickets.py`, `backend/ticket_lifecycle.py`,
   `frontend/src/components/StaffTicketView.jsx`). Statuses
   `db.TICKET_STATUSES`: Open (with the support team, owner optional), In
@@ -737,7 +739,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   pipeline). **Claim** (`POST /api/staff/tickets/{id}/claim`):
   `BEGIN IMMEDIATE` + `UPDATE ... WHERE assigned_technician_id IS NULL`,
   so of two simultaneous claims one gets 409. Only the owner replies
-  publicly or changes status; any technician adds internal notes;
+  publicly or changes status; any support engineer adds internal notes;
   managers see their department only and reassign / set priority there
   (`/api/manager/tickets/{id}/{reassign,priority}`, logged).
   **Message visibility** (`ticket_messages.visibility`): `public_reply`,
@@ -798,7 +800,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 
 **Done:** the AI help desk (`backend/` + `frontend/`): roles and auth, AI
 chat sessions with resolution/escalation, email-style tickets with
-attachments, technician workspace, modular validated AI service, AI
+attachments, support engineer workspace, modular validated AI service, AI
 incident correlation with manager review, admin console. **Stage 1 of
 Sahayak:** product-neutral core, categories and product profile as data,
 KB and terms in the database (empty by default), neutral test fixture;

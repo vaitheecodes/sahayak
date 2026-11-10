@@ -258,7 +258,7 @@ def test_audit_records_ticket_work(client):
     assert "ticket.assignment_changed" in actions
     assert actions.count("ticket.status_changed") == 2  # open->in_progress, ->pending_customer
     claimed = _audit(client, action="ticket.claimed")[0]
-    assert claimed["actor_name"] == "Demo Technician"
+    assert claimed["actor_name"] == "Demo Support Engineer"
 
 
 def test_audit_records_admin_changes_without_secrets(client):

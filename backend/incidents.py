@@ -662,7 +662,7 @@ def set_incident_assignee(
         if body.technician_id and not conn.execute(
             "SELECT 1 FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
             (body.technician_id,)).fetchone():
-            raise HTTPException(status_code=404, detail="Technician not found")
+            raise HTTPException(status_code=404, detail="Support engineer not found")
         conn.execute(
             "UPDATE incident_clusters SET assigned_technician_id = ?, updated_at = ? WHERE incident_id = ?",
             (body.technician_id, now(), incident_id),

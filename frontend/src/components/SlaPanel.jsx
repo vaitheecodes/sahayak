@@ -278,7 +278,7 @@ function SlaReport({ refreshKey }) {
                       <th>Ticket</th>
                       <th>Priority</th>
                       <th>Status</th>
-                      <th>Technician</th>
+                      <th>Support engineer</th>
                       <th>First response</th>
                       <th>Resolution</th>
                       <th>Next due</th>

@@ -58,7 +58,7 @@ default: a menu button at the far left of the 48px top bar opens the full
 menu (every screen of the role, grouped) as a slide-in panel with a scrim
 (Radix Dialog: focus trapped, Escape / scrim / choosing a screen closes
 it, `aria-expanded` on the button, always starts closed). The top bar keeps
-the role's main screens (`primary`: technician and manager Dashboard and
+the role's main screens (`primary`: support engineer and manager Dashboard and
 Tickets, admin Users and Settings, customer Get help / My tickets / Chats),
 the page title, the theme menu and the user menu; under 768px the main
 screens fold into the panel.

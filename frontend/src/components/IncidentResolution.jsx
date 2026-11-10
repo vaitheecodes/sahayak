@@ -358,7 +358,7 @@ export default function IncidentResolution({ incident, onSaved, aiError }) {
   const resolved = incident.status === "resolved";
   if (!resolved && (incident.status !== "confirmed" || !incident.can.resolve)) {
     return incident.status === "confirmed" ? (
-      <p className="hint">The assigned technician or a manager resolves this incident.</p>
+      <p className="hint">The assigned support engineer or a manager resolves this incident.</p>
     ) : null;
   }
   const hasDraft = Boolean(incident.resolution.resolution_note);

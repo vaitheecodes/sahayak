@@ -126,7 +126,7 @@ def test_claim_makes_technician_owner_and_moves_to_in_progress(client):
     assert res.status_code == 200, res.text
     ws = res.json()
     assert ws["ticket"]["status"] == "in_progress"
-    assert ws["ticket"]["assignee"]["name"] == "Demo Technician"
+    assert ws["ticket"]["assignee"]["name"] == "Demo Support Engineer"
     assert ws["can"] == {"claim": False, "reply": True, "change_status": True, "note": True}
 
     unassigned = client.get("/api/staff/tickets?view=unassigned", headers=tech).json()
@@ -184,7 +184,7 @@ def test_public_reply_reaches_the_customer_thread(client, sent_emails):
     detail = client.get(f"/api/tickets/{ticket_id}", headers=customer).json()
     reply = [m for m in detail["messages"] if m["sender"] == "staff"]
     assert len(reply) == 1
-    assert reply[0]["sender_name"] == "Demo Technician"
+    assert reply[0]["sender_name"] == "Demo Support Engineer"
     assert reply[0]["sender_role"] == "Support Agent"
     assert reply[0]["subject"] == "Your website monitor"
     assert detail["ticket"]["status"] == "pending_customer"
@@ -255,7 +255,7 @@ def test_status_and_assignment_history_is_written(client):
 
     ws = client.get(f"/api/staff/tickets/{ticket_id}", headers=tech).json()
     assert ws["ticket"]["status"] == "open"
-    assert ws["ticket"]["assignee"]["name"] == "Demo Technician"  # owner kept on reopen
+    assert ws["ticket"]["assignee"]["name"] == "Demo Support Engineer"  # owner kept on reopen
     assert ws["status_history"][-1]["changed_by_name"] == "Dana Smith"
 
 
@@ -282,7 +282,7 @@ def test_status_change_events_show_to_customer_but_manager_reassign_does_not(cli
 
     events = [m["message"] for m in client.get(f"/api/tickets/{ticket_id}", headers=customer).json()["messages"]
               if m["sender"] == "system"]
-    assert "Demo Technician is now handling your ticket." in events
+    assert "Demo Support Engineer is now handling your ticket." in events
     assert "Status changed to Resolved." in events
     assert not any("manager" in e or "Reassigned" in e for e in events)
 
@@ -370,7 +370,7 @@ def test_manager_oversees_own_departments_read_only(client):
 
     overview = client.get("/api/manager/overview", headers=manager).json()
     assert [t["ticket_id"] for t in overview["tickets"]] == [in_scope]
-    (load,) = [w for w in overview["workload"] if w["name"] == "Demo Technician"]
+    (load,) = [w for w in overview["workload"] if w["name"] == "Demo Support Engineer"]
     assert load["in_progress"] == 1
     assert client.get(f"/api/staff/tickets/{in_scope}", headers=manager).json()["can"] == {
         "claim": False, "reply": False, "change_status": False, "note": False}

@@ -12,12 +12,12 @@ import { setProduct } from "@/utils/product";
 
 /* First-run setup for the admin, at /admin/settings: the product profile
  * (what Settings -> Product stores), a look at the categories and which
- * department owns each, then a department for every technician (a manager
+ * department owns each, then a department for every support engineer (a manager
  * can only hand tickets to technicians in their department). Everything
  * is saved through the same admin endpoints as Settings and Users, and
  * can be changed there later. */
 
-const STEPS = ["Product", "Categories", "Technicians' departments", "Done"];
+const STEPS = ["Product", "Categories", "Support engineers' departments", "Done"];
 
 function StepList({ current }) {
   return (
@@ -196,22 +196,22 @@ function TechniciansStep({ departments, onNext, onBack }) {
   return (
     <div className="flex max-w-[40rem] flex-col gap-4">
       <div>
-        <h2 className="m-0 text-lg font-semibold">Give each technician a department</h2>
-        <p className="m-0 mt-1 text-muted-fg">A manager can only hand tickets to technicians in their department.</p>
+        <h2 className="m-0 text-lg font-semibold">Give each support engineer a department</h2>
+        <p className="m-0 mt-1 text-muted-fg">A manager can only hand tickets to support engineers in their department.</p>
       </div>
       {technicians && (
         <p className={cn("m-0 flex items-center gap-2 font-medium", missing ? "text-warning" : "text-positive")} role="status">
           {missing ? <CircleAlert aria-hidden="true" className="size-4" /> : <Check aria-hidden="true" className="size-4" />}
           {missing === 0
-            ? "Every technician has a department."
-            : `${missing} of ${technicians.length} technician${technicians.length === 1 ? "" : "s"} still ${missing === 1 ? "has" : "have"} no department.`}
+            ? "Every support engineer has a department."
+            : `${missing} of ${technicians.length} support engineer${technicians.length === 1 ? "" : "s"} still ${missing === 1 ? "has" : "have"} no department.`}
         </p>
       )}
       {error && <Alert tone="negative">{error}</Alert>}
       {!technicians && !error && <Skeleton className="h-24" />}
       {technicians && technicians.length === 0 && (
         <p className="m-0 text-muted-fg">
-          No technicians yet. Add them under <Link to="/admin">Users</Link>; you can come back here any time.
+          No support engineers yet. Add them under <Link to="/admin">Users</Link>; you can come back here any time.
         </p>
       )}
       {technicians && technicians.length > 0 && (

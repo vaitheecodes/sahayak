@@ -266,7 +266,7 @@ def test_manager_dashboard_counts_series_and_response_times(client):
     assert d["created"] == 3 and d["resolved"] == 1
     assert sum(p["created"] for p in d["over_time"]) == 3 and sum(p["resolved"] for p in d["over_time"]) == 1
     assert d["open_by_priority"] == {"low": 0, "medium": 1, "high": 0, "urgent": 1}
-    assert {w["name"]: w["open"] for w in d["technician_workload"]} == {"Demo Technician": 1}
+    assert {w["name"]: w["open"] for w in d["technician_workload"]} == {"Demo Support Engineer": 1}
     assert other  # unassigned, open
     assert client.get("/api/manager/dashboard", params={"period": "last_decade"}, headers=manager).status_code == 422
 

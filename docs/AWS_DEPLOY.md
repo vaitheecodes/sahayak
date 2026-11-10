@@ -304,7 +304,7 @@ can't authenticate.
    create the first admin.
 4. Create the demo accounts. Production seeds no demo staff, so create
    them once:
-   - **Team → Add:** a manager (with a department) and a technician.
+   - **Team → Add:** a manager (with a department) and a support engineer.
      Each gets a temporary password and changes it on first sign-in.
      Sign in as each one once to do that.
    - **A customer:** sign up on the login page (no forced change).
@@ -876,7 +876,7 @@ The container log starts with `KB: <n> entries loaded from the database`
 support team), and `/api/meta` shows `kb_entries`.
 By hand:
 1. Sign in as the admin and change the password.
-2. Create a technician.
+2. Create a support engineer.
 3. As a customer, sign up, start a chat (Bedrock reply), raise a ticket
    with an attachment (S3 round trip), and download it.
 4. Six wrong passwords for one account give 429.

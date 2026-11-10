@@ -92,7 +92,7 @@ def _check_role(role: str) -> Role:
     if role == "admin":
         raise HTTPException(status_code=400, detail="Admin accounts can't be created here")
     if role not in ("customer", "technician", "manager"):
-        raise HTTPException(status_code=400, detail="Role must be customer, technician or manager")
+        raise HTTPException(status_code=400, detail="Role must be customer, support engineer (technician) or manager")
     return role  # type: ignore[return-value]
 
 

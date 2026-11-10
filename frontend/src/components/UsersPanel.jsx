@@ -12,7 +12,9 @@ import Toast from "./Toast";
  * change it at first sign-in. Deactivating blocks sign-in at once and
  * keeps the user's tickets. */
 
-const ROLES = { customer: "Customer", technician: "Technician", manager: "Manager" };
+const ROLES = { customer: "Customer", technician: "Support Engineer", manager: "Manager" };
+// The long form, for the role dropdowns (the role value stays "technician").
+const ROLE_OPTIONS = { ...ROLES, technician: "Technical Support Engineer" };
 
 function DepartmentSelect({ id, value, onChange, departments }) {
   return (
@@ -74,7 +76,7 @@ function AddUserForm({ departments, onCreated, onCancel }) {
             Role
           </label>
           <select id={ids.role} value={role} onChange={(e) => setRole(e.target.value)}>
-            {Object.entries(ROLES).map(([key, label]) => (
+            {Object.entries(ROLE_OPTIONS).map(([key, label]) => (
               <option key={key} value={key}>
                 {label}
               </option>
@@ -161,7 +163,7 @@ function EditUserForm({ user, departments, onSaved, onCancel }) {
               Role
             </label>
             <select id={ids.role} value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="technician">Technician</option>
+              <option value="technician">Technical Support Engineer</option>
               <option value="manager">Manager</option>
             </select>
           </div>
@@ -290,7 +292,7 @@ export default function UsersPanel() {
           <span>Role</span>
           <select id={ids.role} value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="">Any</option>
-            {Object.entries(ROLES).map(([key, label]) => (
+            {Object.entries(ROLE_OPTIONS).map(([key, label]) => (
               <option key={key} value={key}>
                 {label}
               </option>

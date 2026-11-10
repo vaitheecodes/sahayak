@@ -11,7 +11,7 @@ product's own content (`kb_ingester/`; one URL at a time so far).
 - **The AI** answers what it can, asks one targeted question when unsure,
   and hands everything else to people with a summary and suggested next
   steps, so nobody has to repeat themselves.
-- **Technicians** claim tickets from an unassigned queue, reply to the
+- **Support engineers** claim tickets from an unassigned queue, reply to the
   customer, and keep private internal notes.
 - **Managers** review AI-detected *incidents* (several customers reporting
   what may be one problem) for their department, and oversee workload.
@@ -46,7 +46,7 @@ React (Vite) — frontend/            one login page; portals per role:
 FastAPI — backend/
   main.py            auth, customer tickets, attachments, /meta
   chats.py           AI chat sessions (separate from tickets)
-  staff_tickets.py   technician workspace, manager overview
+  staff_tickets.py   support engineer workspace, manager overview
   incidents.py       AI incident correlation + manager review
   admin.py           accounts, departments, settings, audit log
   ticket_lifecycle.py / audit.py / app_settings.py
@@ -102,7 +102,7 @@ account:
   is logged (`backend/auth.py`). In production (`APP_ENV=production`) the
   server refuses to start without them.
 - **Demo staff** (development only, never in production): a manager
-  (Product Support department) and a technician; credentials in
+  (Product Support department) and a support engineer; credentials in
   `backend/seed_data.py`.
 - **Customers** sign up on the login page (or the admin creates them).
 
@@ -182,7 +182,7 @@ by `db.init_db()` on every startup — no separate migration step.
 Migrations are in place and non-destructive (columns added, data moved,
 never dropped), and safe to run repeatedly:
 
-- legacy `agents` → `staff` (technicians), `assigned_agent_id` →
+- legacy `agents` → `staff` (support engineers), `assigned_agent_id` →
   `assigned_technician_id`
 - legacy statuses `awaiting_reply` → `pending_customer`, `assigned` →
   `in_progress`
@@ -301,7 +301,7 @@ incident summary, post-incident summary draft, incident-question parsing):
 - **Answers stay grounded** (`backend/request_kind.py`,
   `ai_service/grounding.py`): steps the matched KB entry doesn't support
   (menu paths, hostnames, ports, numbers) are dropped from answers and
-  from the technician's suggested steps ("No KB match - needs triage"
+  from the support engineer's suggested steps ("No KB match - needs triage"
   when nothing matches); the exact error message is asked for only after
   the customer reported an error.
 
@@ -310,12 +310,12 @@ incident summary, post-incident summary draft, incident-question parsing):
 | Role | Signs in at | Can |
 |---|---|---|
 | Customer | `/login` → `/customer` | chat with the AI, raise tickets with attachments, follow up, reopen, see chat history |
-| Technician | → `/technician` | dashboard of their own tickets (needs my attention, my numbers), tickets (unassigned / mine / all open / recently resolved, filters), read-only chats, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
-| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a technician, resolve & send the post-incident summary), dashboard and SLA for their department, department tickets (reassign to the department's technicians, priority), chats, chat reviews, Try a ticket (`/try-a-ticket`) |
+| Support engineer | → `/technician` | dashboard of their own tickets (counts by status for the period, the matching list, charts), tickets (unassigned / mine / all open / recently resolved, filters), read-only chats, claim, reply, internal notes, status, AI hand-off panel, chat reviews, incidents assigned to them (resolve & send summary), Try a ticket (`/try-a-ticket`) |
+| Manager (one department) | → `/manager` | incidents for their department (confirm / investigate / dismiss, correct departments, assign a support engineer, resolve & send the post-incident summary), dashboard and SLA for their department, department tickets (reassign to the department's support engineers, priority), chats, chat reviews, Try a ticket (`/try-a-ticket`) |
 | Anyone | `/incidents`, `/docs` | public incident history and the read-only docs (routing policy, ticket statuses), no login |
-| Admin (single account) | → `/admin` | SLA targets (in Settings), users (customers, technicians, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to tickets, dashboards, SLA reports, chats, chat reviews, incidents or Try a ticket (403) |
+| Admin (single account) | → `/admin` | SLA targets (in Settings), users (customers, support engineers, managers: create, edit, deactivate, reset password), departments, settings, activity/audit log. No access to tickets, dashboards, SLA reports, chats, chat reviews, incidents or Try a ticket (403) |
 
-After upgrading, the admin must give each technician a department under Users, or a manager's reassign list stays empty.
+After upgrading, the admin must give each support engineer a department under Users, or a manager's reassign list stays empty.
 
 **Chat.** A chat is not a ticket. If the customer confirms it's solved, it
 closes with an AI summary and an internal review record (no ticket). If it
@@ -339,7 +339,7 @@ or merge tickets. Once a manager confirms one, affected customers see a
 neutral "we're aware of this issue" notice.
 
 **Resolving an incident.** Only a confirmed incident can be resolved, by
-a manager or the technician it's assigned to: they enter what was done,
+a manager or the support engineer it's assigned to: they enter what was done,
 when the fix was applied (IST) and, optionally, the root cause. The AI
 drafts a customer summary (what happened, what was fixed, what to do) and
 an internal one from the incident's facts and that note only; code adds
@@ -394,7 +394,7 @@ tests script the model's replies). Highlights:
 
 | File | Covers |
 |---|---|
-| `test_e2e_helpdesk.py` | the full journey: chat → escalation → technician claim, reply + private note → customer view → correlated incident → manager confirms (real pipeline, scripted model) |
+| `test_e2e_helpdesk.py` | the full journey: chat → escalation → support engineer claim, reply + private note → customer view → correlated incident → manager confirms (real pipeline, scripted model) |
 | `test_roles_auth.py` | admin bootstrap, roles, login routing, forced password change, departments |
 | `test_chat_sessions.py`, `test_chat_followup_gates.py`, `test_handoff_escalation.py` | chat resolution vs escalation, AI-failure handling, review records, migration |
 | `test_ticket_workspace.py` | claim race, public vs internal visibility, history, manager scope |
@@ -422,7 +422,7 @@ and clicking through each portal in a browser at desktop and phone widths.
   ticket with summary, suggested steps and linked transcript.
 - Email-style tickets with attachments (validated, private storage,
   authorised download), replies, reopen, unread markers.
-- Technician workspace: queues, search/filters, atomic claim, public
+- Support engineer workspace: queues, search/filters, atomic claim, public
   replies vs private notes (filtered in SQL for customers), status
   changes, history, AI hand-off panel.
 - Manager department oversight and workload; AI incident correlation
@@ -432,7 +432,7 @@ and clicking through each portal in a browser at desktop and phone widths.
   linked ticket, idempotent with per-ticket delivery status), incident
   memory answering "was there an outage?", public incident history page.
 - Admin console: ticket dashboard (status, priority, per-day volume, open
-  work by technician, first-response and resolution times), users with
+  work by support engineer, first-response and resolution times), users with
   one-time temporary passwords, optional SLA per priority (24x7 clock,
   paused while waiting on the customer, compliance and at-risk lists, SLA
   shown on staff ticket cards), departments, settings, incidents, audit log.
@@ -489,7 +489,7 @@ tables in `backend/db.py` and `migrations/postgres/0003_kb.sql`):
 
 ### Building it from a product's pages
 
-Managers and technicians find it under **Knowledge base** in the
+Managers and support engineers find it under **Knowledge base** in the
 sidebar (the admin doesn't review the KB).
 
 1. **Sources** (manager): add a public page URL, upload a TXT, Markdown
@@ -507,10 +507,10 @@ sidebar (the admin doesn't review the KB).
    limits) and the next run continues.
 3. **Review queue**: drafts with their flags (possible duplicate, source
    changed, suspicious text, answer removed). The editor shows each step
-   beside the passage it is quoted from. Technicians edit; managers
+   beside the passage it is quoted from. Support engineers edit; managers
    approve or reject. Only approved entries are used by the bot.
 4. **Terms / Categories**: the drafter proposes product terms and
-   categories; technicians can propose terms too; managers confirm,
+   categories; support engineers can propose terms too; managers confirm,
    reject or merge them.
 
 Every step of a draft must quote a passage of its page, and a second

@@ -58,7 +58,7 @@ export const NAV = {
     ],
   },
   technician: {
-    scope: "Technician workspace",
+    scope: "Support engineer workspace",
     primary: [
       { to: "/technician", label: "Dashboard", end: true },
       { to: "/technician/tickets", label: "Tickets" },
@@ -137,7 +137,7 @@ export const NAV = {
 
 export const ROLE_LABEL = {
   customer: "Customer",
-  technician: "Technician",
+  technician: "Support Engineer",
   manager: "Manager",
   admin: "Admin",
 };

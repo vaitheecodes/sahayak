@@ -109,12 +109,12 @@ def _ticket_for_staff(conn, ticket_id: str, user: dict):
 
 def _require_owner(ticket, user: dict) -> None:
     if user["role"] != "technician":
-        raise HTTPException(status_code=403, detail="Technician role required")
+        raise HTTPException(status_code=403, detail="Support engineer role required")
     if ticket["assigned_technician_id"] != user["id"]:
         raise HTTPException(
             status_code=403,
             detail="Claim this ticket first" if ticket["assigned_technician_id"] is None
-            else "This ticket belongs to another technician",
+            else "This ticket belongs to another support engineer",
         )
 
 
@@ -442,7 +442,7 @@ def post_staff_message(
     emailed when email is configured) or internal note (any technician;
     staff only)."""
     if user["role"] != "technician":
-        raise HTTPException(status_code=403, detail="Technician role required")
+        raise HTTPException(status_code=403, detail="Support engineer role required")
     outbox = Outbox()
     conn = db.get_connection()
     try:

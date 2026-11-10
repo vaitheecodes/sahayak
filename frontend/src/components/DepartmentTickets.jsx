@@ -40,7 +40,7 @@ function TechnicianAssignCell({ ticket, technicians, onReassigned }) {
     <div>
       <select
         className="select-compact"
-        aria-label={`Handling technician for ticket ${ticket.ticket_id}`}
+        aria-label={`Support engineer for ticket ${ticket.ticket_id}`}
         value={ticket.assigned_technician_id || ""}
         onChange={handleChange}
         disabled={saving}
@@ -168,7 +168,7 @@ export default function DepartmentTickets() {
         </label>
         <span className="hint">
           {visible.length} ticket{visible.length === 1 ? "" : "s"} in {data.department.name}
-          {technicians.length === 0 && " · no technicians work this department yet, so nothing can be reassigned"}
+          {technicians.length === 0 && ". No support engineers work this department yet, so nothing can be reassigned."}
         </span>
       </div>
 
@@ -205,7 +205,7 @@ export default function DepartmentTickets() {
               <th>Status</th>
               <th>Priority</th>
               <th>SLA</th>
-              <th>Technician</th>
+              <th>Support engineer</th>
               <th>Created</th>
               <th>
                 <span className="sr-only">Open</span>

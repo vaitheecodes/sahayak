@@ -54,7 +54,7 @@ function Settings() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
         <p className="m-0 text-muted-fg">
-          Setup walks through the product, the categories and each technician&apos;s department.
+          Setup walks through the product, the categories and each support engineer&apos;s department.
         </p>
         <Button variant="outline" onClick={() => setSetup(true)}>
           Run setup again

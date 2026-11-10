@@ -79,7 +79,7 @@ class VisibilityRequest(BaseModel):
 def _resolvable(conn, incident_id: str, user: dict):
     cluster = incidents.cluster_or_404(conn, incident_id, user)
     if not incidents.can_resolve(cluster, user, conn):
-        raise HTTPException(status_code=403, detail="Only a manager or the assigned technician can resolve this")
+        raise HTTPException(status_code=403, detail="Only a manager or the assigned support engineer can resolve this")
     return cluster
 
 

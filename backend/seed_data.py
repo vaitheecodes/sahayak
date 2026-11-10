@@ -51,7 +51,7 @@ DEMO_STAFF = [
         "department": "Product Support",
     },
     {
-        "name": "Demo Technician",
+        "name": "Demo Support Engineer",
         "email": "technician@example.com",
         "password": "technician-demo-pass",
         "role": "technician",
@@ -75,6 +75,9 @@ def seed_demo_staff(conn) -> None:
             if department and person["role"] == "technician":
                 conn.execute("UPDATE staff SET department_id = ? WHERE email = ? AND department_id IS NULL",
                              (department["department_id"], person["email"]))
+            # Demo databases from before the rename to Support Engineer.
+            conn.execute("UPDATE staff SET name = ? WHERE email = ? AND name = 'Demo Technician'",
+                         (person["name"], person["email"]))
             continue
         prefix = "MGR" if person["role"] == "manager" else "TECH"
         staff_id = f"{prefix}-{uuid.uuid4().hex[:8]}"

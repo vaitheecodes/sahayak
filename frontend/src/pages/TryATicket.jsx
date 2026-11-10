@@ -159,7 +159,7 @@ export default function TryATicket() {
                         <p className="m-0 whitespace-pre-line">{result.ai_response}</p>
                       ) : (
                         result.route === "human" && (
-                          <p className="m-0">Technicians see the ticket text, not this category or confidence.</p>
+                          <p className="m-0">Support engineers see the ticket text, not this category or confidence.</p>
                         )
                       )}
                     </Alert>

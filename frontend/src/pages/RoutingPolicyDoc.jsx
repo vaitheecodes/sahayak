@@ -12,10 +12,10 @@ import { categoryLabel } from "@/utils/categories";
  * the admin's saved values applied). Nobody signs in to read it. */
 
 const STATUS_MEANING = [
-  ["open", "With the support team, waiting for a technician (or the owner's next step)."],
-  ["in_progress", "A technician has claimed it and is working on it."],
+  ["open", "With the support team, waiting for a support engineer (or the owner's next step)."],
+  ["in_progress", "A support engineer has claimed it and is working on it."],
   ["pending_customer", "Waiting for the customer's reply. The SLA resolution clock is paused."],
-  ["resolved", "Answered by the Support Bot or a technician. A customer reply reopens it."],
+  ["resolved", "Answered by the Support Bot or a support engineer. A customer reply reopens it."],
   ["closed", "Finished. A closed ticket takes no further replies."],
 ];
 

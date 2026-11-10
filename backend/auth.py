@@ -382,6 +382,10 @@ def get_current_user(
     return _load_user(credentials)
 
 
+# How people read the roles (the value stays "technician").
+_ROLE_NAMES = {"technician": "Support engineer"}
+
+
 def require_user(*roles: Role):
     """Dependency factory: the authenticated user must have one of
     `roles` and must not have a pending forced password change. Returns
@@ -393,9 +397,8 @@ def require_user(*roles: Role):
     ) -> dict:
         user = _load_user(credentials)
         if user["role"] not in roles:
-            raise HTTPException(
-                status_code=403, detail=f"{' or '.join(r.capitalize() for r in roles)} role required"
-            )
+            names = " or ".join(_ROLE_NAMES.get(r, r.capitalize()) for r in roles)
+            raise HTTPException(status_code=403, detail=f"{names} role required")
         if user["must_change_password"]:
             raise HTTPException(status_code=403, detail="Password change required")
         return user

@@ -192,9 +192,9 @@ def manager_reassign(ticket_id: str, body: ReassignRequest, manager_id: str = De
                 "SELECT name, department_id FROM staff WHERE staff_id = ? AND role = 'technician' AND active = 1",
                 (body.technician_id,)).fetchone()
             if technician is None:
-                raise HTTPException(status_code=404, detail="Technician not found")
+                raise HTTPException(status_code=404, detail="Support engineer not found")
             if technician["department_id"] != department["department_id"]:
-                raise HTTPException(status_code=400, detail="That technician doesn't work in your department")
+                raise HTTPException(status_code=400, detail="That support engineer doesn't work in your department")
             note = f"Reassigned to {technician['name']} by a manager."
         else:
             note = "Returned to the unassigned queue by a manager."
