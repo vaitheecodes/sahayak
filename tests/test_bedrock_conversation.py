@@ -181,10 +181,11 @@ def test_chat_turn_after_an_ai_failure_sends_a_valid_request(app_client, strict)
     assert first["messages"][-1] == {**first["messages"][-1], "role": "ai", "content": "Restart the agent service."}
     session_id = first["session_id"]
 
-    # Turn 2: Bedrock throttles twice (the call and its one retry). The
-    # customer's message is kept, nothing else.
+    # Turn 2: Bedrock throttles every call: the continuation check and its
+    # one retry (which then falls back to the pipeline), and the pipeline's
+    # call and its retry. The customer's message is kept, nothing else.
     throttled = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "Converse")
-    strict.fail_next = [throttled, throttled]
+    strict.fail_next = [throttled] * 4
     second = app_client.post(f"/api/chats/{session_id}/messages",
                              json={"message": "Which log file should I check?"}, headers=headers).json()
     assert second["ai_error"] == chats.AI_UNAVAILABLE
