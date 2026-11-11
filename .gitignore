@@ -42,3 +42,7 @@ build/
 # Design-skill working files (taste-skill, impeccable)
 .taste-skill/
 .impeccable/
+
+# device log dumps
+*.zip
+bugreport*
