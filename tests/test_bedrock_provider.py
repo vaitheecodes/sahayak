@@ -16,7 +16,8 @@ import itertools
 import logging
 
 import pytest
-from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError, ReadTimeoutError
+from botocore.exceptions import (ClientError, EndpointConnectionError, NoCredentialsError, ProxyConnectionError,
+                                 ReadTimeoutError)
 from fastapi.testclient import TestClient
 
 from backend import categories, db, main, runtime
@@ -262,10 +263,11 @@ def test_usage_hook_reports_tokens_and_latency(real_complete):
 
 
 # ---------------------------------------------------------------------------
-# Error mapping: AWS messages never logged; only throttling and timeouts
-# are retried, once
+# Error mapping: AWS messages never logged; only throttling, timeouts and
+# connection errors (endpoint or proxy unreachable) are retried, once
 # ---------------------------------------------------------------------------
 _TIMEOUT = ReadTimeoutError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com")
+_PROXY = ProxyConnectionError(proxy_url="http://127.0.0.1:3128", error="refused")
 
 
 @pytest.mark.parametrize("error, message, level, calls", [
@@ -280,7 +282,8 @@ _TIMEOUT = ReadTimeoutError(endpoint_url="https://bedrock-runtime.ap-south-1.ama
     (_client_error("SomethingNewException"), "Bedrock error (SomethingNewException)", logging.WARNING, 1),
     (_TIMEOUT, "timed out after", logging.WARNING, 2),
     (EndpointConnectionError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com"),
-     "Could not reach Bedrock", logging.WARNING, 1),
+     "Could not reach Bedrock", logging.WARNING, 2),
+    (_PROXY, "Could not reach Bedrock", logging.WARNING, 2),
     (NoCredentialsError(), "No AWS credentials", logging.ERROR, 1),
 ])
 def test_errors_are_mapped_retried_only_when_transient_and_never_leak(
@@ -297,7 +300,7 @@ def test_errors_are_mapped_retried_only_when_transient_and_never_leak(
 
 
 @pytest.mark.parametrize("error", [_client_error("ThrottlingException"), _client_error("ModelTimeoutException"),
-                                   _TIMEOUT])
+                                   _TIMEOUT, _PROXY])
 def test_a_transient_error_succeeds_on_the_one_retry(real_complete, caplog, sleeps, error):
     client = _bedrock(error, _tool_reply({"category": "SETUP", "confidence": 0.9}))
     with caplog.at_level(logging.WARNING):

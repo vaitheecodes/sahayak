@@ -45,7 +45,7 @@ from typing import Any, Protocol
 logger = logging.getLogger(__name__)
 
 
-FAILURE_KINDS = ("throttling", "timeout", "access_denied", "validation", "parse_schema",
+FAILURE_KINDS = ("throttling", "timeout", "network", "access_denied", "validation", "parse_schema",
                  "filter_rejected", "config", "unknown")
 _SAFE_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{0,63}$")
 
@@ -520,7 +520,8 @@ class BedrockBackend:
 
     def generate(self, system_prompt, user_content, *, max_tokens, json_schema=None, extra_messages=()):
         from botocore.exceptions import (BotoCoreError, ClientError, ConnectTimeoutError,
-                                         EndpointConnectionError, NoCredentialsError, ReadTimeoutError)
+                                         NoCredentialsError, ReadTimeoutError)
+        from botocore.exceptions import ConnectionError as BotoConnectionError
 
         request = self.request(system_prompt, user_content, max_tokens=max_tokens,
                                json_schema=json_schema, extra_messages=extra_messages,
@@ -531,7 +532,9 @@ class BedrockBackend:
             try:
                 response = client.converse(**request)
             except Exception as exc:  # noqa: BLE001 — sorted below
-                transient = isinstance(exc, (ReadTimeoutError, ConnectTimeoutError)) or (
+                # Connection errors (endpoint or proxy unreachable) include a
+                # local proxy dropping one call; one retry, like a timeout.
+                transient = isinstance(exc, (ReadTimeoutError, BotoConnectionError)) or (
                     isinstance(exc, ClientError)
                     and exc.response.get("Error", {}).get("Code") in BEDROCK_RETRY_CODES)
                 if not transient:
@@ -552,9 +555,9 @@ class BedrockBackend:
         except NoCredentialsError:
             raise ConfigError("No AWS credentials found: set AWS_PROFILE locally, or give the "
                               "service an IAM role", code="NoCredentialsError", attempts=attempts) from None
-        except EndpointConnectionError:
-            raise BackendError(f"Could not reach Bedrock in {self.region()}", code="EndpointConnectionError",
-                               attempts=attempts) from None
+        except BotoConnectionError as exc:
+            raise BackendError(f"Could not reach Bedrock in {self.region()}", kind="network",
+                               code=type(exc).__name__, attempts=attempts) from None
         except BotoCoreError as exc:
             raise BackendError(f"Bedrock request failed ({type(exc).__name__})", code=type(exc).__name__,
                                attempts=attempts) from None

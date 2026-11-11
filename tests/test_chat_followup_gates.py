@@ -222,3 +222,34 @@ def test_genuinely_new_topic_reruns_pipeline(client, monkeypatch):
     after = _send(client, headers, chat["session_id"], "separately, how do I install the agent on Ubuntu")
     assert len(stub.invocations) == calls_before + 1
     assert after["status"] == "active"
+
+
+def test_a_failed_continuation_check_goes_down_the_normal_path(client, monkeypatch):
+    """The continuation check is only a shortcut: a dropped connection (a
+    local proxy refusing one call) must not fail the turn ("AI assistant is
+    unavailable"); the message is classified as new, and the failure is
+    recorded with outcome "fallback"."""
+    from backend.ai_service import AIError, provider
+
+    headers = _signup(client)
+    chat, stub = _start_chat(client, headers, _ANSWERED)
+
+    def _proxy_down(*args, **kwargs):
+        raise AIError("Could not reach Bedrock", provider.AIFailure(
+            kind="network", operation="ContinuationVerdict", code="ProxyConnectionError"))
+
+    monkeypatch.setattr(graph, "is_continuation_of_prior_response", _proxy_down)
+    stub._results.append({**_ANSWERED, "ai_response": "Open Settings and pick a region."})
+
+    calls_before = len(stub.invocations)
+    after = _send(client, headers, chat["session_id"], "steps please")
+    assert len(stub.invocations) == calls_before + 1
+    assert after["status"] == "active" and not after.get("ai_error")
+    conn = db.get_connection()
+    try:
+        details = [row["detail"] for row in conn.execute(
+            "SELECT detail FROM audit_events WHERE action = 'chat.ai_failure' AND entity_id = ?",
+            (chat["session_id"],))]
+    finally:
+        conn.close()
+    assert any('"network"' in d and '"fallback"' in d for d in details)

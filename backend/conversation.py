@@ -181,7 +181,7 @@ def followup_gate(message_text: str, prior_ai_response: str | None, answered: bo
        topic, but the hard override must still win.
     4. classify — anything else goes through the full pipeline.
 
-    May raise (the continuation check is an LLM call)."""
+    Never raises for the continuation check: a failed check means classify."""
     if handoff_signals.is_escalation_acceptance(message_text, prior_ai_response or ""):
         return "handoff"
     if answered and is_closing_acknowledgment(message_text):
@@ -191,10 +191,9 @@ def followup_gate(message_text: str, prior_ai_response: str | None, answered: bo
             if graph.is_continuation_of_prior_response(message_text, prior_ai_response):
                 return "continuation"
         except AIError as exc:
-            # The model answered but not in the expected shape: treat the
-            # message as new (the full pipeline) rather than failing the
-            # turn. Provider errors still raise.
-            if exc.failure is None or exc.failure.kind != "parse_schema":
-                raise
-            exc.failure.outcome = "fallback"
+            # The check is only a shortcut: whatever made it fail (a reply
+            # in the wrong shape, a dropped connection), treat the message
+            # as new (the full pipeline) rather than failing the turn.
+            if exc.failure is not None:
+                exc.failure.outcome = "fallback"
     return "classify"

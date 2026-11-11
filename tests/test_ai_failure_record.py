@@ -17,7 +17,7 @@ import itertools
 import json
 
 import pytest
-from botocore.exceptions import ClientError, NoCredentialsError, ReadTimeoutError
+from botocore.exceptions import ClientError, NoCredentialsError, ProxyConnectionError, ReadTimeoutError
 from fastapi.testclient import TestClient
 
 from backend import chats, db, main, runtime
@@ -81,6 +81,8 @@ def _audit_rows(session_id):
     (_error("ModelTimeoutException"), "timeout", "ModelTimeoutException", 2),
     (ReadTimeoutError(endpoint_url="https://bedrock-runtime.ap-south-1.amazonaws.com"), "timeout",
      "ReadTimeoutError", 2),
+    (ProxyConnectionError(proxy_url="http://127.0.0.1:3128", error="refused"), "network",
+     "ProxyConnectionError", 2),
     (_error("AccessDeniedException"), "access_denied", "AccessDeniedException", 1),
     (_error("ValidationException"), "validation", "ValidationException", 1),
     (_error("ResourceNotFoundException"), "config", "ResourceNotFoundException", 1),
@@ -127,28 +129,34 @@ def test_a_provider_failure_is_recorded_on_the_chat(app_client, strict):
                             headers=headers).json()
     assert first["ai_error"] is None
     sid = first["session_id"]
-    strict.fail_next = [_error("ThrottlingException")] * 2
+    # The continuation check fails (and falls back to the full pipeline),
+    # then the pipeline's own call fails too: the customer sees "AI
+    # unavailable" and both failures are recorded.
+    strict.fail_next = [_error("ThrottlingException")] * 4
     second = app_client.post(f"/api/chats/{sid}/messages", json={"message": CUSTOMER_TEXT}, headers=headers).json()
     assert second["ai_error"] == chats.AI_UNAVAILABLE
 
     rows = [r for r in _audit_rows(sid) if r["action"] == "chat.ai_failure"]
-    assert len(rows) == 1 and rows[0]["entity"] == "chat" and rows[0]["actor_id"] == "system"
-    detail = json.loads(rows[0]["detail"])
-    assert {k: detail[k] for k in ("kind", "code", "attempts", "outcome")} == {
-        "kind": "throttling", "code": "ThrottlingException", "attempts": 2, "outcome": "failed"}
-    assert detail["operation"] == "ContinuationVerdict" and isinstance(detail["latency_ms"], int)
-    assert "SECRET-USER" not in rows[0]["detail"] and "zebracorn" not in rows[0]["detail"]
+    assert len(rows) == 2 and all(r["entity"] == "chat" and r["actor_id"] == "system" for r in rows)
+    details = [json.loads(r["detail"]) for r in rows]
+    assert [(d["operation"], d["outcome"]) for d in details] == [
+        ("ContinuationVerdict", "fallback"), (details[1]["operation"], "failed")]
+    for detail in details:
+        assert {k: detail[k] for k in ("kind", "code", "attempts")} == {
+            "kind": "throttling", "code": "ThrottlingException", "attempts": 2}
+        assert isinstance(detail["latency_ms"], int)
+    assert all("SECRET-USER" not in r["detail"] and "zebracorn" not in r["detail"] for r in rows)
 
     view = app_client.get(f"/api/admin/chats/{sid}", headers=_admin(app_client))
     assert view.status_code == 200
     body = view.json()
-    assert [f["kind"] for f in body["ai_failures"]] == ["throttling"]
+    assert [f["kind"] for f in body["ai_failures"]] == ["throttling", "throttling"]
     assert body["message_counts"] == {"customer": 2, "ai": 1}
     assert "zebracorn" not in view.text
     assert app_client.get(f"/api/admin/chats/{sid}", headers=headers).status_code in (401, 403)
     audit = app_client.get("/api/admin/audit", params={"entity": "chat", "entity_id": sid},
                            headers=_admin(app_client)).json()
-    assert [e["action"] for e in audit["events"]] == ["chat.ai_failure"]
+    assert [e["action"] for e in audit["events"]] == ["chat.ai_failure", "chat.ai_failure"]
 
 
 def test_a_bug_in_the_turn_is_recorded_as_unknown(app_client, monkeypatch):
@@ -201,9 +209,12 @@ def test_a_ticket_follow_up_failure_is_recorded_on_the_ticket(app_client, strict
                                                     "description": "How do I install the Brightdesk app on Android?"},
                               headers=headers).json()
     assert created["route"] == "ai"
-    strict.fail_next = [_error("AccessDeniedException")]
+    # The continuation check fails and falls back; the pipeline call fails too.
+    strict.fail_next = [_error("AccessDeniedException")] * 2
     res = app_client.post(f"/api/tickets/{created['ticket_id']}/reply",
                           json={"message": "Which email should I sign in with?"}, headers=headers).json()
     assert res.get("ai_error")
     rows = [json.loads(r["detail"]) for r in _audit_rows(created["ticket_id"]) if r["action"] == "ticket.ai_failure"]
-    assert [(r["kind"], r["code"], r["attempts"]) for r in rows] == [("access_denied", "AccessDeniedException", 1)]
+    assert [(r["kind"], r["code"], r["attempts"], r["outcome"]) for r in rows] == [
+        ("access_denied", "AccessDeniedException", 1, "fallback"),
+        ("access_denied", "AccessDeniedException", 1, "failed")]
