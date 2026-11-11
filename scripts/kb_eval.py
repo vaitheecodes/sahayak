@@ -5,7 +5,7 @@ Each page is cleaned, chunked and drafted exactly as an ingest run would
 per page and in total:
 
   instruction recall  share of the page's instructions (expected.json)
-                      covered by a kept step's quote
+                      covered by a kept step's quote or a kept snippet
   steps               proposed by the model / kept after the checks
   invented            steps with no quote, or that the second check said
                       their quote doesn't support
@@ -19,6 +19,7 @@ Lite. Nothing is stored; --out writes the drafts and metrics as JSON.
 
     AI_PROVIDER=bedrock AWS_PROFILE=ticketapp .venv/bin/python scripts/kb_eval.py --out eval.json
     ... scripts/kb_eval.py --drafting-model apac.amazon.nova-pro-v1:0   (drafting only)
+    ... scripts/kb_eval.py --pages .local/kb-eval   (pages kept out of git, with their own expected.json)
 """
 
 from __future__ import annotations
@@ -48,8 +49,8 @@ def _price(model_id: str) -> tuple[float, float]:
     return next((p for key, p in PRICES.items() if key in model_id), PRICES["nova-lite"])
 
 
-def evaluate(name: str, spec: dict, usage: list) -> dict:
-    page = clean.html_to_text((PAGES / f"{name}.html").read_bytes())
+def evaluate(name: str, spec: dict, usage: list, pages: Path = PAGES) -> dict:
+    page = clean.html_to_text((pages / f"{name}.html").read_bytes())
     chunks, _ = chunking.chunk_text(page.text)
     drafts, dropped, calls, incomplete = [], Counter(), 0, 0
     start = len(usage)
@@ -71,6 +72,7 @@ def evaluate(name: str, spec: dict, usage: list) -> dict:
                 incomplete += 1
             drafts.append({**entry, "section": chunk.heading_path})
     quotes = [checks.normalize(s["quote"]) for d in drafts for s in d["steps"]]
+    quotes += [checks.normalize(s) for d in drafts for s in d.get("snippets", [])]
     covered = [k for k in spec["instructions"] if any(k in q for q in quotes)]
     kept = sum(len(d["steps"]) for d in drafts)
     tokens_in = sum(u.get("inputTokens", 0) for u in usage[start:])
@@ -92,13 +94,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", help="write drafts and metrics as JSON")
     parser.add_argument("--page", action="append", help="only these fixture pages")
+    parser.add_argument("--pages", type=Path, default=PAGES,
+                        help="a folder of pages and their expected.json (default: the fixture pages)")
     parser.add_argument("--drafting-model", help="Bedrock model ID for drafting only (as the ai_models setting)")
     args = parser.parse_args()
     if args.drafting_model:
         from backend import app_settings
 
         app_settings._overrides["ai_models"] = {"draft_kb_entries": args.drafting_model}
-    spec = json.loads((PAGES / "expected.json").read_text())["pages"]
+    spec = json.loads((args.pages / "expected.json").read_text())["pages"]
     usage: list = []
     if provider.provider_name() == "bedrock":
         provider.set_backend(backends.BedrockBackend(on_usage=usage.append))
@@ -106,7 +110,7 @@ def main() -> int:
         drafting_model = backends.BedrockBackend.model_id()
     print(f"provider={provider.provider_name()} drafting model={drafting_model} "
           f"(cost uses its price for every call)")
-    results = [evaluate(name, spec[name], usage) for name in spec if not args.page or name in args.page]
+    results = [evaluate(name, spec[name], usage, args.pages) for name in spec if not args.page or name in args.page]
     header = f"{'page':24} {'recall':>8} {'kept/prop':>10} {'invented':>8} {'quote fail':>10} {'incompl':>7} " \
              f"{'drafts':>6} {'calls':>5} {'cost $':>8}"
     print(header)

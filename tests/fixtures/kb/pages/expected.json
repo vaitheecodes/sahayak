@@ -1,5 +1,5 @@
 {
-  "_about": "Expected instructions per fixture page, for scripts/kb_eval.py. Each key is a phrase found (case-insensitive, whitespace-normalised) in exactly one instruction of the page; a drafted step covers it when its quote contains the phrase. ordered_lists: the numbered procedures on the page and their step counts.",
+  "_about": "Expected instructions per fixture page, for scripts/kb_eval.py. Each key is a phrase found (case-insensitive, whitespace-normalised) in exactly one instruction of the page; a drafted step covers it when its quote contains the phrase, and a snippet when it contains it. ordered_lists: the numbered procedures on the page and their step counts.",
   "pages": {
     "python_venv": {
       "url": "https://docs.python.org/3/tutorial/venv.html",
@@ -54,6 +54,15 @@
         "custom hours: if the time off requested",
         "description: enter a description",
         "supporting document: this field only appears"
+      ]
+    },
+    "widget_csp": {
+      "url": "https://help.beaconrum.example.com/troubleshooting.html",
+      "licence": "Synthetic test page written for Sahayak (fictional product and domains)",
+      "ordered_lists": [],
+      "instructions": [
+        "script-src 'self' 'unsafe-inline' https://static.beaconrum.example.com",
+        "connect-src 'self' https://collect.beaconrum.example.com"
       ]
     }
   }

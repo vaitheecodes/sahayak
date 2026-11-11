@@ -1,0 +1,23 @@
+<!-- Synthetic page written for Sahayak's tests (no third-party text; the product and domains are fictional). Shape of a real help page that broke a live chat: one troubleshooting section whose fix is a configuration line allowing two domains under two directives, a note that the domains change by region, no numbered steps, and nothing about how to check a policy. -->
+<html><head><title>Troubleshooting Beacon RUM</title></head><body>
+<nav><a href="/">Help home</a> &gt; Beacon RUM</nav>
+<main>
+<h1>Troubleshooting Beacon RUM</h1>
+<p>Most problems with Beacon RUM come from the snippet, the browser or the network. Work through the section that matches what you see.</p>
+<h3>6. Data stops after a page change</h3>
+<p>If data stops after you change a page template, make sure the Beacon RUM snippet is still in the head of every page and that it loads before other scripts that capture errors.</p>
+<h3>7. Content Security Policy (CSP) configuration for the Beacon RUM snippet</h3>
+<p><strong>Problem:</strong></p>
+<p>If you see an error after adding the Beacon RUM snippet to your web page, your site's Content Security Policy (CSP) may be blocking it. A CSP limits which outside scripts and network requests a page may use, so when it blocks the snippet no data is collected.</p>
+<p><strong>Solution:</strong></p>
+<p>To let the snippet work, update your CSP so the page may load from the Beacon RUM servers. This is the configuration it needs:</p>
+<pre class="code-content">&lt;meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://static.beaconrum.example.com; connect-src 'self' https://collect.beaconrum.example.com;"&gt;</pre>
+<p><strong>Note</strong></p>
+<ul>
+<li>Change the domain names for the region your account is in.</li>
+<li>For example, accounts on European servers use https://static.beaconrum.example.eu instead of https://static.beaconrum.example.com.</li>
+</ul>
+<p>If this doesn't solve it, contact the support team.</p>
+</main>
+<footer>Beacon RUM help</footer>
+</body></html>
