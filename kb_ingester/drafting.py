@@ -18,8 +18,10 @@
   6. Snippets (code, config, commands) must be copied from the chunk and
      be code (checks.snippet_problem), at most MAX_SNIPPETS per entry.
   7. A how-to left with no steps or snippets, or an entry with neither
-     answer, steps nor snippets, is dropped. applies_to keeps only known or newly proposed
-     terms; proposed terms need an evidence quote from the chunk.
+     answer, steps nor snippets, is dropped. An entry applies to the known
+     or newly proposed terms its own title, questions, answer and steps
+     name (not every term the model listed, nor every term of the chunk);
+     proposed terms need an evidence quote from the chunk.
 
 No database access here: runs.py stores the result. Budget.spend() is
 called before each model call; runs.py checks there is room for a whole
@@ -29,10 +31,11 @@ through a chunk.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
-from backend import categories, kb_store
+from backend import categories, kb_store, topic_terms
 from backend.ai_service import AIError, backends, provider
 from backend.ai_service import draft_kb_entries as op
 from backend.ai_service.schemas import DraftInput, StepToCheck
@@ -136,7 +139,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
 
     known = {t["label"].lower(): t["label"] for t in known_terms}
     out.terms = _terms(drafted, chunk_text, known, out.dropped)
-    labels = {**known, **{t["label"].lower(): t["label"] for t in out.terms}}
+    patterns = {t["label"]: re.compile(topic_terms.pattern_for([t["label"], *t.get("aliases", [])]), re.IGNORECASE)
+                for t in [*known_terms, *out.terms]}
     proposed_categories = {c.name: c for c in drafted.proposed_categories
                            if not categories.problem(c.name) and c.name not in categories.names()}
 
@@ -231,8 +235,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             "handling": "answer", "collect": [], "answer": e["answer"],
             "questions": list(dict.fromkeys(q.strip() for q in draft.questions if q.strip())),
             "steps": e["steps"], "snippets": e["snippets"], "source_url": source_url,
-            "applies_to": sorted({labels[t.strip().lower()] for t in draft.applies_to
-                                  if t.strip().lower() in labels}),
+            "applies_to": sorted(label for label, pattern in patterns.items() if pattern.search(
+                "\n".join([draft.title, *draft.questions, e["answer"], *(s["text"] for s in e["steps"])]))),
             "notes": {"removed": e["notes"], "output_signals": signals,
                       **({"proposed_category": new_category} if new_category else {}),
                       **({"procedure_steps": e["procedure_steps"]} if e["procedure_steps"] else {})},

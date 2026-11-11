@@ -14,7 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import app_settings, db, kb_retrieval, main, seed_data, topic_terms
-from tests.kb_ingest_helpers import LEAVE_PAGE, FakeWeb, ScriptedModel, http_response, leave_drafts, use_web
+from tests.kb_ingest_helpers import (LEAVE_PAGE, FakeWeb, ScriptedModel, confirm_terms, http_response, leave_drafts,
+                                     use_web)
 
 URL = "https://help.example.com/leave"
 
@@ -359,6 +360,7 @@ def test_a_technician_edits_a_draft_and_a_manager_approves_it(client, manager, t
 
     assert client.post(f"/api/kb/entries/{entry_id}/approve", headers=tech,
                        json={"version": edited["version"]}).status_code == 403
+    confirm_terms(client, manager)
     approved = client.post(f"/api/kb/entries/{entry_id}/approve", headers=manager,
                            json={"version": edited["version"], "note": "checked"})
     assert approved.status_code == 200, approved.text

@@ -159,6 +159,14 @@ Your manager gets a notification and approves or declines the request.</p>
 </body></html>"""
 
 
+def confirm_terms(client, headers) -> None:
+    """Confirm every proposed term: a drafted entry applies to the terms
+    its own text names, and approving it needs them confirmed."""
+    for term in client.get("/api/kb/terms", headers=headers).json()["terms"]:
+        if term["status"] == "proposed":
+            assert client.post(f"/api/kb/terms/{term['term_id']}/confirm", headers=headers).status_code == 200
+
+
 def leave_drafts(chunk: str) -> dict:
     """The leave page's entry; its numbered list (as clean.py renders the
     page) is procedure 1, so the code takes the quotes from the items."""

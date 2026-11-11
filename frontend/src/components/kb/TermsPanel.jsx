@@ -74,6 +74,12 @@ export default function TermsPanel({ isManager }) {
                   <TableCell className="max-w-72 text-sm text-muted-fg">
                     {t.evidence_quote ? `“${t.evidence_quote}”` : "—"}
                     {t.evidence_count > 1 && ` (${t.evidence_count} sections)`}
+                    {t.unmatched_hostnames?.length > 0 && (
+                      <p className="m-0 mt-1 text-fg">
+                        Not matched in {t.unmatched_hostnames.join(", ")}: a customer who pastes it isn't seen to name
+                        this term. To match it, add it as an alias.
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="num tabular-nums">{t.entry_count}</TableCell>
                   <TableCell>

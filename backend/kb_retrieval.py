@@ -33,7 +33,7 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 
-from backend import request_kind
+from backend import request_kind, topic_terms
 
 logger = logging.getLogger(__name__)
 
@@ -158,13 +158,16 @@ class _KBIndex:
                category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
         """Up to top_k distinct topics scoring at least min_score, each as
         its best-matching entry; only entries of `category` when given;
-        no entry whose question reports a fault with skip_faults."""
-        query_vec = self._vectorize(_tokenize(text))
-        if not query_vec:
-            return []
-        query_norm = math.sqrt(sum(v * v for v in query_vec.values()))
-        if query_norm == 0:
-            return []
+        no entry whose question reports a fault with skip_faults. Each
+        entry's score is the better of the query as written and the query
+        with the names of the confirmed terms it names added
+        (topic_terms.with_names: "Content Security Policy" finds "CSP")."""
+        queries = []
+        for query in dict.fromkeys((text, topic_terms.with_names(text))):
+            query_vec = self._vectorize(_tokenize(query))
+            query_norm = math.sqrt(sum(v * v for v in query_vec.values()))
+            if query_norm:
+                queries.append((query_vec, query_norm))
 
         best: dict[str, KBCandidate] = {}
         for entry, topic, doc_vec, doc_norm, fault in zip(
@@ -172,8 +175,8 @@ class _KBIndex:
         ):
             if doc_norm == 0 or (category is not None and entry.category != category) or (skip_faults and fault):
                 continue
-            dot = sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items())
-            score = dot / (query_norm * doc_norm)
+            score = max(sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items()) / (query_norm * doc_norm)
+                        for query_vec, query_norm in queries) if queries else 0.0
             if score > 0 and score >= min_score and (topic not in best or score > best[topic].score):
                 best[topic] = KBCandidate(entry=entry, score=score)
 

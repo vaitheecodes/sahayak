@@ -192,12 +192,16 @@ def test_known_terms_are_not_proposed_again_and_reach_the_prompt(monkeypatch):
     assert "- Leave (module)" in block("known_terms", model.calls[0]["user"])
 
 
-def test_applies_to_keeps_only_known_or_proposed_terms(monkeypatch):
-    result, _, _ = _draft(monkeypatch, _entry(applies_to=["leave", "Android"]),
-                          known_terms=[{"label": "Android", "kind": "platform", "aliases": []}])
-    assert result.entries[0]["applies_to"] == ["Android"]
-    result, _, _ = _draft(monkeypatch, {**leave_drafts(CHUNK), "entries": _entry(applies_to=["leave"])["entries"]})
-    assert result.entries[0]["applies_to"] == ["Leave"]
+def test_an_entry_applies_to_the_known_or_proposed_terms_its_own_text_names(monkeypatch):
+    """Not what the model listed (it tagged a live entry with every term
+    of its section), nor every term of the chunk."""
+    known = [{"label": "Android", "kind": "platform", "aliases": []},
+             {"label": "Payroll", "kind": "module", "aliases": ["payslips"]}]
+    result, _, _ = _draft(monkeypatch, _entry(applies_to=["Android", "Payroll"]), known_terms=known)
+    assert result.entries[0]["applies_to"] == []           # neither is named in the entry
+    named = _entry(title="Apply for leave on Android", applies_to=[])
+    result, _, _ = _draft(monkeypatch, {**leave_drafts(CHUNK), "entries": named["entries"]}, known_terms=known)
+    assert result.entries[0]["applies_to"] == ["Android", "Leave"]   # Leave: proposed in the same chunk
 
 
 def test_a_category_proposal_is_kept_when_an_entry_asks_for_it(monkeypatch):

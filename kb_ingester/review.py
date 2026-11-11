@@ -28,6 +28,7 @@ may have changed.
 from __future__ import annotations
 
 import json
+import re
 
 from backend import audit, categories, kb_store
 from backend.timeutil import utcnow
@@ -261,16 +262,38 @@ def reject(conn, entry_id: str, *, version: int, actor: str, note: str = "") -> 
 # ---------------------------------------------------------------------------
 # Terms
 # ---------------------------------------------------------------------------
+_HOSTNAME = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", re.IGNORECASE)
+
+
+def unmatched_hostnames(term: dict, chunk_text: str | None) -> list[str]:
+    """Hostnames in the term's evidence section that contain its label
+    ("static.example-rum.com" for "RUM") but that its label and aliases
+    don't match: a customer pasting one names the term without the bot
+    knowing. Shown to the reviewer; the alias is theirs to add."""
+    compact = re.sub(r"[^a-z0-9]", "", term["label"].lower())
+    if len(compact) < 3 or not chunk_text:
+        return []
+    pattern = re.compile(term["pattern"], re.IGNORECASE)
+    hosts = dict.fromkeys(h.lower() for h in _HOSTNAME.findall(chunk_text))
+    return [h for h in hosts if compact in re.sub(r"[^a-z0-9]", "", h) and not pattern.search(h)]
+
+
 def list_terms(conn, status: str | None = None) -> list[dict]:
-    sql = ("SELECT t.term_id, t.label, t.kind, t.aliases, t.status, t.merged_into, t.evidence_quote, "
-           "t.evidence_count, t.proposed_by, t.created_at, t.confirmed_by, t.confirmed_at, "
-           "(SELECT COUNT(*) FROM kb_entry_terms et WHERE et.term_id = t.term_id) AS entry_count FROM kb_terms t")
+    sql = ("SELECT t.term_id, t.label, t.kind, t.aliases, t.pattern, t.status, t.merged_into, t.evidence_quote, "
+           "t.evidence_count, t.proposed_by, t.created_at, t.confirmed_by, t.confirmed_at, c.text AS evidence_text, "
+           "(SELECT COUNT(*) FROM kb_entry_terms et WHERE et.term_id = t.term_id) AS entry_count FROM kb_terms t "
+           "LEFT JOIN kb_chunks c ON c.chunk_id = t.evidence_chunk_id")
     params = ()
     if status and status != "all":
         sql += " WHERE t.status = ?"
         params = (status,)
     sql += (" ORDER BY CASE t.status WHEN 'proposed' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END, lower(t.label)")
-    return [{**dict(r), "aliases": json.loads(r["aliases"])} for r in conn.execute(sql, params)]
+    out = []
+    for r in conn.execute(sql, params):
+        term = {**dict(r), "aliases": json.loads(r["aliases"])}
+        term["unmatched_hostnames"] = unmatched_hostnames(term, term.pop("evidence_text"))
+        out.append(term)
+    return out
 
 
 def _term(conn, term_id: int) -> dict:

@@ -97,8 +97,25 @@ def _terms() -> dict[str, tuple[str, re.Pattern]]:
     return out
 
 
+@lru_cache(maxsize=1)
+def _names() -> dict[str, list[str]]:
+    """label -> the label and aliases of every confirmed term."""
+    return {t["label"]: [t["label"], *t.get("aliases", [])] for t in _load()}
+
+
+def with_names(text: str) -> str:
+    """`text` followed by the other names (label, aliases) of each
+    confirmed term it names: an extra KB query (backend/kb_retrieval.py),
+    so "Content Security Policy" finds a question that says "CSP" and back."""
+    names = _names()
+    extra = [n for label in sorted(mentioned(text)) for n in names.get(label, [label])
+             if not re.search(pattern_for([n]), text, re.IGNORECASE)]
+    return " ".join([text, *extra])
+
+
 def reload() -> None:
     _terms.cache_clear()
+    _names.cache_clear()
 
 
 def known_terms() -> list[str]:

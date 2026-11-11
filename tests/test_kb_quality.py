@@ -14,7 +14,8 @@ from backend import app_settings, db, kb_store, main
 from backend.ai_service import backends
 from kb_ingester import chunking, clean
 from kb_ingester.steps import ordered_lists
-from tests.kb_ingest_helpers import LEAVE_PAGE, FakeWeb, ScriptedModel, http_response, leave_drafts, use_web
+from tests.kb_ingest_helpers import (LEAVE_PAGE, FakeWeb, ScriptedModel, confirm_terms, http_response, leave_drafts,
+                                     use_web)
 from tests.test_kb_ingest_api import URL, _login, _run, _source
 
 PAGES = Path(__file__).parent / "fixtures" / "kb" / "pages"
@@ -119,6 +120,7 @@ def web(monkeypatch):
 def test_an_entry_missing_list_steps_is_flagged_and_needs_an_acknowledgement(client, manager, web, monkeypatch):
     ScriptedModel(leave_drafts, supported=lambda step, quote: "dates" not in step.lower()).install(monkeypatch)
     _run(client, manager, _source(client, manager))
+    confirm_terms(client, manager)
     [row] = client.get("/api/kb/entries?flag=incomplete", headers=manager).json()["entries"]
     assert row["completeness"] == {"kept": 2, "expected": 3} and "incomplete" in row["flags"]
     entry_id, version = row["kb_entry_id"], row["version"]
@@ -138,6 +140,7 @@ def test_an_entry_missing_list_steps_is_flagged_and_needs_an_acknowledgement(cli
 def test_a_complete_entry_needs_no_acknowledgement(client, manager, web, monkeypatch):
     ScriptedModel(leave_drafts).install(monkeypatch)
     _run(client, manager, _source(client, manager))
+    confirm_terms(client, manager)
     [row] = client.get("/api/kb/entries", headers=manager).json()["entries"]
     assert row["completeness"] is None and "incomplete" not in row["flags"]
     detail = client.get(f"/api/kb/entries/{row['kb_entry_id']}", headers=manager).json()
@@ -168,6 +171,7 @@ def test_the_sources_licence_note_is_kept_on_its_entries_and_in_exports(client, 
         "name": "Odoo-style docs", "url": URL, "public_confirmed": True, "licence_note": "CC BY-SA 4.0, Example S.A."})
     source_id = res.json()["source_id"]
     _run(client, manager, source_id)
+    confirm_terms(client, manager)
     [source] = client.get("/api/kb/sources", headers=manager).json()["sources"]
     assert source["licence_note"] == "CC BY-SA 4.0, Example S.A."
     [row] = client.get("/api/kb/entries", headers=manager).json()["entries"]
