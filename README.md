@@ -111,6 +111,20 @@ scripts/webdemo.sh stop
 
 Then open http://localhost:5180.
 
+A shell with `HTTPS_PROXY` / `HTTP_PROXY` set (a machine-wide proxy, e.g.
+`http://127.0.0.1:3128`) sends every Bedrock call through it; when nothing
+listens there every AI call fails ("AI assistant is unavailable"). Start
+the demo without the proxy variables (the AWS endpoints are then reached
+directly):
+
+```bash
+scripts/webdemo.sh stop
+```
+
+```bash
+env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy scripts/webdemo.sh start
+```
+
 On first start the backend creates the database, seeds eight neutral
 categories (ACCOUNT, BILLING, DATA, SETUP, USAGE, ISSUE, INTEGRATION,
 OTHER) and three default departments covering them, and creates the admin

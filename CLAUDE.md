@@ -59,7 +59,8 @@ review. Module map in `kb_ingester/__init__.py`.
   (`tests/kb_ingest_helpers.FakeWeb`).
 - **Clean / chunk**: bs4 `html.parser` (no lxml); nav, aside, forms,
   cookie/consent/share widgets, hidden elements and heading permalinks
-  go; h1-h3 become `#` lines; each list item is ONE `N. ` / `- ` line
+  go; h1-h3 become `#` lines; `<pre>` sits between ``` lines and inline
+  `<code>` in backticks; each list item is ONE `N. ` / `- ` line
   (its paragraphs joined, nested lists indented two spaces), and the
   " ," a removed inline icon leaves is closed up; chunks are heading
   sections of 300-1,200 words (small ones merged, long ones split at
@@ -98,7 +99,14 @@ review. Module map in `kb_ingester/__init__.py`.
   chunk, <= 60% shared trigrams), otherwise it is removed; a how-to with
   no steps left, or an entry with nothing left, is dropped. Injection
   phrasing in the chunk, or injection/unknown links in the output, flag
-  the draft. Proposed terms need an evidence quote; proposed categories
+  the draft. **Snippets** (`checks.snippet_problem`): up to 3 code,
+  config or command lines per entry, copied verbatim from the chunk
+  (whitespace aside), <= 600 characters, inside a ``` block / backticked
+  span or lines that read as code (never prose), scanned for injection; a
+  how-to whose content is a snippet is kept. An entry applies to the
+  known or proposed terms its own title, questions, answer and steps name
+  (not the model's `applies_to`, which once tagged a live entry with
+  every term of its section). Proposed terms need an evidence quote; proposed categories
   a valid name and an entry that asked for them. Both are stored
   `proposed`. The mock AI provider drafts from list items
   (`mock_drafts.py`, registered in `backends.MOCK_RESPONDERS`) so local
@@ -123,7 +131,10 @@ review. Module map in `kb_ingester/__init__.py`.
   sources (with the public/allowed confirmation, stored with who/when),
   estimate/start runs, approve/reject, confirm/reject/merge terms and
   categories (a confirmed or merged category takes the drafts that asked
-  for it). The admin gets 403 on all of `/api/kb`. Approving needs
+  for it). Snippets can be removed in the editor (a new one passes the
+  same check). At term review, a hostname in the term's evidence section
+  that contains its label but isn't matched by it is shown
+  (`review.unmatched_hostnames`); the reviewer adds the alias. The admin gets 403 on all of `/api/kb`. Approving needs
   confirmed terms. Chunk text is purged once no draft from it is left,
   or after `chunk_retention_days`. Everything is in `audit_events`
   (`kb.*`, ids and field names only).
@@ -150,8 +161,11 @@ review. Module map in `kb_ingester/__init__.py`.
 - **Eval**: `scripts/kb_eval.py` drafts the saved fixture pages
   (`tests/fixtures/kb/pages/`: Python venv, GitHub new repository, Odoo
   request time off, with their licences and `expected.json`) with the
-  real provider and reports instruction recall, invented steps, quote
-  failures and cost (`--drafting-model` to try another model).
+  real provider and reports instruction recall (a step's quote or a
+  snippet), invented steps, quote failures and cost (`--drafting-model` to
+  try another model; `--pages DIR` for pages kept out of git, e.g. a real
+  page in `.local/kb-eval/`). `widget_csp` is synthetic: the shape of a
+  page whose fix is a config line (`tests/test_kb_regression_widget_csp.py`).
 - **UI**: `/kb/review[/<id>]`, `/kb/sources`, `/kb/terms`,
   `/kb/categories` (`pages/KnowledgeBase.jsx`, `components/kb/`); the
   editor shows each step beside its quote and marks the quotes in the
@@ -164,7 +178,7 @@ review. Module map in `kb_ingester/__init__.py`.
 ## Knowledge base (`backend/kb_store.py`)
 
 Tables (SQLite in `backend/db.py` SCHEMA + `_ADDED_COLUMNS`, Postgres in
-`migrations/postgres/0003_kb.sql`, `0004_kb_ingest.sql`, `0005_kb_quality.sql`): `kb_entries` (title, answer, kind,
+`migrations/postgres/0003_kb.sql`, `0004_kb_ingest.sql`, `0005_kb_quality.sql`, `0007_kb_snippets.sql`): `kb_entries` (title, answer, kind, snippets (JSON list),
 handling, collect, category, source_url / document / chunk / chunk_hash,
 stale, supersedes, duplicate_of, status draft|approved|rejected|retired,
 reviewer, version), `kb_entry_questions`, `kb_entry_steps` (text + the
@@ -180,7 +194,10 @@ page), `kb_chunks` (text purged after review/retention).
   document and each entry one topic. Every KB write ends with
   `kb_store.changed()` (drops the retrieval and term caches; one worker).
 - An entry's `response` for grounding is its answer plus numbered steps
-  (`kb_store.response_text`).
+  and its snippets (`kb_store.response_text`). Under an answer grounded
+  on it, code adds its snippets as ``` blocks with the source and licence
+  (`chat_response.snippet_block`); the chat renderer (`utils/markdown.jsx`)
+  shows them as plain text, and the repeat guard ignores them.
 - Packs (JSON: approved entries + confirmed terms) move a reviewed KB
   between environments: `scripts/kb_import.py PACK.json` (typed "yes",
   all-or-nothing) / `--export OUT.json`; `--dry-run` validates against
@@ -243,7 +260,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   turn. Scores the ticket text (only the customer-authored lines of a
   multi-turn transcript; the latest message first, `graph.retrieval_query`)
   against the approved entries' questions via TF-IDF-weighted cosine
-  similarity over word tokens, with a stopword filter (formally phrased
+  similarity over word tokens (each entry scores the better of the query
+  and the query plus the other names of each confirmed term it names,
+  `topic_terms.with_names`: "Content Security Policy" finds "CSP"), with a stopword filter (formally phrased
   KB questions make filler words anomalously high-IDF). A best match
   below `KB_MIN_SCORE` (default 0.35) is no match. The top 2-3
   candidates ground `classify_ticket`'s prompt (few-shot category
@@ -317,7 +336,19 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   first; troubleshooting entries never ground it), or, with none, says "I
   don't have a guide for that yet" and raises the ticket
   (`NO_KB_REPLY_*`, no model call, `needs_info.reason = "kb_no_match"`,
-  `graph.handoff_reason`). Flows: `tests/test_how_to_flow.py`. Steps in an answer that the top KB entry
+  `graph.handoff_reason`). Flows: `tests/test_how_to_flow.py`.
+  **No answer without a guide**: a report (not a how-to) no usable KB
+  entry covers is clarified (`decide_route`, up to max rounds), then gets
+  the same "no guide" reply and ticket; when the matched entry doesn't
+  cover the latest message the model replies `NOT_COVERED`
+  (`chat_response.NOT_COVERED`) and `generate_response` hands off the same
+  way. **Values** (`grounding.ground_values`, every chat/email reply): a
+  sentence carrying a domain/URL, a directive with its whole source list,
+  quoted or backticked text, a path, or a version/port/limit number that
+  neither the grounding entry nor the customer's own messages contain is
+  dropped; a reply losing most of its text is regenerated once. A
+  lead-in promising steps that don't follow ("Here's how:") is removed
+  (`grounding.strip_dangling_lead_ins`). Steps in an answer that the top KB entry
   doesn't support are dropped (`ai_service/grounding.py`), the exact
   error message is asked for only after the customer reported an error,
   and how-to answers lose the "if you encounter issues..." line.
@@ -556,6 +587,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   escalate immediately, and `offensive_language`/`negation`/
   `coordinated_syntax` language tags force immediate escalation
   regardless of confidence, category, or clarification state.
+  A confident report no KB entry covers is clarified, then handed off
+  with "no guide" (never answered from general knowledge).
   `classify_ticket` runs a small regex heuristic to populate
   `language_tags`. `/api/public/routing-policy`'s `decision_order`
   (shown live at `/docs/routing-policy`, public; `/debug` redirects there)
@@ -600,8 +633,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   validated (+ semantic `check`, e.g. correlation ids must be
   from the input), retried once with a note giving the validation error
   paths (never the rejected values), then `AIError`. Provider errors are
-  never retried, except Bedrock throttling/timeouts (one retry after ~1 s
-  plus jitter, in `BedrockBackend.generate`); QuickML codes are mapped (`INVALID_ENDPOINT_KEY` — an
+  never retried, except Bedrock throttling/timeouts and connection errors
+  (kind `network`, e.g. a local proxy dropping a call; one retry after ~1 s
+  plus jitter, in `BedrockBackend.generate`); a failed continuation check
+  sends the message down the normal pipeline instead of failing the turn; QuickML codes are mapped (`INVALID_ENDPOINT_KEY` — an
   HTTP 500 — and `ORGID_HEADER_UNAVAILABLE` are `ConfigError`s logged at
   ERROR). No embeddings with
   QuickML: incident grouping uses lexical TF-IDF (`incidents._lexical_vectors`,
@@ -703,7 +738,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `GET /api/admin/audit` (Activity tab). **AI failures**
   (`backend/ai_failures.py`): every failure of a chat turn, ticket reply
   or new ticket is audited as `chat.ai_failure` / `ticket.ai_failure`
-  with kind (throttling, timeout, access_denied, validation, parse_schema,
+  with kind (throttling, timeout, network, access_denied, validation, parse_schema,
   filter_rejected, config, unknown), error code name, attempts, latency,
   operation and outcome (`failed` = the customer saw "AI unavailable";
   `regenerated`/`fallback` = our own check rejected a reply and the chat
