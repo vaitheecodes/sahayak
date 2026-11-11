@@ -1,31 +1,43 @@
-# Shared settings and helpers for scripts/aws_up.sh, aws_down.sh and
-# aws_build_image.sh.
+# Shared settings and helpers for scripts/aws_up.sh, aws_down.sh,
+# aws_pause.sh, aws_resume.sh and aws_build_image.sh: the Sahayak pilot
+# (docs/SAHAYAK_PILOT_HOSTING.md).
 # Sourced, not run. Nothing here prints a secret: secret values are only
 # ever written to a private temp file or passed to AWS by ARN.
+#
+# Every name is sahayak-*, in its own VPC and ECS cluster. ticketapp-ai-aws
+# lives in the same account: guard_names stops a script before its first
+# AWS call if the profile or any name points at it.
 
 set -euo pipefail
 set +x  # never trace: a traced command line could show a value
 
-export AWS_PROFILE="${AWS_PROFILE:-ticketapp}"
+export AWS_PROFILE="${AWS_PROFILE:-sahayak}"
 export AWS_REGION="${AWS_REGION:-ap-south-1}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export AWS_PAGER=""
 
-NAME=ticketapp
-SERVICE=ticketapp-api          # ECS Express service (and ECR repository)
-DB_ID=ticketapp-db             # RDS instance, subnet group, snapshot prefix
-API_SG_NAME=ticketapp-api
-DB_SG_NAME=ticketapp-db
-APP_SECRET_NAME=ticketapp/app
-AMPLIFY_NAME=ticketapp-web
-EXEC_ROLE=ticketapp-ecs-exec
-INFRA_ROLE=ticketapp-ecs-infra
-TASK_ROLE=ticketapp-api-task
-BUILD_ROLE=ticketapp-codebuild       # CodeBuild service role (aws_build_image.sh)
-BUILD_PROJECT=ticketapp-image-build
-DB_NAME=ticketapp
-DB_USER=ticketapp_admin
+NAME=sahayak
+CLUSTER=sahayak                # its own ECS cluster, never `default`
+SERVICE=sahayak-api            # ECS Express service (and ECR repository)
+DB_ID=sahayak-db               # RDS instance, subnet group, snapshot prefix
+VPC_NAME=sahayak-vpc           # its own VPC (Name tag), never the default one
+VPC_CIDR=10.42.0.0/16
+API_SG_NAME=sahayak-api
+DB_SG_NAME=sahayak-db
+APP_SECRET_NAME=sahayak/app
+AMPLIFY_NAME=sahayak-web
+EXEC_ROLE=sahayak-ecs-exec
+INFRA_ROLE=sahayak-ecs-infra
+TASK_ROLE=sahayak-api-task
+BUILD_ROLE=sahayak-codebuild         # CodeBuild service role (aws_build_image.sh)
+BUILD_PROJECT=sahayak-image-build
+DB_NAME=sahayak
+DB_USER=sahayak_admin
+BACKUP_DAYS=7
+# Chat and the KB step check on Nova Lite; KB drafting on Nova Pro
+# (backend/app_settings.DEFAULT_DRAFTING_MODEL). The task role may invoke both.
 BEDROCK_MODEL=apac.amazon.nova-lite-v1:0
+DRAFTING_MODEL=apac.amazon.nova-pro-v1:0
 KEEP_SNAPSHOTS="${KEEP_SNAPSHOTS:-2}"
 # Poll interval for the waits below; tests set it to 0.
 POLL_SECONDS="${POLL_SECONDS:-15}"
@@ -59,7 +71,23 @@ awst() {
 
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is not installed"; }
 
+# Stops if the profile, a name above, or any value given (ARNs, ids) points
+# at another app in this account. Called by preflight before any AWS call
+# and again on the ARNs a script found.
+guard_names() {
+  local value
+  for value in "$AWS_PROFILE" "$NAME" "$CLUSTER" "$SERVICE" "$DB_ID" "$VPC_NAME" "$API_SG_NAME" "$DB_SG_NAME" \
+    "$APP_SECRET_NAME" "$AMPLIFY_NAME" "$EXEC_ROLE" "$INFRA_ROLE" "$TASK_ROLE" "$BUILD_ROLE" "$BUILD_PROJECT" \
+    "$DB_NAME" "$DB_USER" "$@"; do
+    case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
+      *ticketapp*) die "refusing to run: '$value' belongs to ticketapp-ai-aws, which these scripts must never touch" ;;
+    esac
+  done
+  [ "$CLUSTER" != default ] || die "refusing to run: the ECS cluster must be Sahayak's own, not 'default'"
+}
+
 preflight() {
+  guard_names
   need aws
   need python3
   local err="$TMP_DIR/preflight.err"
@@ -75,9 +103,26 @@ preflight() {
 
 # --- lookups (all return "" when the thing doesn't exist) -----------------
 service_arn() {
-  awst ecs describe-services --cluster default --services "$SERVICE" \
+  awst ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
     --query "services[?status=='ACTIVE'].serviceArn | [0]" 2>/dev/null || true
 }
+
+# The VPC tagged Name=$VPC_NAME ("" before aws_up.sh has made it).
+vpc_id() {
+  awst ec2 describe-vpcs --filters Name=tag:Name,Values="$VPC_NAME" --query 'Vpcs[0].VpcId' 2>/dev/null || true
+}
+
+# The service's API origin, https://... ("" without a service or URL yet).
+api_origin() {
+  local endpoint
+  endpoint=$(awst ecs describe-express-gateway-service --service-arn "$1" \
+    --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' 2>/dev/null || true)
+  [ -n "$endpoint" ] || return 0
+  endpoint=https://${endpoint#https://}
+  printf '%s\n' "${endpoint%/}"
+}
+
+health_of() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1/health" || true; }
 
 db_status() {
   awst rds describe-db-instances --db-instance-identifier "$DB_ID" \

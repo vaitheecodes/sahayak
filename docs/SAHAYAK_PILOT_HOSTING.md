@@ -3,7 +3,10 @@
 Status: **plan, nothing created.** No AWS resource exists for Sahayak yet,
 and no AWS command that changes anything has been run while writing this.
 Every step below that creates something billable is marked
-**ASK USER FIRST**.
+**ASK USER FIRST**. Decisions made 2026-11-11 (see "Decisions" below):
+**wait on spending** until the client's HRMS manual is in hand; only free
+preparation now. Done: the sign-up switch and runbook step 2 (the
+scripts are Sahayak-only).
 
 Goal: a small, cheap, public https deployment of the Sahayak backend and
 web frontend for a free pilot (about 10 users now, maybe 100-300 later),
@@ -15,12 +18,14 @@ database, S3 bucket, IAM roles, secrets, Amplify app and AWS CLI profile.
 The only thing in common is the AWS account (247898554654) and the region
 (ap-south-1, Mumbai).
 
-> **Do not run `scripts/aws_up.sh`, `aws_down.sh` or `aws_build_image.sh`
-> from this repo as they are.** They were copied from ticketapp-ai-aws
-> and still say `NAME=ticketapp`, `AWS_PROFILE=ticketapp` and the ECS
-> cluster `default` (`scripts/aws_lib.sh`). Run here, `aws_down.sh` would
-> snapshot and **delete ticketapp's service and database**. Step 2 of the
-> runbook makes them Sahayak-only first.
+> **The scripts are Sahayak-only now** (runbook step 2). They were copied
+> from ticketapp-ai-aws with `NAME=ticketapp`, profile `ticketapp` and
+> the ECS cluster `default`, so `aws_down.sh` would have deleted
+> ticketapp's service and database. Now every name is `sahayak-*`, with
+> profile `sahayak`, cluster `sahayak` and VPC `sahayak-vpc`, and
+> `guard_names` (`scripts/aws_lib.sh`) stops a script before its first
+> AWS call if the profile, a name or an ARN it finds says `ticketapp`.
+> Use them only from a checkout that has this change.
 
 Prices below are ap-south-1 on-demand, taken from `docs/AWS_DEPLOY.md`
 (AWS Price List files, 3 Nov 2026) and `AWS_PLAN.md` (Bedrock, 28 Oct
@@ -179,6 +184,10 @@ A pause keeps the load balancer, the service definition, the database
 storage and its data, so the **API URL doesn't change**. That matters
 because the APK has the URL built in.
 
+`scripts/aws_pause.sh` and `scripts/aws_resume.sh` run the steps below
+(idempotent, Sahayak names only, tested against the fake CLI). The
+commands are kept here so it's clear what they do.
+
 ### Pause (about 5 minutes)
 
 ```bash
@@ -288,7 +297,7 @@ aws ecs update-service --cluster sahayak --service sahayak-api --force-new-deplo
 | App's own checks | `APP_ENV=production` refuses to start with a placeholder or short `JWT_SECRET`, a weak `ADMIN_PASSWORD`, a weak or local-only DB password, or `DB_SSLMODE` weaker than `require` (`auth.check_production_config`, `db_postgres.production_problems`). It logs only the variable name. |
 | Admin | One admin, created at first start from the secret, never overwritten. Change its password after the first sign-in (Account → Change password). The secret then holds a stale value, which is harmless because it isn't reused. |
 | Rate limits | Login: 30/5 min per IP and 5 failures/15 min per account. Sign-up: 5/hour per IP. AI turns: 20/10 min and 200/day per customer, 60/600 per IP. `TRUSTED_PROXY_HOPS=1`, so the client IP is the one the ALB appends. All are per process, which is why the service is pinned to 1 task. |
-| Public sign-up | `/api/auth/customer/signup` is **always open**; the app has no switch to turn it off. Anyone with the URL can make a customer account and use the AI within the limits above. That worst case is about 200 turns/day per account, a few cents on Nova Lite. Closing it needs a backend change, so it's a decision (D7). |
+| Public sign-up | **Closed in the pilot** (D7): `CUSTOMER_SIGNUP_ENABLED=false`, set by `aws_up.sh`. `/api/auth/customer/signup` returns 403 "Sign-up is closed. Ask your support team for an account.", `/api/meta` says `signup_open: false`, and the web app hides "Create an account" and sends `/signup` to the sign-in page. Pilot accounts are made by the admin (Users). The default elsewhere stays open. |
 | CORS | `ALLOWED_ORIGINS` = the Amplify URL only, never `*`. The mobile app isn't a browser, so CORS doesn't apply to it. |
 | https only | Amplify serves https. The Express ALB has an AWS certificate. Check on the first run that port 80 redirects or is closed. The mobile preview build refuses `http://` at config time (`mobile/app.config.ts`). |
 | Database | Private subnets, no public address, inbound only from `sahayak-api`. Storage encrypted, SSL forced (`rds.force_ssl` on PostgreSQL 15+, and the app requires it). Deletion protection on. **7-day automated backups** (ticketapp's script used 1). A manual snapshot before every deploy. |
@@ -342,10 +351,11 @@ on the KB, tickets and chats, by design.
       **terms** (approving needs them confirmed) and categories.
    4. Only **approved** entries are used by the AI. Startup logs
       `KB: <n> entries loaded`.
-   5. Alternative: build and review the KB locally, export a pack
+   5. **Chosen (D10):** build and review the KB locally, export a pack
       (`scripts/kb_import.py --export`), and import it into the pilot.
       The DB is private, so the import has to run as a one-off ECS task
-      with the same image (a later script).
+      with the same image. That script doesn't exist yet: it's the one
+      piece of free preparation still missing (see "Still to prepare").
 6. **Try a ticket** (`/try-a-ticket`, manager or support engineer): run
    typical customer questions and check the answers and routing before
    anyone real uses it.
@@ -435,7 +445,7 @@ change the EAS variable and rebuild.
 | Express Mode shares a load balancer between services | Own VPC and own cluster. After creation, check that the ALB's listener rules list only `sahayak-api`. |
 | API URL changes after a delete and recreate, which breaks the APK | Pause instead of delete. A custom domain (Route 53 + ACM) would pin it, if Express supports one; check that before choosing it (D6). |
 | RDS starts itself after 7 days of being stopped | A calendar reminder to re-stop, or snapshot-and-delete for long gaps. The budget alert catches it. |
-| Open public sign-up | Rate limits bound the cost. Closing it needs a backend change (D7). |
+| Open public sign-up | Closed with `CUSTOMER_SIGNUP_ENABLED=false` (D7, done). |
 | Nova Pro not invocable in this account or not in the APAC profile | One test call before deploying (runbook step 8). Drafting falls back to the default model if Pro fails, so the KB still works, just with lower quality. |
 | Express rejects 0.5 vCPU / 1 GB, or `minTaskCount` 0 | Use its default size (+$19/month on x86_64). For pausing, use the `update-service` fallback in section 3. |
 | Image built with someone's uncommitted work | Build only from a clean worktree at a named commit (the image tag is the commit hash). |
@@ -464,8 +474,8 @@ change the EAS variable and rebuild.
    in this account (Bedrock console → Model access, or my one-call test
    in runbook step 8).
 5. **The admin email** for the pilot.
-6. **Approval for the script changes** in runbook step 2 (a separate
-   commit, with tests).
+6. ~~Approval for the script changes in runbook step 2~~: approved and
+   done.
 
 ---
 
@@ -494,6 +504,33 @@ change the EAS variable and rebuild.
 10. **KB start**: ingest in the pilot directly, or build and review
     locally, then import a pack.
 
+### Your answers (2026-11-11)
+
+| # | Decision | Answer |
+|---|---|---|
+| 1 | Go or wait | **Wait on spending** until the client's HRMS manual is in hand (a deployed system with an empty KB has nothing to show). Free preparation only. Budget **$100/month** with alerts when it starts. |
+| 2 | Network | Own VPC `sahayak-vpc`. |
+| 3 | Running pattern | Always on during pilot weeks, paused between (`aws_pause.sh` / `aws_resume.sh`). |
+| 4 | Image | x86_64 via CodeBuild (no Docker). |
+| 5 | Chat model | Nova Lite. |
+| 6 | URLs | Default ECS and Amplify URLs. |
+| 7 | Sign-up | Admin-created pilot accounts, and a sign-up switch (done: `CUSTOMER_SIGNUP_ENABLED=false` in the pilot). |
+| 8 | Deployer access | A temporary admin key, deleted after setup. |
+| 9 | Database | Single-AZ, 7-day backups. |
+| 10 | KB start | Build and review locally, then import the pack. |
+
+### Still to prepare (free, no AWS)
+
+- **Pack import into the pilot:** a script that runs `scripts/kb_import.py`
+  as a one-off Fargate task in `sahayak-vpc` with the service's image,
+  task role and secrets, reading the pack from the build bucket. (Or a
+  manager-only "import pack" upload in the app; a backend change.)
+- **Runbook step 3** just before deploying: a clean worktree of the
+  chosen commit and the full suite there, on SQLite and Postgres.
+- **The local KB**, once the client's manual arrives: ingest it locally
+  (mock AI for a dry run, then Bedrock with your go-ahead on cost),
+  review, approve, export the pack.
+
 ---
 
 ## Runbook
@@ -518,7 +555,7 @@ create or change something, so they run only after the overall go-ahead
 
 **Phase 1: repo changes (no AWS)**
 
-2. Make the scripts Sahayak-only:
+2. **Done (2026-11-11).** Make the scripts Sahayak-only:
    - `NAME=sahayak`, profile `sahayak`, cluster `sahayak`;
    - own VPC creation;
    - Nova Pro in the task policy, 7-day backups;
@@ -526,7 +563,10 @@ create or change something, so they run only after the overall go-ahead
    - new `pause` and `resume` scripts;
    - tests against the fake AWS CLI (`tests/test_aws_scripts.py`).
 
-   Separate commit, your approval first.
+   Also: the attachments bucket is created by `aws_up.sh` (ticketapp's
+   was made by hand), and `aws_up.sh` stops if the service's load
+   balancer isn't in `sahayak-vpc`. `aws_down.sh` reports only load
+   balancers in that VPC.
 3. Pick the commit to deploy. Make a clean worktree for it
    (`git worktree add --detach ../sahayak-deploy <commit>`) and run the
    full test suite there, on SQLite and Postgres.
@@ -577,10 +617,11 @@ create or change something, so they run only after the overall go-ahead
 
 14. You sign in as the admin and run the setup wizard (section 5, steps
     1-4).
-15. **ASK USER FIRST** for each KB run: the manager adds sources, reads
-    the estimate (model calls and the cap) and starts the run. Bedrock
-    cost per section is in section 2.
-16. Review and approve the KB, confirm terms, then use Try a ticket.
+15. Import the locally reviewed KB pack (D10) with the one-off task
+    script ("Still to prepare"); **ASK USER FIRST** (a minute of Fargate,
+    cents). Later KB runs in the pilot itself: **ASK USER FIRST** for each
+    one (estimate, then start).
+16. Check the imported KB, confirm terms, then use Try a ticket.
 17. Create the pilot customers.
 
 **Phase 5: mobile**

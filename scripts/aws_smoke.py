@@ -1,7 +1,7 @@
 """Smoke test for the hosted demo (docs/AWS_DEPLOY.md, demo-day checklist).
 
     python3 scripts/aws_smoke.py --frontend https://main.<id>.amplifyapp.com \
-        --api https://ticketapp-api.ecs.ap-south-1.on.aws [--admin]
+        --api https://sahayak-api.ecs.ap-south-1.on.aws [--admin]
 
 Without --admin it needs no credentials and changes nothing:
   frontend page, /health, /api/meta, CORS preflight from the frontend

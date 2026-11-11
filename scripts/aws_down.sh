@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Take the demo stack down after a demo (docs/AWS_DEPLOY.md, "Demo-only
-# hosting"). Asks you to type "yes", then:
+# Take the Sahayak pilot down at its end (docs/SAHAYAK_PILOT_HOSTING.md;
+# between sessions use scripts/aws_pause.sh instead: it keeps the URL the
+# mobile APK was built against). Asks you to type "yes", then:
 #   1. snapshots the database and waits until the snapshot is available
 #      (before anything is deleted; if it fails, nothing is deleted);
 #   2. deletes the ECS Express service (task + load balancer);
@@ -9,7 +10,7 @@
 #      (default 2), only after the new one is available;
 #   5. lists anything still billing by the hour.
 # Kept (cents a month): the snapshots, the app secret, the ECR images, the
-# Amplify site, IAM roles, security groups, logs.
+# Amplify site, IAM roles, the VPC and its security groups, logs.
 #
 # Idempotent: re-run it after a failure; steps already done are skipped.
 # Stop using the app before running it: writes after step 1 starts are
@@ -59,7 +60,7 @@ else
   step "Deleting the API service (Fargate task + load balancer)"
   if [ -n "$SERVICE_ARN" ]; then
     aws ecs delete-express-gateway-service --service-arn "$SERVICE_ARN" >/dev/null
-    aws ecs wait services-inactive --cluster default --services "$SERVICE"
+    aws ecs wait services-inactive --cluster "$CLUSTER" --services "$SERVICE"
     info "deleted"
   else
     info "already gone"
@@ -99,9 +100,13 @@ step "Anything still billing by the hour?"
 LEFT=0
 [ -z "$(service_arn)" ] || { warn "the API service $SERVICE still exists"; LEFT=1; }
 [ -z "$(db_status)" ] || { warn "the database $DB_ID still exists"; LEFT=1; }
-LBS=$(awst elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName')
+# Only load balancers in Sahayak's VPC: other apps in the account are not ours.
+VPC_ID=$(vpc_id)
+LBS=""
+[ -z "$VPC_ID" ] || LBS=$(awst elbv2 describe-load-balancers \
+  --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerName")
 if [ -n "$LBS" ]; then
-  warn "load balancers in $AWS_REGION: $LBS (~\$28/month each with their IPs; Express may take a few minutes to remove its own)"
+  warn "load balancers in $VPC_NAME: $LBS (~\$28/month each with their IPs; Express may take a few minutes to remove its own)"
   LEFT=1
 fi
 IDLE_IPS=$(awst ec2 describe-addresses --query 'Addresses[?AssociationId==null].PublicIp')

@@ -1,5 +1,13 @@
 # Deploying to AWS (stage A4 plan)
 
+> **Sahayak:** this is ticketapp-ai-aws's plan, copied. The names below
+> (`ticketapp-*`, profile `ticketapp`, cluster `default`) are ticketapp's,
+> and that stack must never be touched. Sahayak's pilot plan is
+> [SAHAYAK_PILOT_HOSTING.md](SAHAYAK_PILOT_HOSTING.md), and the
+> `scripts/aws_*.sh` here now use only `sahayak-*` names, their own VPC
+> and cluster, and refuse any ticketapp name. The sections below still
+> explain what each step does.
+
 **Status: plan only. Nothing here has been run; no AWS resource exists
 for it yet.** Region `ap-south-1` (Mumbai), CLI profile `ticketapp`.
 

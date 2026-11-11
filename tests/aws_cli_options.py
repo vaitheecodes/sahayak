@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OPTIONS_FILE = Path(__file__).resolve().parent / "fake_aws_options.json"
 SCRIPTS = sorted((ROOT / "scripts").glob("aws_*.sh"))
-SERVICES = {"amplify", "codebuild", "ec2", "ecr", "ecs", "elbv2", "iam", "logs", "rds", "s3", "s3api",
+SERVICES = {"amplify", "application-autoscaling", "codebuild", "ec2", "ecr", "ecs", "elbv2", "iam", "logs", "rds", "s3", "s3api",
             "secretsmanager", "sts"}
 # Accepted by every subcommand.
 GLOBAL_OPTIONS = {"--output", "--query", "--region", "--profile", "--debug", "--no-cli-pager",
@@ -32,7 +32,7 @@ GLOBAL_OPTIONS = {"--output", "--query", "--region", "--profile", "--debug", "--
 # when `help` lists it.
 EXTRA = {"ecs create-express-gateway-service": ["--cpu-architecture"]}
 
-_CALL = re.compile(r"\b(?:aws|awst)\s+([a-z0-9]+)\s+([a-z][a-z0-9-]+)((?:[^|;&)]|\|\|)*)")
+_CALL = re.compile(r"\b(?:aws|awst)\s+([a-z0-9-]+)\s+([a-z][a-z0-9-]+)((?:[^|;&)]|\|\|)*)")
 
 
 def extract_calls(paths=SCRIPTS) -> dict[str, set[str]]:

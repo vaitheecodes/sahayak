@@ -2,17 +2,19 @@
 # Build the backend image in AWS CodeBuild and push it to ECR, for a Mac
 # without Docker (docs/AWS_DEPLOY.md, "Building the image without Docker").
 # scripts/aws_up.sh then finds it: the tag is this commit's short hash.
+# Run it from a clean worktree of the commit to deploy
+# (docs/SAHAYAK_PILOT_HOSTING.md, runbook step 3).
 #
 #   1. needs a clean git tree (ECR tags are immutable: the tag must name
 #      exactly what's committed);
-#   2. ECR repository ticketapp-api, created if missing (same settings as
+#   2. ECR repository sahayak-api, created if missing (same settings as
 #      aws_up.sh, shared code in aws_lib.sh);
 #   3. stops here (exit 0) if this commit's tag is already in ECR;
-#   4. S3 bucket ticketapp-build-<account>: private, encrypted, objects
+#   4. S3 bucket sahayak-build-<account>: private, encrypted, objects
 #      deleted after 7 days;
-#   5. IAM role ticketapp-codebuild: logs, read the source zips, push to
-#      ticketapp-api only;
-#   6. CodeBuild project ticketapp-image-build (x86_64, small, privileged
+#   5. IAM role sahayak-codebuild: logs, read the source zips, push to
+#      sahayak-api only;
+#   6. CodeBuild project sahayak-image-build (x86_64, small, privileged
 #      for docker build), logs kept 14 days;
 #   7. uploads `git archive HEAD`, starts the build and waits; on failure
 #      prints the last 30 log lines (long tokens redacted) and exits 1.
@@ -109,7 +111,7 @@ cat > "$TMP_DIR/codebuild-policy.json" <<JSON
   "ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage"],
   "Resource":"arn:aws:ecr:$AWS_REGION:$ACCOUNT_ID:repository/$SERVICE"}]}
 JSON
-aws iam put-role-policy --role-name "$BUILD_ROLE" --policy-name ticketapp-image-build \
+aws iam put-role-policy --role-name "$BUILD_ROLE" --policy-name "$BUILD_PROJECT" \
   --policy-document "file://$TMP_DIR/codebuild-policy.json" >/dev/null
 info "logs, read s3://$BUILD_BUCKET/source/*, push to $SERVICE only"
 
@@ -162,7 +164,7 @@ PY
   [ "$ROLE_CREATED" = 0 ] || [ "$POLL_SECONDS" = 0 ] || { info "waiting 15 s for the new role"; sleep 15; }
   for attempt in 1 2 3 4; do
     if aws codebuild create-project --name "$BUILD_PROJECT" \
-        --description "ticketapp backend image: docker build + push to ECR" \
+        --description "Sahayak backend image: docker build + push to ECR" \
         --source "file://$TMP_DIR/source.json" --artifacts type=NO_ARTIFACTS \
         --environment "file://$TMP_DIR/environment.json" \
         --service-role "arn:aws:iam::$ACCOUNT_ID:role/$BUILD_ROLE" \

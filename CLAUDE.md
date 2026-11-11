@@ -781,7 +781,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `auth.check_production_config`, `db_postgres.production_problems`):
   `/api/auth/login` is limited per client IP (every attempt) and per
   account (failures only; success clears them), 429 + Retry-After, checked
-  before the password; sign-up per IP (`check_signup`, 5/hour); every AI
+  before the password; sign-up per IP (`check_signup`, 5/hour), or closed
+  altogether with `CUSTOMER_SIGNUP_ENABLED=false` (403; `/api/meta`
+  `signup_open` hides the web links; the pilot runs with it off); every AI
   endpoint (start chat, chat message, new ticket, ticket reply) through
   `auth.get_ai_customer` -> `check_ai_turn`: 20 turns / 10 min and 200 /
   day per customer, 60 / 600 per IP, refused before the model runs. Caps:
@@ -800,12 +802,21 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `docs/AWS_DEPLOY.md`): python:3.13-slim, runtime requirements only,
   non-root, `/health` check; planned on ECS Express Mode (Fargate) + RDS +
   Amplify, not deployed (`AWS_PLAN.md`). `tests/test_dockerfile.py`.
-  Demo-only hosting: `scripts/aws_up.sh` (idempotent; restores RDS from
-  the newest `ticketapp-db-*` snapshot, creates/updates the Express
-  service, rebuilds the Amplify frontend only when the API URL changed,
-  runs `scripts/aws_smoke.py`) and `scripts/aws_down.sh` (typed "yes",
-  snapshot first, then deletes the service and DB, keeps the newest
-  `KEEP_SNAPSHOTS`). Without Docker, `scripts/aws_build_image.sh`
+  Sahayak pilot (`docs/SAHAYAK_PILOT_HOSTING.md`; nothing created yet):
+  every name is `sahayak-*` (profile `sahayak`, cluster `sahayak`, VPC
+  `sahayak-vpc`), and `aws_lib.guard_names` stops a script before its
+  first call if the profile, a name or a found ARN says ticketapp (same
+  account). `scripts/aws_up.sh` (idempotent; own VPC with 2 public subnets
+  for the service and 2 private ones for the DB, no NAT; own cluster;
+  attachments bucket; restores RDS from the newest `sahayak-db-*`
+  snapshot, 7-day backups; task role may invoke Nova Lite and Pro;
+  `CUSTOMER_SIGNUP_ENABLED=false`; stops if the load balancer is outside
+  the VPC; rebuilds the Amplify frontend only when the API URL changed,
+  runs `scripts/aws_smoke.py`), `scripts/aws_pause.sh` /
+  `aws_resume.sh` between sessions (service to 0 tasks, falling back to
+  the plain ECS count if Express refuses 0, and RDS stopped; same URL) and
+  `scripts/aws_down.sh` at the end (typed "yes", snapshot first, then
+  deletes the service and DB, keeps the newest `KEEP_SNAPSHOTS`). Without Docker, `scripts/aws_build_image.sh`
   builds the image in CodeBuild (clean git tree required, tag = short
   commit hash, exits early if ECR has it; x86_64 only, so `aws_up.sh`
   asks for ARM64 only when the manifest has an arm64 variant). Shared

@@ -1,15 +1,26 @@
-"""scripts/aws_up.sh, aws_down.sh and aws_build_image.sh against a fake
-`aws` CLI (tests/fake_aws_cli.py): no AWS account is touched.
+"""scripts/aws_up.sh, aws_down.sh, aws_pause.sh, aws_resume.sh and
+aws_build_image.sh against a fake `aws` CLI (tests/fake_aws_cli.py): no
+AWS account is touched.
 
-- up creates what's missing, restores the newest snapshot, and a second
-  run changes nothing;
+- every name is Sahayak's: a ticketapp profile or name stops a script
+  before its first call, and no call ever names ticketapp or the
+  `default` cluster;
+- up creates what's missing (its own VPC with public subnets for the
+  service and private ones for the database, its own cluster, the
+  attachments bucket, 7-day backups, Nova Lite and Pro, sign-up closed),
+  restores the newest snapshot, and a second run changes nothing; a load
+  balancer outside Sahayak's VPC stops it;
 - a restore runs without --manage-master-user-password (the real API
   rejects it for postgres) and a modify then adds the managed secret; a
   re-run skips the modify, and one during the modify waits for it;
 - the generated secrets are never printed and never put in the service
   definition (only secret ARNs are);
 - down needs a typed "yes", snapshots before deleting anything, deletes
-  nothing if the snapshot fails, and keeps the newest KEEP_SNAPSHOTS;
+  nothing if the snapshot fails, keeps the newest KEEP_SNAPSHOTS, and
+  reports only load balancers in Sahayak's VPC;
+- pause scales the service to 0 (falling back to the plain ECS count if
+  Express refuses) and stops the database; resume undoes both and waits
+  for /health; both are safe to re-run;
 - aws_build_image.sh refuses a dirty tree, stops when the tag is already
   in ECR, creates only what's missing, and on a failed build prints the
   log tail with tokens redacted;
@@ -32,7 +43,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
-API_URL = "https://ticketapp-api.ecs.ap-south-1.on.aws/api"
+API_URL = "https://sahayak-api.ecs.ap-south-1.on.aws/api"
+PUBLIC = ["subnet-sahayak-public-a", "subnet-sahayak-public-b"]
+PRIVATE = ["subnet-sahayak-private-a", "subnet-sahayak-private-b"]
 MUTATING = ("create-", "delete-", "put-", "attach-", "authorize-", "restore-", "start-", "modify-", "update-")
 
 sys.path.insert(0, str(SCRIPTS))
@@ -86,15 +99,22 @@ def fake(tmp_path):
 def _existing(**overrides) -> dict:
     """State after a previous aws_down: everything kept, nothing hourly."""
     state = {
-        "sgs": {"sg-ticketapp-api": {"name": "ticketapp-api", "from": []},
-                "sg-ticketapp-db": {"name": "ticketapp-db", "from": ["sg-ticketapp-api"]}},
+        "vpc": {"id": "vpc-sahayak", "name": "sahayak-vpc", "cidr": "10.42.0.0/16", "dns_hostnames": True},
+        "igw": {"id": "igw-1", "vpc": "vpc-sahayak"},
+        "subnets": {sid[len("subnet-"):]: {"id": sid, "public_ip": sid in PUBLIC} for sid in PUBLIC + PRIVATE},
+        "route_table": {"id": "rtb-1", "name": "sahayak-public", "routes": {"0.0.0.0/0": "igw-1"},
+                        "subnets": list(PUBLIC)},
+        "clusters": ["sahayak"],
+        "buckets": {"sahayak-attachments-123456789012": {"region": "LocationConstraint=ap-south-1"}},
+        "sgs": {"sg-sahayak-api": {"name": "sahayak-api", "from": []},
+                "sg-sahayak-db": {"name": "sahayak-db", "from": ["sg-sahayak-api"]}},
         "subnet_group": True,
-        "secret": {"arn": "arn:aws:secretsmanager:ap-south-1:123456789012:secret:ticketapp/app-AbC"},
+        "secret": {"arn": "arn:aws:secretsmanager:ap-south-1:123456789012:secret:sahayak/app-AbC"},
         "repo": True, "images": ["abc1234"],
-        "roles": {"ticketapp-ecs-exec": {}, "ticketapp-ecs-infra": {}, "ticketapp-api-task": {}},
+        "roles": {"sahayak-ecs-exec": {}, "sahayak-ecs-infra": {}, "sahayak-api-task": {}},
         "amplify": {"branch": {"API_URL": API_URL}},
         "snapshots": [
-            {"DBSnapshotIdentifier": f"ticketapp-db-2026110{i}-120000", "Status": "available",
+            {"DBSnapshotIdentifier": f"sahayak-db-2026110{i}-120000", "Status": "available",
              "SnapshotCreateTime": f"2026-11-0{i}T12:00:00Z"} for i in (1, 2)],
     }
     state.update(overrides)
@@ -124,7 +144,7 @@ def test_up_from_nothing_creates_everything_without_printing_secrets(fake):
     assert create[create.index("--engine-version") + 1] == "18.3"
     for flag in ("--no-publicly-accessible", "--manage-master-user-password", "--storage-encrypted"):
         assert flag in create
-    assert state["sgs"]["sg-ticketapp-db"]["from"] == ["sg-ticketapp-api"]
+    assert state["sgs"]["sg-sahayak-db"]["from"] == ["sg-sahayak-api"]
 
     container = state["service"]["container"]
     env = {e["name"]: e["value"] for e in container["environment"]}
@@ -136,11 +156,76 @@ def test_up_from_nothing_creates_everything_without_printing_secrets(fake):
     # The old CLI here has no --cpu-architecture: x86_64, no unknown flag.
     assert "cpu-architecture" not in state["service"]["args"]
 
-    exec_policy = state["roles"]["ticketapp-ecs-exec"]["read-ticketapp-secrets"]
+    exec_policy = state["roles"]["sahayak-ecs-exec"]["read-sahayak-secrets"]
     assert exec_policy["Statement"][0]["Resource"] == [state["secret"]["arn"], state["db"]["secret"]]
-    task = state["roles"]["ticketapp-api-task"]["ticketapp-api"]["Statement"]
-    assert task[1]["Resource"] == "arn:aws:s3:::ticketapp-ai-attachments-123456789012/attachments/*"
-    assert "https://ticketapp-api.ecs.ap-south-1.on.aws" in res.stdout
+    task = state["roles"]["sahayak-api-task"]["sahayak-api"]["Statement"]
+    assert task[1]["Resource"] == "arn:aws:s3:::sahayak-attachments-123456789012/attachments/*"
+    assert "https://sahayak-api.ecs.ap-south-1.on.aws" in res.stdout
+
+
+def test_up_from_nothing_builds_its_own_network_cluster_and_policies(fake):
+    fake.set_state({"images": ["abc1234"]})
+    res = fake.run("aws_up.sh", ADMIN_EMAIL="owner@example.com")
+    assert res.returncode == 0, res.stderr
+    state = fake.state()
+    # Its own VPC: the service in the public subnets, the database in the
+    # private ones (the public route table has only the public subnets).
+    assert state["vpc"]["name"] == "sahayak-vpc" and state["vpc"]["cidr"] == "10.42.0.0/16"
+    assert state["vpc"]["dns_hostnames"] and state["igw"]["vpc"] == "vpc-sahayak"
+    subnets = state["subnets"]
+    assert {n: x["public_ip"] for n, x in subnets.items()} == {
+        "sahayak-public-a": True, "sahayak-public-b": True, "sahayak-private-a": False, "sahayak-private-b": False}
+    assert subnets["sahayak-public-a"]["az"] != subnets["sahayak-public-b"]["az"]
+    assert state["route_table"]["routes"] == {"0.0.0.0/0": "igw-1"} and state["route_table"]["subnets"] == PUBLIC
+    group = next(c for c in fake.calls() if c[1] == "create-db-subnet-group")
+    assert group[group.index("--subnet-ids") + 1:][:2] == PRIVATE
+    assert state["service"]["network"]["subnets"] == PUBLIC
+    assert state["clusters"] == ["sahayak"] and state["service"]["cluster"] == "sahayak"
+    assert state["service"]["scaling"] == {"minTaskCount": 1, "maxTaskCount": 1}
+    # The attachments bucket: private and encrypted.
+    bucket = state["buckets"]["sahayak-attachments-123456789012"]
+    assert "BlockPublicPolicy=true" in bucket["put-public-access-block"]
+    assert "AES256" in bucket["put-bucket-encryption"]
+
+    create = next(c for c in fake.calls() if c[1] == "create-db-instance")
+    assert create[create.index("--backup-retention-period") + 1] == "7"
+    bedrock = state["roles"]["sahayak-api-task"]["sahayak-api"]["Statement"][0]["Resource"]
+    assert bedrock == [
+        "arn:aws:bedrock:ap-south-1:123456789012:inference-profile/apac.amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:ap-south-1:123456789012:inference-profile/apac.amazon.nova-pro-v1:0",
+        "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"]
+    env = {e["name"]: e["value"] for e in state["service"]["container"]["environment"]}
+    assert env["CUSTOMER_SIGNUP_ENABLED"] == "false" and env["DB_NAME"] == "sahayak"
+    assert state["lb_idle_timeout"] == "Key=idle_timeout.timeout_seconds,Value=120"
+    # Nothing it did names ticketapp or the shared default cluster.
+    for call in fake.calls():
+        assert "ticketapp" not in json.dumps(call).lower(), call
+        if "--cluster" in call:
+            assert call[call.index("--cluster") + 1] == "sahayak", call
+
+
+@pytest.mark.parametrize("script", ["aws_up.sh", "aws_down.sh", "aws_pause.sh", "aws_resume.sh"])
+@pytest.mark.parametrize("env", [{"AWS_PROFILE": "ticketapp"}, {"AWS_PROFILE": "TicketApp-admin"}])
+def test_a_ticketapp_profile_stops_before_any_aws_call(fake, script, env):
+    fake.set_state(_existing())
+    res = fake.run(script, **env)
+    assert res.returncode != 0 and "belongs to ticketapp-ai-aws" in res.stderr
+    assert fake.calls() == []
+
+
+def test_up_refuses_a_ticketapp_bucket(fake):
+    fake.set_state(_existing())
+    res = fake.run("aws_up.sh", S3_BUCKET="ticketapp-ai-attachments-123456789012")
+    assert res.returncode != 0 and "belongs to ticketapp-ai-aws" in res.stderr
+    assert fake.mutating() == []
+
+
+def test_up_stops_when_the_load_balancer_is_outside_sahayaks_vpc(fake):
+    fake.set_state(_existing(lb_vpc="vpc-other"))
+    res = fake.run("aws_up.sh")
+    assert res.returncode != 0 and "not sahayak-vpc" in res.stderr
+    assert "elbv2 modify-load-balancer-attributes" not in fake.ops()
 
 
 def test_up_needs_admin_email_before_creating_the_secret(fake):
@@ -148,7 +233,7 @@ def test_up_needs_admin_email_before_creating_the_secret(fake):
     res = fake.run("aws_up.sh")
     assert res.returncode != 0 and "ADMIN_EMAIL" in res.stderr
     assert "secretsmanager create-secret" not in fake.ops()
-    assert not any(op.startswith(("rds create-db-instance", "ecs create")) for op in fake.ops())
+    assert not any(op.startswith(("rds create-db-instance", "ecs create-express")) for op in fake.ops())
 
 
 def _rds_calls(fake, op):
@@ -160,7 +245,9 @@ def test_up_restores_the_newest_snapshot(fake):
     res = fake.run("aws_up.sh")
     assert res.returncode == 0, res.stderr
     state = fake.state()
-    assert state["db"]["from"] == "ticketapp-db-20261102-120000"
+    assert state["db"]["from"] == "sahayak-db-20261102-120000"
+    [restored] = _rds_calls(fake, "restore-db-instance-from-db-snapshot")
+    assert restored[restored.index("--backup-retention-period") + 1] == "7"
     assert "rds create-db-instance" not in fake.ops()
     assert "secretsmanager create-secret" not in fake.ops()
     # Restored without the flag, then one modify turns the managed secret on.
@@ -177,7 +264,7 @@ def test_up_restores_the_newest_snapshot(fake):
 def test_fake_rds_rejects_restore_with_the_managed_password_flag(tmp_path):
     state, log = tmp_path / "state.json", tmp_path / "calls.log"
     state.write_text("{}")
-    argv = ["rds", "restore-db-instance-from-db-snapshot", "--db-instance-identifier", "ticketapp-db",
+    argv = ["rds", "restore-db-instance-from-db-snapshot", "--db-instance-identifier", "sahayak-db",
             "--db-snapshot-identifier", "s", "--manage-master-user-password"]
     res = subprocess.run([sys.executable, str(ROOT / "tests" / "fake_aws_cli.py"), *argv], capture_output=True,
                          text=True, env={**os.environ, "FAKE_AWS_STATE": str(state), "FAKE_AWS_LOG": str(log)})
@@ -188,7 +275,7 @@ def test_fake_rds_rejects_restore_with_the_managed_password_flag(tmp_path):
 
 def test_up_re_run_after_a_restore_without_secret_modifies_once(fake):
     # As after the old failure, or a run stopped right after the restore.
-    fake.set_state(_existing(db={"status": "available", "secret": None, "from": "ticketapp-db-20261102-120000"}))
+    fake.set_state(_existing(db={"status": "available", "secret": None, "from": "sahayak-db-20261102-120000"}))
     res = fake.run("aws_up.sh")
     assert res.returncode == 0, res.stderr
     assert "rds restore-db-instance-from-db-snapshot" not in fake.ops()
@@ -213,7 +300,7 @@ def test_up_stops_when_the_secret_never_appears(fake):
     fake.set_state(_existing(db={"status": "available", "secret": None, "from": None}, secret_never=True))
     res = fake.run("aws_up.sh", DB_SECRET_WAIT="1")
     assert res.returncode != 0 and "database secret: still" in res.stderr
-    assert not any(op.startswith("ecs create") for op in fake.ops())
+    assert not any(op.startswith("ecs create-express") for op in fake.ops())
 
 
 def test_down_after_a_restored_up(fake):
@@ -233,7 +320,8 @@ def test_up_twice_changes_nothing_the_second_time(fake):
     res = fake.run("aws_up.sh")
     assert res.returncode == 0, res.stderr
     second = [f"{c[0]} {c[1]}" for c in fake.calls()[first:] if c[2:3] != ["help"]]
-    changed = [op for op in second if op.split()[1].startswith(("create-", "restore-", "update-express", "authorize-"))]
+    changed = [op for op in second
+               if op.split()[1].startswith(("create-", "restore-", "update-express", "authorize-", "associate-"))]
     assert changed == []
     assert "exists and is current" in res.stdout
 
@@ -254,7 +342,7 @@ def test_up_says_how_to_build_when_there_is_no_image(fake):
     fake.set_state(_existing(images=[]))
     res = fake.run("aws_up.sh", IMAGE_TAG="")  # this commit's tag; no Docker on the test PATH
     assert res.returncode != 0 and "scripts/aws_build_image.sh" in res.stderr
-    assert not any(op.startswith(("rds create", "ecs create")) for op in fake.ops())
+    assert not any(op.startswith(("rds create", "ecs create-express")) for op in fake.ops())
 
 
 @pytest.mark.parametrize("manifest, arch", [
@@ -303,8 +391,8 @@ def test_down_snapshots_first_then_deletes_and_keeps_the_newest(fake):
     state = fake.state()
     assert state["db"] is None and state["service"]["status"] == "INACTIVE"
     kept = [s["DBSnapshotIdentifier"] for s in state["snapshots"]]
-    assert len(kept) == 2 and kept[0] == "ticketapp-db-20261102-120000"  # the oldest was pruned
-    assert kept[1].startswith("ticketapp-db-2")
+    assert len(kept) == 2 and kept[0] == "sahayak-db-20261102-120000"  # the oldest was pruned
+    assert kept[1].startswith("sahayak-db-2")
     assert "No. What remains" in res.stdout
 
 
@@ -325,12 +413,79 @@ def test_down_with_nothing_running_does_not_ask(fake):
     assert "Nothing to take down" in res.stdout and fake.mutating() == []
 
 
+def test_down_reports_only_load_balancers_in_sahayaks_vpc(fake):
+    state = _running()
+    fake.set_state(state)
+    res = fake.run("aws_down.sh", stdin="yes\n")
+    assert res.returncode == 0, res.stderr
+    assert "other-app-lb" not in res.stdout + res.stderr  # the fake always lists another app's
+
+
 def test_down_is_safe_to_re_run(fake):
     fake.set_state(_running())
     assert fake.run("aws_down.sh", stdin="yes\n").returncode == 0
     before = len(fake.mutating())
     assert fake.run("aws_down.sh").returncode == 0
     assert len(fake.mutating()) == before
+
+
+# ---------------------------------------------------------------------------
+# aws_pause.sh / aws_resume.sh
+# ---------------------------------------------------------------------------
+def test_pause_scales_to_zero_and_stops_the_database(fake):
+    fake.set_state(_running())
+    res = fake.run("aws_pause.sh")
+    assert res.returncode == 0, res.stderr
+    state = fake.state()
+    assert state["service"]["scaling"] == {"minTaskCount": 0, "maxTaskCount": 0}
+    assert state["db"]["status"] == "stopped" and state["service"]["status"] == "ACTIVE"
+    assert not any(op.split()[1].startswith("delete-") for op in fake.ops())
+    assert "re-run this script before then" in res.stdout
+    # Again: nothing left to stop.
+    first = len(fake.calls())
+    assert fake.run("aws_pause.sh").returncode == 0
+    assert "rds stop-db-instance" not in [f"{c[0]} {c[1]}" for c in fake.calls()[first:]]
+
+
+def test_pause_falls_back_to_the_ecs_count_when_express_refuses_zero(fake):
+    state = _running()
+    state["fail"] = ["ecs update-express-gateway-service"]
+    fake.set_state(state)
+    res = fake.run("aws_pause.sh")
+    assert res.returncode == 0, res.stderr
+    state = fake.state()
+    assert state["scalable"] == {"resource": "service/sahayak/sahayak-api", "min": 0, "max": 0}
+    assert state["service"]["desired"] == 0 and state["db"]["status"] == "stopped"
+
+
+def test_pause_with_nothing_there_says_so(fake):
+    fake.set_state(_existing())
+    res = fake.run("aws_pause.sh")
+    assert res.returncode != 0 and "no Sahayak service or database" in res.stderr
+    assert fake.mutating() == []
+
+
+def test_resume_after_pause_starts_the_database_then_the_service(fake):
+    fake.set_state(_running())
+    assert fake.run("aws_pause.sh").returncode == 0
+    first = len(fake.calls())
+    res = fake.run("aws_resume.sh")
+    assert res.returncode == 0, res.stderr
+    state = fake.state()
+    assert state["db"]["status"] == "available" and state["starts"] == 1
+    assert state["service"]["scaling"] == {"minTaskCount": 1, "maxTaskCount": 1}
+    ops = [f"{c[0]} {c[1]}" for c in fake.calls()[first:]]
+    assert ops.index("rds start-db-instance") < ops.index("ecs update-express-gateway-service")
+    assert "API: https://sahayak-api.ecs.ap-south-1.on.aws" in res.stdout
+    # Again: the database is already running.
+    assert fake.run("aws_resume.sh").returncode == 0 and fake.state()["starts"] == 1
+
+
+def test_resume_after_down_points_to_up(fake):
+    fake.set_state(_existing())
+    res = fake.run("aws_resume.sh")
+    assert res.returncode != 0 and "scripts/aws_up.sh" in res.stderr
+    assert fake.mutating() == []
 
 
 # ---------------------------------------------------------------------------
@@ -367,16 +522,16 @@ def test_build_first_run_creates_everything_and_pushes_this_commit(fake, repo):
     assert res.returncode == 0, res.stderr
     state, tag = fake.state(), repo.tag
     assert state["repo"] is True and tag in state["images"]
-    assert f"ticketapp-api:{tag}" in res.stdout and "Next: run scripts/aws_up.sh" in res.stdout
+    assert f"sahayak-api:{tag}" in res.stdout and "Next: run scripts/aws_up.sh" in res.stdout
 
-    bucket = state["bucket"]
-    assert bucket["name"] == "ticketapp-build-123456789012" and bucket["region"] == "LocationConstraint=ap-south-1"
+    bucket = state["buckets"]["sahayak-build-123456789012"]
+    assert bucket["region"] == "LocationConstraint=ap-south-1"
     assert "BlockPublicPolicy=true" in bucket["put-public-access-block"]
     assert "AES256" in bucket["put-bucket-encryption"]
     assert json.loads(bucket["put-bucket-lifecycle-configuration"])["Rules"][0]["Expiration"] == {"Days": 7}
 
-    statements = {st["Sid"]: st for st in state["roles"]["ticketapp-codebuild"]["ticketapp-image-build"]["Statement"]}
-    assert statements["PushImage"]["Resource"] == "arn:aws:ecr:ap-south-1:123456789012:repository/ticketapp-api"
+    statements = {st["Sid"]: st for st in state["roles"]["sahayak-codebuild"]["sahayak-image-build"]["Statement"]}
+    assert statements["PushImage"]["Resource"] == "arn:aws:ecr:ap-south-1:123456789012:repository/sahayak-api"
     assert statements["EcrLogin"]["Action"] == "ecr:GetAuthorizationToken"
     assert all(a.startswith(("s3:Get",)) for a in statements["ReadSource"]["Action"] + statements["SourceBucket"]["Action"])
     assert not any("*" in a for st in statements.values() for a in ([st["Action"]] if isinstance(st["Action"], str) else st["Action"]))
@@ -391,12 +546,12 @@ def test_build_first_run_creates_everything_and_pushes_this_commit(fake, repo):
     assert '"docker build -t \\"$REPO_URI:$IMAGE_TAG\\" ."' in buildspec
     assert '"docker push \\"$REPO_URI:$IMAGE_TAG\\""' in buildspec
     assert "--password-stdin" in buildspec
-    assert project["service-role"] == "arn:aws:iam::123456789012:role/ticketapp-codebuild"
-    assert state["log_groups"]["/aws/codebuild/ticketapp-image-build"]["retention"] == 14
+    assert project["service-role"] == "arn:aws:iam::123456789012:role/sahayak-codebuild"
+    assert state["log_groups"]["/aws/codebuild/sahayak-image-build"]["retention"] == 14
 
     build = state["builds"][0]
-    assert build["tag"] == tag and build["source"] == f"ticketapp-build-123456789012/source/{tag}.zip"
-    upload = state["uploads"][f"s3://ticketapp-build-123456789012/source/{tag}.zip"]
+    assert build["tag"] == tag and build["source"] == f"sahayak-build-123456789012/source/{tag}.zip"
+    upload = state["uploads"][f"s3://sahayak-build-123456789012/source/{tag}.zip"]
     assert upload == {"files": ["Dockerfile", "scripts/", "scripts/aws_build_image.sh", "scripts/aws_lib.sh"],
                       "owner": "123456789012"}
     assert "s3api put-object" in fake.ops() and not any(op.startswith("s3 ") for op in fake.ops())
@@ -460,7 +615,7 @@ def test_build_failure_prints_the_log_tail_without_tokens(fake, repo):
 # ---------------------------------------------------------------------------
 # All scripts: preflight, CLI options
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("script", ["aws_up.sh", "aws_down.sh", "aws_build_image.sh"])
+@pytest.mark.parametrize("script", ["aws_up.sh", "aws_down.sh", "aws_pause.sh", "aws_resume.sh", "aws_build_image.sh"])
 def test_missing_profile_stops_at_preflight(fake, repo, script):
     fake.set_state({"no_profile": True})
     scripts = repo / "scripts" if script == "aws_build_image.sh" else SCRIPTS
@@ -559,5 +714,5 @@ def test_smoke_api_origin(given, origin):
 
 
 def test_scripts_are_executable():
-    for name in ("aws_up.sh", "aws_down.sh", "aws_build_image.sh"):
+    for name in ("aws_up.sh", "aws_down.sh", "aws_pause.sh", "aws_resume.sh", "aws_build_image.sh"):
         assert os.access(SCRIPTS / name, os.X_OK), name

@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Bring the demo stack up on AWS (docs/AWS_DEPLOY.md, "Demo-only hosting").
+# Bring the Sahayak pilot up on AWS (docs/SAHAYAK_PILOT_HOSTING.md).
 #
 # Idempotent: every step checks what exists and only creates what's
-# missing, so a failed run can simply be re-run. Kept between demos (and
-# reused here): security groups, DB subnet group, IAM roles, the app
-# secret, the ECR repository, the Amplify app, and the RDS snapshots.
-# Created per demo (and removed by scripts/aws_down.sh): the RDS
-# instance, restored from the newest snapshot, and the ECS Express
-# service with its load balancer. Those two bill by the hour.
+# missing, so a failed run can simply be re-run. Free and kept: the VPC
+# sahayak-vpc (2 public subnets for the load balancer and task, 2 private
+# ones for the database, no NAT gateway), the ECS cluster sahayak,
+# security groups, DB subnet group, IAM roles; cents a month: the app
+# secret, the ECR repository, the Amplify app, RDS snapshots. Billed by
+# the hour: the RDS instance (created, or restored from the newest
+# snapshot) and the ECS Express service with its load balancer.
+# Between pilot sessions use scripts/aws_pause.sh / aws_resume.sh;
+# scripts/aws_down.sh is for the end of the pilot.
 #
 # Settings (environment):
-#   AWS_PROFILE    default ticketapp
+#   AWS_PROFILE    default sahayak
 #   AWS_REGION     default ap-south-1
 #   ADMIN_EMAIL    needed once, when the app secret is first created
 #   IMAGE_TAG      image to run; default: this commit's short hash, else
@@ -20,6 +23,8 @@
 #                  URL didn't change
 #   SKIP_FRONTEND=1 / SKIP_SMOKE=1  leave out the frontend deploy / the
 #                  smoke test at the end
+#   CUSTOMER_SIGNUP_ENABLED  default false: pilot accounts are made by the
+#                  admin; true opens public sign-up
 #
 # Never prints a secret: generated values go to a private temp file and
 # from there to Secrets Manager; the service gets them by ARN.
@@ -29,15 +34,72 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
 step "Checking the AWS identity"
 preflight
-BUCKET=${S3_BUCKET:-$NAME-ai-attachments-$ACCOUNT_ID}
+BUCKET=${S3_BUCKET:-$NAME-attachments-$ACCOUNT_ID}
+guard_names "$BUCKET"
 
 # ---------------------------------------------------------------------------
-step "Network: default VPC, security groups, DB subnet group (free)"
-VPC_ID=$(awst ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId')
-[ -n "$VPC_ID" ] || die "this region has no default VPC"
-SUBNETS=$(awst ec2 describe-subnets --filters Name=vpc-id,Values="$VPC_ID" Name=default-for-az,Values=true \
-  --query 'Subnets[].SubnetId')
-[ -n "$SUBNETS" ] || die "the default VPC has no default subnets"
+step "Network: VPC $VPC_NAME, subnets, security groups, DB subnet group (free)"
+tags() { printf 'ResourceType=%s,Tags=[{Key=Name,Value=%s},{Key=project,Value=%s}]' "$1" "$2" "$NAME"; }
+VPC_ID=$(vpc_id)
+if [ -z "$VPC_ID" ]; then
+  VPC_ID=$(awst ec2 create-vpc --cidr-block "$VPC_CIDR" --tag-specifications "$(tags vpc "$VPC_NAME")" \
+    --query Vpc.VpcId)
+  info "created VPC $VPC_NAME ($VPC_CIDR)"
+else
+  info "VPC $VPC_NAME exists"
+fi
+# DNS host names: RDS endpoints and ECR/Bedrock names resolve in the VPC.
+aws ec2 modify-vpc-attribute --vpc-id "$VPC_ID" --enable-dns-hostnames '{"Value":true}' >/dev/null
+IGW_ID=$(awst ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values="$VPC_ID" \
+  --query 'InternetGateways[0].InternetGatewayId')
+if [ -z "$IGW_ID" ]; then
+  IGW_ID=$(awst ec2 create-internet-gateway --tag-specifications "$(tags internet-gateway "$NAME-igw")" \
+    --query InternetGateway.InternetGatewayId)
+  aws ec2 attach-internet-gateway --internet-gateway-id "$IGW_ID" --vpc-id "$VPC_ID" >/dev/null
+  info "created and attached internet gateway"
+fi
+read -r AZ_A AZ_B < <(awst ec2 describe-availability-zones --filters Name=state,Values=available \
+  --query 'AvailabilityZones[0:2].ZoneName') || true
+[ -n "${AZ_A:-}" ] && [ -n "${AZ_B:-}" ] || die "fewer than 2 availability zones in $AWS_REGION"
+ensure_subnet() {  # variable name cidr az
+  local id
+  id=$(awst ec2 describe-subnets --filters Name=vpc-id,Values="$VPC_ID" Name=tag:Name,Values="$2" \
+    --query 'Subnets[0].SubnetId')
+  if [ -z "$id" ]; then
+    id=$(awst ec2 create-subnet --vpc-id "$VPC_ID" --cidr-block "$3" --availability-zone "$4" \
+      --tag-specifications "$(tags subnet "$2")" --query Subnet.SubnetId)
+    info "created subnet $2 ($3, $4)"
+  fi
+  printf -v "$1" '%s' "$id"
+}
+ensure_subnet PUBLIC_A "$NAME-public-a" 10.42.0.0/20 "$AZ_A"
+ensure_subnet PUBLIC_B "$NAME-public-b" 10.42.16.0/20 "$AZ_B"
+ensure_subnet PRIVATE_A "$NAME-private-a" 10.42.128.0/20 "$AZ_A"
+ensure_subnet PRIVATE_B "$NAME-private-b" 10.42.144.0/20 "$AZ_B"
+PUBLIC_SUBNETS="$PUBLIC_A $PUBLIC_B"     # load balancer and task (public IP, no NAT)
+PRIVATE_SUBNETS="$PRIVATE_A $PRIVATE_B"  # database; the main route table has no internet route
+for subnet in $PUBLIC_SUBNETS; do
+  aws ec2 modify-subnet-attribute --subnet-id "$subnet" --map-public-ip-on-launch >/dev/null
+done
+RT_ID=$(awst ec2 describe-route-tables --filters Name=vpc-id,Values="$VPC_ID" Name=tag:Name,Values="$NAME-public" \
+  --query 'RouteTables[0].RouteTableId')
+if [ -z "$RT_ID" ]; then
+  RT_ID=$(awst ec2 create-route-table --vpc-id "$VPC_ID" --tag-specifications "$(tags route-table "$NAME-public")" \
+    --query RouteTable.RouteTableId)
+  info "created public route table"
+fi
+if [ -z "$(awst ec2 describe-route-tables --route-table-ids "$RT_ID" \
+  --query "RouteTables[0].Routes[?DestinationCidrBlock=='0.0.0.0/0'].GatewayId | [0]")" ]; then
+  aws ec2 create-route --route-table-id "$RT_ID" --destination-cidr-block 0.0.0.0/0 --gateway-id "$IGW_ID" >/dev/null
+  info "public subnets route to the internet gateway"
+fi
+ASSOCIATED=$(awst ec2 describe-route-tables --route-table-ids "$RT_ID" --query 'RouteTables[0].Associations[].SubnetId' \
+  | tr '\t' ' ')
+for subnet in $PUBLIC_SUBNETS; do
+  case " $ASSOCIATED " in *" $subnet "*) ;; *)
+    aws ec2 associate-route-table --route-table-id "$RT_ID" --subnet-id "$subnet" >/dev/null ;;
+  esac
+done
 
 ensure_sg() {  # variable name description: sets the variable to the group id
   local id
@@ -51,8 +113,8 @@ ensure_sg() {  # variable name description: sets the variable to the group id
   fi
   printf -v "$1" '%s' "$id"
 }
-ensure_sg API_SG "$API_SG_NAME" "ticketapp API tasks"
-ensure_sg DB_SG "$DB_SG_NAME" "ticketapp RDS, from API tasks only"
+ensure_sg API_SG "$API_SG_NAME" "Sahayak API tasks"
+ensure_sg DB_SG "$DB_SG_NAME" "Sahayak RDS, from API tasks only"
 RULE=$(awst ec2 describe-security-groups --group-ids "$DB_SG" \
   --query "SecurityGroups[0].IpPermissions[?FromPort==\`5432\`].UserIdGroupPairs[].GroupId | [?@=='$API_SG'] | [0]")
 if [ -z "$RULE" ]; then
@@ -61,10 +123,19 @@ if [ -z "$RULE" ]; then
   info "database accepts 5432 from the API group only"
 fi
 if ! aws rds describe-db-subnet-groups --db-subnet-group-name "$DB_ID" >/dev/null 2>&1; then
-  # shellcheck disable=SC2086  # SUBNETS is a list
+  # shellcheck disable=SC2086  # PRIVATE_SUBNETS is a list
   aws rds create-db-subnet-group --db-subnet-group-name "$DB_ID" \
-    --db-subnet-group-description "ticketapp default VPC" --subnet-ids $SUBNETS >/dev/null
-  info "created DB subnet group"
+    --db-subnet-group-description "Sahayak private subnets" --subnet-ids $PRIVATE_SUBNETS >/dev/null
+  info "created DB subnet group (private subnets)"
+fi
+
+# ---------------------------------------------------------------------------
+step "ECS cluster $CLUSTER (free)"
+if [ -n "$(awst ecs describe-clusters --clusters "$CLUSTER" --query "clusters[?status=='ACTIVE'].clusterName | [0]")" ]; then
+  info "exists"
+else
+  aws ecs create-cluster --cluster-name "$CLUSTER" --tags key=project,value="$NAME" >/dev/null
+  info "created"
 fi
 
 # ---------------------------------------------------------------------------
@@ -83,7 +154,7 @@ json.dump({"JWT_SECRET": secrets.token_hex(32),
 PY
   )
   APP_SECRET_ARN=$(awst secretsmanager create-secret --name "$APP_SECRET_NAME" \
-    --description "ticketapp API: JWT signing key, first admin" \
+    --description "Sahayak API: JWT signing key, first admin" \
     --secret-string "file://$SECRET_FILE" --query ARN)
   rm -f "$SECRET_FILE"
   info "created (values generated, not shown; see the doc to copy the admin password)"
@@ -93,6 +164,26 @@ elif [ -n "${APP_SECRET_DELETED:-}" ] && [ "$APP_SECRET_DELETED" != "None" ]; th
 else
   info "exists"
 fi
+
+# ---------------------------------------------------------------------------
+step "Attachments bucket s3://$BUCKET (private, encrypted): cents a month"
+if aws s3api head-bucket --bucket "$BUCKET" --expected-bucket-owner "$ACCOUNT_ID" >/dev/null 2>&1; then
+  info "exists"
+else
+  if [ "$AWS_REGION" = us-east-1 ]; then
+    aws s3api create-bucket --bucket "$BUCKET" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$BUCKET" \
+      --create-bucket-configuration LocationConstraint="$AWS_REGION" >/dev/null
+  fi
+  info "created"
+fi
+# (Re)applied every run, so a run that stopped right after create-bucket
+# is completed by the next one. Files are kept: no lifecycle rule.
+aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true >/dev/null
+aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' >/dev/null
 
 # ---------------------------------------------------------------------------
 step "Image in ECR ($SERVICE): storage \$0.10/GB-month"
@@ -142,7 +233,7 @@ case "$STATUS" in
         --db-snapshot-identifier "$SNAPSHOT" \
         --db-instance-class db.t4g.micro --storage-type gp3 \
         --db-subnet-group-name "$DB_ID" --vpc-security-group-ids "$DB_SG" \
-        --no-publicly-accessible --no-multi-az \
+        --no-publicly-accessible --no-multi-az --backup-retention-period "$BACKUP_DAYS" \
         --deletion-protection --copy-tags-to-snapshot \
         --tags Key=project,Value="$NAME" >/dev/null
     else
@@ -159,7 +250,7 @@ case "$STATUS" in
         --db-name "$DB_NAME" --master-username "$DB_USER" --manage-master-user-password \
         --vpc-security-group-ids "$DB_SG" --db-subnet-group-name "$DB_ID" \
         --no-publicly-accessible --no-multi-az \
-        --backup-retention-period 1 --deletion-protection --copy-tags-to-snapshot \
+        --backup-retention-period "$BACKUP_DAYS" --deletion-protection --copy-tags-to-snapshot \
         --auto-minor-version-upgrade --tags Key=project,Value="$NAME" >/dev/null
     fi
     ;;
@@ -221,19 +312,21 @@ cat > "$TMP_DIR/exec-policy.json" <<JSON
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"secretsmanager:GetSecretValue",
  "Resource":["$APP_SECRET_ARN","$DB_SECRET_ARN"]}]}
 JSON
-aws iam put-role-policy --role-name "$EXEC_ROLE" --policy-name read-ticketapp-secrets \
+aws iam put-role-policy --role-name "$EXEC_ROLE" --policy-name read-sahayak-secrets \
   --policy-document "file://$TMP_DIR/exec-policy.json" >/dev/null
 cat > "$TMP_DIR/task-policy.json" <<JSON
 {"Version":"2012-10-17","Statement":[
  {"Sid":"Bedrock","Effect":"Allow","Action":["bedrock:InvokeModel"],
   "Resource":["arn:aws:bedrock:$AWS_REGION:$ACCOUNT_ID:inference-profile/$BEDROCK_MODEL",
-              "arn:aws:bedrock:*::foundation-model/${BEDROCK_MODEL#apac.}"]},
+              "arn:aws:bedrock:$AWS_REGION:$ACCOUNT_ID:inference-profile/$DRAFTING_MODEL",
+              "arn:aws:bedrock:*::foundation-model/${BEDROCK_MODEL#apac.}",
+              "arn:aws:bedrock:*::foundation-model/${DRAFTING_MODEL#apac.}"]},
  {"Sid":"Attachments","Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject"],
   "Resource":"arn:aws:s3:::$BUCKET/attachments/*"}]}
 JSON
-aws iam put-role-policy --role-name "$TASK_ROLE" --policy-name ticketapp-api \
+aws iam put-role-policy --role-name "$TASK_ROLE" --policy-name sahayak-api \
   --policy-document "file://$TMP_DIR/task-policy.json" >/dev/null
-info "execution role reads the 2 secrets; task role: Nova Lite + attachments/ in S3"
+info "execution role reads the 2 secrets; task role: Nova Lite and Pro + attachments/ in S3"
 if [ "$ROLES_CREATED" = 1 ] && [ "$POLL_SECONDS" -gt 0 ]; then
   info "waiting 15 s for the new roles to become usable"
   sleep 15
@@ -257,7 +350,9 @@ info "frontend: $FRONTEND_URL (stable: it is the CORS origin)"
 
 # ---------------------------------------------------------------------------
 step "API service $SERVICE (ECS Express: Fargate task + load balancer): ~\$0.07/hour"
+CUSTOMER_SIGNUP_ENABLED=${CUSTOMER_SIGNUP_ENABLED:-false}
 export IMAGE AWS_REGION BUCKET DB_HOST DB_NAME DB_USER FRONTEND_URL APP_SECRET_ARN DB_SECRET_ARN BEDROCK_MODEL
+export CUSTOMER_SIGNUP_ENABLED
 python3 - "$TMP_DIR/container.json" <<'PY'
 import json, os, sys
 e = os.environ
@@ -269,6 +364,7 @@ env = {
     "DB_NAME": e["DB_NAME"], "DB_USER": e["DB_USER"], "DB_SSLMODE": "require",
     "DB_POOL_MAX": "10", "DB_POOL_TIMEOUT": "10",
     "ALLOWED_ORIGINS": e["FRONTEND_URL"], "TRUSTED_PROXY_HOPS": "1", "EMAIL_ENABLED": "false",
+    "CUSTOMER_SIGNUP_ENABLED": e["CUSTOMER_SIGNUP_ENABLED"],
 }
 app, dbs = e["APP_SECRET_ARN"], e["DB_SECRET_ARN"]
 secrets = [
@@ -289,11 +385,12 @@ if [ -z "$SERVICE_ARN" ]; then
     && aws ecs create-express-gateway-service help 2>/dev/null | grep -q -- '--cpu-architecture'; then
     ARCH=(--cpu-architecture ARM64)
   fi
-  python3 - "$TMP_DIR/network.json" "$API_SG" $SUBNETS <<'PY'
+  # shellcheck disable=SC2086  # PUBLIC_SUBNETS is a list
+  python3 - "$TMP_DIR/network.json" "$API_SG" $PUBLIC_SUBNETS <<'PY'
 import json, sys
 json.dump({"securityGroups": [sys.argv[2]], "subnets": sys.argv[3:]}, open(sys.argv[1], "w"))
 PY
-  SERVICE_ARN=$(awst ecs create-express-gateway-service --service-name "$SERVICE" \
+  SERVICE_ARN=$(awst ecs create-express-gateway-service --cluster "$CLUSTER" --service-name "$SERVICE" \
     --execution-role-arn "arn:aws:iam::$ACCOUNT_ID:role/$EXEC_ROLE" \
     --infrastructure-role-arn "arn:aws:iam::$ACCOUNT_ID:role/$INFRA_ROLE" \
     --task-role-arn "arn:aws:iam::$ACCOUNT_ID:role/$TASK_ROLE" \
@@ -317,24 +414,25 @@ else
   fi
 fi
 info "waiting for the service to be stable"
-aws ecs wait services-stable --cluster default --services "$SERVICE"
+guard_names "$SERVICE_ARN" "$APP_SECRET_ARN" "$DB_SECRET_ARN"
+aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
 
-ENDPOINT=$(awst ecs describe-express-gateway-service --service-arn "$SERVICE_ARN" \
-  --query 'service.activeConfigurations[0].ingressPaths[0].endpoint')
-[ -n "$ENDPOINT" ] || die "the service has no URL yet; re-run in a few minutes"
-API_ORIGIN=https://${ENDPOINT#https://}
-API_ORIGIN=${API_ORIGIN%/}
-health() { curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API_ORIGIN/health" || true; }
-WANT=200 wait_for 900 "GET $API_ORIGIN/health" health
+API_ORIGIN=$(api_origin "$SERVICE_ARN")
+[ -n "$API_ORIGIN" ] || die "the service has no URL yet; re-run in a few minutes"
+WANT=200 wait_for 900 "GET $API_ORIGIN/health" health_of "$API_ORIGIN"
 
 # Long AI turns: the load balancer's idle timeout 60 s -> 120 s (uvicorn's
 # keep-alive is 130 s). Found through the service's target group.
-TG_ARN=$(awst ecs describe-services --cluster default --services "$SERVICE" \
+TG_ARN=$(awst ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
   --query 'services[0].loadBalancers[0].targetGroupArn')
 LB_ARN=""
 [ -z "$TG_ARN" ] || LB_ARN=$(awst elbv2 describe-target-groups --target-group-arns "$TG_ARN" \
   --query 'TargetGroups[0].LoadBalancerArns[0]')
 if [ -n "$LB_ARN" ]; then
+  # Express may share a load balancer between services: Sahayak's must be
+  # in Sahayak's VPC, so it can't be one serving another app.
+  LB_VPC=$(awst elbv2 describe-load-balancers --load-balancer-arns "$LB_ARN" --query 'LoadBalancers[0].VpcId')
+  [ "$LB_VPC" = "$VPC_ID" ] || die "the service's load balancer is in VPC '$LB_VPC', not $VPC_NAME ($VPC_ID); stop and check it in the console"
   aws elbv2 modify-load-balancer-attributes --load-balancer-arn "$LB_ARN" \
     --attributes Key=idle_timeout.timeout_seconds,Value=120 >/dev/null
   info "load balancer idle timeout 120 s"
@@ -388,5 +486,5 @@ fi
 step "Up"
 info "frontend: $FRONTEND_URL"
 info "API:      $API_ORIGIN"
-info "Billing by the hour now (~\$0.10/hour). Run scripts/aws_down.sh after the demo."
+info "Billing by the hour now (~\$0.10/hour). Between pilot sessions: scripts/aws_pause.sh."
 info "Signed-in checks: python3 scripts/aws_smoke.py --frontend $FRONTEND_URL --api $API_ORIGIN --admin"
