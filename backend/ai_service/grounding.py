@@ -189,14 +189,15 @@ _LEAD_IN_PHRASE = re.compile(
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
-def strip_dangling_lead_ins(text: str) -> str:
+def strip_dangling_lead_ins(text: str, followed: bool = False) -> str:
     """`text` without lead-in sentences ("Here's how:", "follow these
     steps:") that no step or list line follows, as left when every
     step was dropped or the model wrote none. Earlier sentences of the
-    same line stay."""
+    same line stay. `followed`: code adds a block after the text (a KB
+    entry's snippets), which a final colon may introduce."""
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        following = next((rest for rest in lines[i + 1:] if rest.strip()), "")
+        following = next((rest for rest in lines[i + 1:] if rest.strip()), "```" if followed else "")
         if not line.strip() or _STEP_LINE.match(line) or _STEP_LINE.match(following):
             continue
         sentences = _SENTENCE_END.split(line.strip())

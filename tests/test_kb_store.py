@@ -86,7 +86,7 @@ def test_an_invalid_entry_imports_nothing(conn):
     ({"kind": "faq"}, "kind must be one of how-to, troubleshooting, reference"),
     ({"handling": "auto"}, "handling must be one of answer, escalate_with_info"),
     ({"kb_entry_id": "KB-N0001"}, "kb_entry_id must look like KB-0001"),
-    ({"answer": "", "steps": []}, "an approved entry needs an answer or steps"),
+    ({"answer": "", "steps": []}, "an approved entry needs an answer, steps or snippets"),
 ])
 def test_entry_problems_name_the_field(change, problem):
     entry = {**kb_fixture.entry("KB-0001"), **change}

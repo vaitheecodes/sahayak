@@ -34,6 +34,7 @@ from backend.ai_service.schemas import (
     ClarifyInput,
     ContinuationInput,
     ContinuationVerdict,
+    KBCandidate,
 )
 
 _EMAIL_BODY_NOTE = (
@@ -291,18 +292,32 @@ def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> 
     if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().strip(".").upper() == NOT_COVERED:
         return ChatReply(text=NOT_COVERED, not_covered=True)
     text = _ground(text, data, operation or ("answer" if isinstance(data, AnswerInput) else "clarify"))
-    text = grounding.strip_dangling_lead_ins(text)
+    block = snippet_block(data.kb_candidates[0]) if isinstance(data, AnswerInput) and data.kb_candidates else ""
+    text = grounding.strip_dangling_lead_ins(text, followed=bool(block))
     if not re.search(r"[A-Za-z0-9]", text):
         raise provider.AIError("AI reply was only a lead-in to steps",
                                provider.AIFailure(kind="filter_rejected", operation=operation or "answer",
                                                   code="only_lead_in"))
     if data.reply_format == "email":
         text = email_utils.format_email_reply(
-            data.customer_name, drop_unasked(text, data.error_reported, data.how_to))
+            data.customer_name, drop_unasked(text, data.error_reported, data.how_to) + block)
     else:
         text = clean_chat_reply(text, subject_known=data.subject_known,
-                                error_reported=data.error_reported, how_to=data.how_to)
+                                error_reported=data.error_reported, how_to=data.how_to) + block
     return ChatReply(text=text)
+
+
+def snippet_block(entry: KBCandidate) -> str:
+    """The entry's snippets as ``` code blocks under the answer, verbatim
+    and added by code (never by the model, never filtered), with the
+    source and its licence when the source has one. The frontend shows
+    them as plain text."""
+    if not entry.snippets:
+        return ""
+    blocks = "".join(f"\n\n```\n{s}\n```" for s in entry.snippets)
+    source = ", ".join(part for part in (entry.source_url, entry.source_licence) if part)
+    credit = f"\n\nSource: {source}" if entry.source_licence else ""
+    return blocks + credit
 
 
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
@@ -351,8 +366,12 @@ _MOVE_ON_NOTE = (
 )
 
 
+_CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
+
+
 def _words(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9']+", text.lower()))
+    # A KB entry's snippet block is the same under every answer from it.
+    return set(re.findall(r"[a-z0-9']+", _CODE_BLOCK.sub(" ", text).lower()))
 
 
 def repeats(text: str, previous: list[str]) -> bool:

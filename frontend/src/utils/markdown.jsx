@@ -1,8 +1,9 @@
 /* Minimal markdown renderer for AI chat replies.
  *
  * generate_response (backend/graph.py) writes paragraphs, numbered steps,
- * bullets, bold labels and the occasional inline code span — and nothing
- * else, because we own the prompt. Rendering that exact subset is ~80 lines
+ * bullets, bold labels and the occasional inline code span, plus ``` blocks
+ * code adds under an answer (a KB entry's snippets, shown verbatim as
+ * plain text) — and nothing else, because we own the prompt. Rendering that exact subset is ~80 lines
  * and keeps the dependency list at react + react-router, instead of pulling
  * a full remark/unified tree in to format five constructs.
  *
@@ -55,7 +56,23 @@ function toBlocks(source) {
     }
   };
 
+  let code = null;
   for (const raw of source.split("\n")) {
+    if (raw.trim().startsWith("```")) {
+      if (code) {
+        blocks.push(code);
+        code = null;
+      } else {
+        flushParagraph();
+        flushList();
+        code = { type: "code", lines: [] };
+      }
+      continue;
+    }
+    if (code) {
+      code.lines.push(raw);
+      continue;
+    }
     const line = raw.trimEnd();
     const ordered = line.match(ORDERED_RE);
     const bullet = line.match(BULLET_RE);
@@ -89,6 +106,7 @@ function toBlocks(source) {
       paragraph.push(line);
     }
   }
+  if (code) blocks.push(code); // an unclosed block still shows as code
   flushParagraph();
   flushList();
   return blocks;
@@ -104,6 +122,13 @@ export function Markdown({ children, breaks = false }) {
   return (
     <div className="md">
       {toBlocks(source).map((block, i) => {
+        if (block.type === "code") {
+          return (
+            <pre className="md-code" key={i}>
+              <code>{block.lines.join("\n")}</code>
+            </pre>
+          );
+        }
         if (block.type === "h") {
           return (
             <p className="md-heading" key={i}>

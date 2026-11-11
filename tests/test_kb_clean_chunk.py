@@ -107,4 +107,4 @@ def test_the_comma_left_by_a_removed_icon_is_closed_up():
 
 def test_table_cells_keep_their_inline_text_together():
     html = b"<table><tr><td><code>https://</code><code>example.com/new</code></td><td><p>a</p><p>b</p></td></tr></table>"
-    assert html_to_text(html).text == "https://example.com/new | a b"
+    assert html_to_text(html).text == "`https://example.com/new` | a b"

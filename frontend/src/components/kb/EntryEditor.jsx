@@ -25,6 +25,7 @@ function toForm(entry) {
     questions: entry.questions.join("\n"),
     answer: entry.answer,
     steps: entry.steps.map((s) => ({ text: s.text, quote: s.quote, support_check: s.support_check })),
+    snippets: entry.snippets || [],
     applies_to: entry.applies_to,
   };
 }
@@ -39,6 +40,7 @@ function changes(form, entry) {
   if (form.answer !== entry.answer) out.answer = form.answer;
   const steps = form.steps.map(({ text, quote }) => ({ text: text.trim(), quote: quote.trim() }));
   if (JSON.stringify(steps) !== JSON.stringify(entry.steps.map(({ text, quote }) => ({ text, quote })))) out.steps = steps;
+  if (JSON.stringify(form.snippets) !== JSON.stringify(entry.snippets || [])) out.snippets = form.snippets;
   if (JSON.stringify([...form.applies_to].sort()) !== JSON.stringify([...entry.applies_to].sort())) {
     out.applies_to = form.applies_to;
   }
@@ -163,6 +165,7 @@ export default function EntryEditor({ entryId, isManager }) {
                 <Textarea id={ids.answer} rows={3} maxLength={1500} value={form.answer} onChange={(e) => set("answer")(e.target.value)} />
               </Field>
               <Steps form={form} setForm={setForm} setStep={setStep} editable={editable} />
+              <Snippets form={form} setForm={setForm} editable={editable} licence={entry.source_licence} />
               <AppliesTo value={form.applies_to} terms={terms} onChange={set("applies_to")} />
             </fieldset>
 
@@ -264,6 +267,38 @@ function Notices({ entry }) {
         </Alert>
       )}
     </>
+  );
+}
+
+/* Code, config or command lines copied verbatim from the source section;
+ * the customer sees them under the answer as plain text. Only removable
+ * here: a new one must come from a new run. */
+function Snippets({ form, setForm, editable, licence }) {
+  if (!form.snippets.length) return null;
+  const remove = (i) => setForm({ ...form, snippets: form.snippets.filter((_, j) => j !== i) });
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium">Snippets</span>
+        <span className="text-sm text-muted-fg">
+          Copied exactly from the source section; shown to customers as text{licence ? `, with “${licence}”` : ""}.
+        </span>
+      </div>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {form.snippets.map((snippet, i) => (
+          <li key={i} className="flex items-start gap-2 rounded-md border border-rule p-2">
+            <pre className="m-0 min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-raised p-2 font-mono text-sm">
+              {snippet}
+            </pre>
+            {editable && (
+              <Button variant="ghost" size="icon" onClick={() => remove(i)} aria-label={`Remove snippet ${i + 1}`}>
+                <Trash2 aria-hidden="true" />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

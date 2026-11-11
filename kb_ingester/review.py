@@ -34,7 +34,7 @@ from backend.timeutil import utcnow
 from kb_ingester import checks
 from kb_ingester.runs import purge_chunks, staff_name
 
-EDITABLE = ("title", "category", "kind", "questions", "answer", "steps", "applies_to")
+EDITABLE = ("title", "category", "kind", "questions", "answer", "steps", "snippets", "applies_to")
 
 
 class ReviewError(Exception):
@@ -119,6 +119,7 @@ def _pack(conn, entry_id: str) -> dict:
     """The entry in pack format, with steps' check fields and every term
     (proposed ones too) it applies to."""
     entry = kb_store._entries(conn, "WHERE kb_entry_id = ?", (entry_id,))[0]
+    entry.setdefault("snippets", [])
     entry["steps"] = [dict(r) for r in conn.execute(
         "SELECT text, quote, quote_offset, support_check FROM kb_entry_steps WHERE entry_id = ? ORDER BY ordinal",
         (entry_id,))]
@@ -183,12 +184,12 @@ def update_draft(conn, entry_id: str, changes: dict, *, version: int, actor: str
     if not changed:
         return []
     entry = {**current, **{f: changes[f] for f in changed}}
+    chunk = conn.execute("SELECT text FROM kb_chunks WHERE chunk_id = ?", (row["chunk_id"],)).fetchone() \
+        if row.get("chunk_id") else None
     if "steps" in changed:
         steps = entry["steps"]
         if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
             raise ReviewError("steps must be a list of {text, quote}")
-        chunk = conn.execute("SELECT text FROM kb_chunks WHERE chunk_id = ?", (row["chunk_id"],)).fetchone() \
-            if row.get("chunk_id") else None
         before = {(s["text"], s["quote"]): s for s in current["steps"]}
         checked = []
         for i, step in enumerate(steps, start=1):
@@ -202,6 +203,15 @@ def update_draft(conn, entry_id: str, changes: dict, *, version: int, actor: str
                             "quote_offset": checks.quote_offset(quote, chunk["text"]) if chunk and chunk["text"] else None,
                             "support_check": old["support_check"] if old else None})
         entry["steps"] = checked
+    if "snippets" in changed:
+        snippets = entry["snippets"]
+        if not isinstance(snippets, list) or not all(isinstance(s, str) for s in snippets):
+            raise ReviewError("snippets must be a list of text")
+        for i, snippet in enumerate(snippets, start=1):
+            problem = None if snippet in current["snippets"] or not (chunk and chunk["text"]) \
+                else checks.snippet_problem(snippet, chunk["text"])
+            if problem:
+                raise ReviewError(f"Snippet {i} must be code copied from the source section ({problem})")
     try:
         kb_store.save_entry(conn, entry, status="draft", actor=actor)
     except ValueError as exc:

@@ -7,6 +7,10 @@
   shares a run of VERBATIM_RUN_WORDS words with the chunk, or if more
   than MAX_TRIGRAM_OVERLAP of its word trigrams appear in the chunk.
   Only the answer: steps are meant to stay close to their quotes.
+- snippet_problem: a snippet (code, config or a command, shown to the
+  customer as it is) must be copied verbatim from the chunk (whitespace
+  aside), at most MAX_SNIPPET_CHARS, and code: inside a ``` block or a
+  `backticked` span of the chunk, or lines that read as code.
 - injection_signals: phrasing that tries to instruct a model ("ignore
   previous instructions", role markers, "you are now ..."). A chunk with
   any is flagged for the reviewer; drafted text with any, or with a link
@@ -24,6 +28,7 @@ MIN_QUOTE_CHARS = 15
 MAX_QUOTE_CHARS = 500
 VERBATIM_RUN_WORDS = 12
 MAX_TRIGRAM_OVERLAP = 0.6
+MAX_SNIPPET_CHARS = 600
 
 _TRANSLATE = str.maketrans({
     "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'",
@@ -64,6 +69,32 @@ def quote_offset(quote: str, chunk_text: str) -> int | None:
     if quote_problem(quote, chunk_text):
         return None
     return normalize(chunk_text).find(normalize(quote).strip(" .\"'"))
+
+
+_FENCED = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+_BACKTICKED = re.compile(r"`([^`\n]+)`")
+_CODE_LINE = re.compile(
+    r"[<>{}=$|\\]|^\s*(?:sudo|pip3?|npm|npx|yarn|python3?|node|curl|wget|git|docker|kubectl|brew|"
+    r"apt(?:-get)?|choco|winget|powershell|cd|ls|cp|mv|mkdir|export|set)\b")
+
+
+def _spaced(text: str) -> str:
+    return " ".join(text.split())
+
+
+def snippet_problem(snippet: str, chunk_text: str) -> str | None:
+    """None for a code/config/command snippet copied from the chunk; else
+    a reason code (snippet_length, snippet_not_in_source, snippet_prose)."""
+    text = _spaced(snippet)
+    if not text or len(snippet.strip()) > MAX_SNIPPET_CHARS:
+        return "snippet_length"
+    if text not in _spaced(chunk_text):
+        return "snippet_not_in_source"
+    code = [_spaced(b) for b in _FENCED.findall(chunk_text)] + _BACKTICKED.findall(chunk_text)
+    lines = [line for line in snippet.splitlines() if line.strip()]
+    if any(text in block for block in code) or all(_CODE_LINE.search(line) for line in lines):
+        return None
+    return "snippet_prose"
 
 
 def _words(text: str) -> list[str]:

@@ -654,6 +654,23 @@
   border: 1px solid var(--border-subtle);
 }
 
+.md-code {
+  margin: 0.5em 0;
+  padding: 0.6em 0.75em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: var(--l-radius-xs);
+  background: var(--surface-input);
+  border: 1px solid var(--border-subtle);
+}
+
+.md-code code {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
 .msg-customer .md code {
   background: rgba(0, 0, 0, 0.22);
   border-color: rgba(255, 255, 255, 0.18);

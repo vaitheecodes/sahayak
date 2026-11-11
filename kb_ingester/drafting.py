@@ -15,8 +15,10 @@
   5. check_step_support asks a second time whether each remaining quote
      supports its step (one model call for the whole chunk); unsupported
      steps are dropped the same way (not_supported).
-  6. A how-to left with no steps, or an entry with neither answer nor
-     steps, is dropped. applies_to keeps only known or newly proposed
+  6. Snippets (code, config, commands) must be copied from the chunk and
+     be code (checks.snippet_problem), at most MAX_SNIPPETS per entry.
+  7. A how-to left with no steps or snippets, or an entry with neither
+     answer, steps nor snippets, is dropped. applies_to keeps only known or newly proposed
      terms; proposed terms need an evidence quote from the chunk.
 
 No database access here: runs.py stores the result. Budget.spend() is
@@ -39,6 +41,7 @@ from kb_ingester.steps import is_reference, ordered_lists
 
 # Drafting plus the step-support check: the most one chunk can cost.
 CALLS_PER_CHUNK = 2
+MAX_SNIPPETS = 3
 
 
 def _drafting_model_differs() -> bool:
@@ -180,7 +183,16 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             out.dropped[problem] += 1
             notes.append(problem)
             answer = ""
-        entries.append({"draft": draft, "steps": steps, "answer": answer, "notes": notes,
+        snippets = []
+        for snippet in dict.fromkeys(s.strip() for s in draft.snippets):
+            problem = checks.snippet_problem(snippet, chunk_text)
+            if not problem and len(snippets) == MAX_SNIPPETS:
+                problem = "snippets_over_cap"
+            if problem:
+                out.dropped[problem] += 1
+            else:
+                snippets.append(snippet)
+        entries.append({"draft": draft, "steps": steps, "answer": answer, "notes": notes, "snippets": snippets,
                         "procedure_steps": len(procedures[procedure - 1]) if procedure else None})
 
     to_check = [StepToCheck(id=n, step=s["text"], quote=s["quote"])
@@ -203,13 +215,13 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
     used_categories = set()
     for e in entries:
         draft = e["draft"]
-        if draft.kind == "how-to" and not e["steps"]:
+        if draft.kind == "how-to" and not e["steps"] and not e["snippets"]:
             out.dropped["howto_without_steps"] += 1
             continue
-        if not e["answer"] and not e["steps"]:
+        if not e["answer"] and not e["steps"] and not e["snippets"]:
             out.dropped["empty_entry"] += 1
             continue
-        fields = [draft.title, e["answer"], *draft.questions, *(s["text"] for s in e["steps"])]
+        fields = [draft.title, e["answer"], *draft.questions, *(s["text"] for s in e["steps"]), *e["snippets"]]
         signals = checks.output_signals(fields, chunk_text)
         new_category = draft.new_category if draft.new_category in proposed_categories else None
         if new_category:
@@ -218,7 +230,7 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
             "title": draft.title.strip(), "category": draft.category, "kind": draft.kind,
             "handling": "answer", "collect": [], "answer": e["answer"],
             "questions": list(dict.fromkeys(q.strip() for q in draft.questions if q.strip())),
-            "steps": e["steps"], "source_url": source_url,
+            "steps": e["steps"], "snippets": e["snippets"], "source_url": source_url,
             "applies_to": sorted({labels[t.strip().lower()] for t in draft.applies_to
                                   if t.strip().lower() in labels}),
             "notes": {"removed": e["notes"], "output_signals": signals,

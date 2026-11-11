@@ -10,6 +10,7 @@ Tables (backend/db.py SCHEMA, migrations/postgres/0003_kb.sql):
                       stale / duplicate flags, who reviewed it
   kb_entry_questions  the customer-style questions retrieval matches on
   kb_entry_steps      numbered steps, each with the passage it is backed by
+                      (code/config/command snippets: kb_entries.snippets)
   kb_terms            product terms (modules, variants, platforms,
                       integrations, editions) with aliases; only confirmed
                       ones affect grounding (backend/topic_terms.py)
@@ -48,6 +49,8 @@ LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ()/+.&'-]{0,40}$")
 MAX_QUESTIONS = 10
 MAX_STEPS = 40
 MAX_COLLECT = 10
+MAX_SNIPPETS = 3
+MAX_SNIPPET_CHARS = 600
 
 
 def _now() -> str:
@@ -101,6 +104,9 @@ def entry_problems(entry: dict, *, approved: bool, known_terms: set[str]) -> lis
         problems.append(f"handling must be one of {', '.join(HANDLING)}")
     _text_list(entry.get("questions"), "questions", MAX_QUESTIONS, problems, required=True)
     _text_list(entry.get("collect"), "collect", MAX_COLLECT, problems, required=False)
+    snippets = _text_list(entry.get("snippets"), "snippets", MAX_SNIPPETS, problems, required=False)
+    if any(len(s) > MAX_SNIPPET_CHARS for s in snippets):
+        problems.append(f"a snippet is longer than {MAX_SNIPPET_CHARS} characters")
     unknown = [t for t in _text_list(entry.get("applies_to"), "applies_to", 10, problems, required=False)
                if t not in known_terms]
     if unknown:
@@ -114,8 +120,8 @@ def entry_problems(entry: dict, *, approved: bool, known_terms: set[str]) -> lis
             problems.append(f"step {i} needs text")
         elif not str(step.get("quote") or "").strip():
             problems.append(f"step {i} needs the passage it is backed by (quote)")
-    if approved and not str(entry.get("answer") or "").strip() and not steps:
-        problems.append("an approved entry needs an answer or steps")
+    if approved and not str(entry.get("answer") or "").strip() and not steps and not snippets:
+        problems.append("an approved entry needs an answer, steps or snippets")
     return problems
 
 
@@ -217,11 +223,12 @@ def save_entry(conn, entry: dict, *, status: str, actor: str, draft: dict | None
     reviewed = (actor, now) if status in ("approved", "rejected") else (None, None)
     values = (status, entry["title"].strip(), (entry.get("answer") or "").strip(), entry.get("kind"),
               entry.get("handling") or "answer", json.dumps([c.strip() for c in entry.get("collect") or []]),
-              entry["category"], entry.get("source_url"), entry.get("source_licence"))
+              entry["category"], entry.get("source_url"), entry.get("source_licence"),
+              json.dumps([s.strip() for s in entry.get("snippets") or [] if s.strip()]))
     if conn.execute("SELECT 1 FROM kb_entries WHERE kb_entry_id = ?", (entry_id,)).fetchone():
         conn.execute(
             "UPDATE kb_entries SET status = ?, title = ?, answer = ?, kind = ?, handling = ?, collect = ?, "
-            "category = ?, source_url = ?, source_licence = ?, updated_by = ?, updated_at = ?, reviewed_by = ?, reviewed_at = ?, "
+            "category = ?, source_url = ?, source_licence = ?, snippets = ?, updated_by = ?, updated_at = ?, reviewed_by = ?, reviewed_at = ?, "
             "version = version + 1 WHERE kb_entry_id = ?",
             (*values, actor, now, *reviewed, entry_id),
         )
@@ -234,8 +241,8 @@ def save_entry(conn, entry: dict, *, status: str, actor: str, draft: dict | None
         columns = "".join(f", {k}" for k in draft)
         conn.execute(
             "INSERT INTO kb_entries (status, title, answer, kind, handling, collect, category, source_url, "
-            f"source_licence, kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, reviewed_at"
-            f"{columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{', ?' * len(draft)})",
+            f"source_licence, snippets, kb_entry_id, created_by, created_at, updated_by, updated_at, reviewed_by, "
+            f"reviewed_at{columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{', ?' * len(draft)})",
             (*values, entry_id, actor, now, actor, now, *reviewed, *draft.values()),
         )
     questions = [q.strip() for q in entry["questions"] if q.strip()]
@@ -274,6 +281,7 @@ def _entries(conn, where: str = "", params: tuple = ()) -> list[dict]:
         "answer": row["answer"], "steps": steps.get(row["kb_entry_id"], []),
         "applies_to": terms.get(row["kb_entry_id"], []), "source_url": row["source_url"],
         **({"source_licence": row["source_licence"]} if row["source_licence"] else {}),
+        **({"snippets": json.loads(row["snippets"])} if json.loads(row["snippets"] or "[]") else {}),
     } for row in rows]
 
 
@@ -282,10 +290,12 @@ def approved_entries(conn) -> list[dict]:
 
 
 def response_text(entry: dict) -> str:
-    """The answer with its steps numbered under it: what grounds a reply."""
+    """The answer with its steps numbered under it, then its snippets:
+    what grounds a reply."""
     steps = [s["text"].strip() for s in entry.get("steps") or [] if s.get("text", "").strip()]
     numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(steps, start=1))
-    return "\n".join(part for part in ((entry.get("answer") or "").strip(), numbered) if part)
+    snippets = "\n".join(entry.get("snippets") or [])
+    return "\n".join(part for part in ((entry.get("answer") or "").strip(), numbered, snippets) if part)
 
 
 def retrieval_docs(entries: list[dict]) -> list[dict]:
@@ -295,6 +305,7 @@ def retrieval_docs(entries: list[dict]) -> list[dict]:
         "instruction": q, "response": response_text(e), "handling": e.get("handling") or "answer",
         "collect": list(e.get("collect") or []), "kind": e.get("kind"),
         "applies_to": list(e.get("applies_to") or []), "source_url": e.get("source_url"),
+        "snippets": list(e.get("snippets") or []), "source_licence": e.get("source_licence"),
     } for e in entries for q in e["questions"]]
 
 

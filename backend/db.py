@@ -656,7 +656,8 @@ _ADDED_COLUMNS = {
     "kb_ingest_runs": [("estimate", "TEXT NOT NULL DEFAULT '{}'")],
     "kb_documents": [("url", "TEXT"), ("pending_hash", "TEXT")],
     "kb_chunks": [("drafted_at", "TIMESTAMP")],
-    "kb_entries": [("draft_notes", "TEXT NOT NULL DEFAULT '{}'"), ("source_licence", "TEXT")],
+    "kb_entries": [("draft_notes", "TEXT NOT NULL DEFAULT '{}'"), ("source_licence", "TEXT"),
+                   ("snippets", "TEXT NOT NULL DEFAULT '[]'")],
     "kb_categories": [("merged_into", "TEXT")],
     "kb_sources": [("licence_note", "TEXT")],
     "ticket_messages": [

@@ -297,6 +297,9 @@ def _kb_candidates_to_dicts(candidates: list[kb_retrieval.KBCandidate]) -> list[
             "collect": list(c.entry.collect),
             "kind": c.entry.kind,
             "applies_to": list(c.entry.applies_to),
+            "snippets": list(c.entry.snippets),
+            "source_url": c.entry.source_url,
+            "source_licence": c.entry.source_licence,
         }
         for c in candidates
     ]

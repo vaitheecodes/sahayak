@@ -5,7 +5,9 @@ banners and share widgets go; the main content (<main>, role=main or
 <article>, else <body>) is rendered block by block: h1-h3 as "#"/"##"/
 "###" lines (what the chunker splits on), h4-h6 as plain lines, each
 list item as ONE "- " or "1. " line (nested lists indented two spaces),
-table rows as "a | b", <pre> kept as-is. Plain
+table rows as "a | b", <pre> kept as-is between ``` fence lines and
+inline <code> in backticks (what kb_ingester/checks.snippet_problem
+accepts as code). Plain
 text and Markdown pass through with their line breaks.
 """
 
@@ -70,6 +72,8 @@ class _Renderer:
         text = _SPACES.sub(" ", "".join(self.inline)).strip()
         # An inline icon removed from "select <icon>, then" leaves a stray " ,".
         text = _STRAY_COMMA.sub(",", text)
+        # Adjacent <code> spans ("`https://``example.com`") are one value.
+        text = text.replace("``", "")
         self.inline = []
         if text:
             self.lines.append(prefix + text)
@@ -123,8 +127,12 @@ class _Renderer:
             elif name == "pre":
                 self.flush()
                 self.blank()
+                self.lines.append("```")
                 self.lines.extend(line.rstrip() for line in child.get_text().strip("\n").splitlines())
+                self.lines.append("```")
                 self.blank()
+            elif name == "code" and child.get_text().strip():
+                self.inline.append(f"`{child.get_text().strip()}`")
             elif name == "table":
                 self.flush()
                 self.blank()

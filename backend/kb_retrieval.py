@@ -112,6 +112,10 @@ class KBEntry:
     # The confirmed product terms the entry applies to (topic_terms).
     applies_to: tuple[str, ...] = ()
     source_url: str | None = None
+    # Code/config/command lines shown verbatim under an answer, and the
+    # source's licence that goes with them.
+    snippets: tuple[str, ...] = ()
+    source_licence: str | None = None
 
     @property
     def is_fault(self) -> bool:
@@ -183,7 +187,8 @@ def build_index(docs: list[dict]) -> "_KBIndex":
                 instruction=e["instruction"], response=e["response"] or "",
                 handling=e.get("handling") or "answer", collect=tuple(e.get("collect") or ()),
                 kind=e.get("kind"), applies_to=tuple(e.get("applies_to") or ()),
-                source_url=e.get("source_url"))
+                source_url=e.get("source_url"), snippets=tuple(e.get("snippets") or ()),
+                source_licence=e.get("source_licence"))
         for e in docs
     ])
 

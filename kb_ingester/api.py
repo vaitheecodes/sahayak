@@ -219,6 +219,7 @@ class EntryEdit(BaseModel):
     questions: list[str] | None = Field(default=None, max_length=kb_store.MAX_QUESTIONS)
     answer: str | None = Field(default=None, max_length=1500)
     steps: list[StepIn] | None = Field(default=None, max_length=kb_store.MAX_STEPS)
+    snippets: list[str] | None = Field(default=None, max_length=kb_store.MAX_SNIPPETS)
     applies_to: list[str] | None = Field(default=None, max_length=10)
 
 

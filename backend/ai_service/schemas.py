@@ -52,6 +52,10 @@ class KBCandidate(BaseModel):
     handling: str = "answer"
     collect: list[str] = []
     kind: str | None = None
+    # Shown verbatim under an answer grounded on this entry (chat_response).
+    snippets: list[str] = []
+    source_url: str | None = None
+    source_licence: str | None = None
 
 
 class HistoryItem(BaseModel):
@@ -360,6 +364,9 @@ class DraftEntry(BaseModel):
     # then it has exactly one step per item, in order.
     procedure: int | None = Field(default=None, ge=1, le=20)
     steps: list[DraftStep] = _items(40)
+    # Code/config/command text copied verbatim from the chunk; more than
+    # three, or a snippet that isn't one, is dropped by code (checks.snippet_problem).
+    snippets: list[Annotated[str, Field(max_length=2000)]] = _items(6)
     applies_to: list[_Label] = _items(5)
     category: Category
     new_category: str | None = Field(default=None, max_length=41)
