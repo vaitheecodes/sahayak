@@ -183,7 +183,13 @@ page), `kb_chunks` (text purged after review/retention).
   (`kb_store.response_text`).
 - Packs (JSON: approved entries + confirmed terms) move a reviewed KB
   between environments: `scripts/kb_import.py PACK.json` (typed "yes",
-  all-or-nothing) / `--export OUT.json`.
+  all-or-nothing) / `--export OUT.json`; `--dry-run` validates against
+  the database and rolls back, `--counts-only` prints only `KB_IMPORT
+  <event> name=number` lines (no pack text), `--count` needs no database,
+  and PACK may be `s3://bucket/key`. The pilot imports with
+  `scripts/aws_kb_import.sh PACK.json` (a one-off ECS task with the
+  service's image, which ships `kb_import.py`; dry run, typed "yes",
+  import, service restart; the upload to `kb-packs/` is always deleted).
 - Startup prints `KB: <n> entries loaded from the database`; 0 is a
   warning, not an error, and `scripts/aws_smoke.py` reports it.
 

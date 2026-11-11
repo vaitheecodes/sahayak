@@ -5,8 +5,8 @@ and no AWS command that changes anything has been run while writing this.
 Every step below that creates something billable is marked
 **ASK USER FIRST**. Decisions made 2026-11-11 (see "Decisions" below):
 **wait on spending** until the client's HRMS manual is in hand; only free
-preparation now. Done: the sign-up switch and runbook step 2 (the
-scripts are Sahayak-only).
+preparation now. Done: the sign-up switch, runbook step 2 (the
+scripts are Sahayak-only) and the pack import (`scripts/aws_kb_import.sh`).
 
 Goal: a small, cheap, public https deployment of the Sahayak backend and
 web frontend for a free pilot (about 10 users now, maybe 100-300 later),
@@ -352,10 +352,11 @@ on the KB, tickets and chats, by design.
    4. Only **approved** entries are used by the AI. Startup logs
       `KB: <n> entries loaded`.
    5. **Chosen (D10):** build and review the KB locally, export a pack
-      (`scripts/kb_import.py --export`), and import it into the pilot.
-      The DB is private, so the import has to run as a one-off ECS task
-      with the same image. That script doesn't exist yet: it's the one
-      piece of free preparation still missing (see "Still to prepare").
+      (`scripts/kb_import.py --export`), and import it into the pilot
+      with `scripts/aws_kb_import.sh PACK.json`. The DB is private, so it
+      runs `scripts/kb_import.py` as a one-off ECS task with the
+      service's image, task role and secrets: a dry run first (counts
+      only), then the import after a typed "yes" (see runbook step 15).
 6. **Try a ticket** (`/try-a-ticket`, manager or support engineer): run
    typical customer questions and check the answers and routing before
    anyone real uses it.
@@ -521,10 +522,9 @@ change the EAS variable and rebuild.
 
 ### Still to prepare (free, no AWS)
 
-- **Pack import into the pilot:** a script that runs `scripts/kb_import.py`
-  as a one-off Fargate task in `sahayak-vpc` with the service's image,
-  task role and secrets, reading the pack from the build bucket. (Or a
-  manager-only "import pack" upload in the app; a backend change.)
+- ~~Pack import into the pilot~~: done, `scripts/aws_kb_import.sh`
+  (runbook step 15). The image must be built after this change: it now
+  ships `scripts/kb_import.py`.
 - **Runbook step 3** just before deploying: a clean worktree of the
   chosen commit and the full suite there, on SQLite and Postgres.
 - **The local KB**, once the client's manual arrives: ingest it locally
@@ -617,10 +617,29 @@ create or change something, so they run only after the overall go-ahead
 
 14. You sign in as the admin and run the setup wizard (section 5, steps
     1-4).
-15. Import the locally reviewed KB pack (D10) with the one-off task
-    script ("Still to prepare"); **ASK USER FIRST** (a minute of Fargate,
-    cents). Later KB runs in the pilot itself: **ASK USER FIRST** for each
-    one (estimate, then start).
+15. **ASK USER FIRST** (two Fargate tasks of about a minute, cents):
+    `scripts/aws_kb_import.sh PACK.json` imports the locally reviewed
+    pack (D10):
+    - reads the pack here and prints its counts (entries, terms,
+      categories, licences); an unreadable pack sends nothing;
+    - uploads it to `s3://sahayak-attachments-<account>/kb-packs/<sha256>.json`
+      (encrypted; the task role may only read that prefix) and deletes
+      it again when the script ends, however it ends;
+    - a dry-run task (`kb_import.py --dry-run --counts-only`) checks the
+      whole pack against the pilot's categories and terms and rolls
+      back; the counts must match the pack's;
+    - after a typed "yes", a second task imports it, all or nothing;
+    - restarts the API service, which caches the KB per process.
+
+    The tasks print only `KB_IMPORT <event> name=number` lines, and the
+    script shows nothing else from their logs: no pack text, ids or
+    secrets. The pack is data: parsed as JSON and validated by
+    `kb_store`, never executed. The deployer (or `sahayak-ops`) needs
+    `ecs:RunTask`, `ecs:DescribeTasks`, `ecs:DescribeTaskDefinition`,
+    `iam:PassRole` on `sahayak-ecs-exec` and `sahayak-api-task`, `s3:PutObject`
+    and `s3:DeleteObject` on `kb-packs/*`, and `logs:GetLogEvents`.
+    Later KB runs in the pilot itself: **ASK USER FIRST** for each one
+    (estimate, then start).
 16. Check the imported KB, confirm terms, then use Try a ticket.
 17. Create the pilot customers.
 

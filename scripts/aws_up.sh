@@ -322,11 +322,13 @@ cat > "$TMP_DIR/task-policy.json" <<JSON
               "arn:aws:bedrock:*::foundation-model/${BEDROCK_MODEL#apac.}",
               "arn:aws:bedrock:*::foundation-model/${DRAFTING_MODEL#apac.}"]},
  {"Sid":"Attachments","Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject"],
-  "Resource":"arn:aws:s3:::$BUCKET/attachments/*"}]}
+  "Resource":"arn:aws:s3:::$BUCKET/attachments/*"},
+ {"Sid":"KbPacks","Effect":"Allow","Action":"s3:GetObject",
+  "Resource":"arn:aws:s3:::$BUCKET/kb-packs/*"}]}
 JSON
 aws iam put-role-policy --role-name "$TASK_ROLE" --policy-name sahayak-api \
   --policy-document "file://$TMP_DIR/task-policy.json" >/dev/null
-info "execution role reads the 2 secrets; task role: Nova Lite and Pro + attachments/ in S3"
+info "execution role reads the 2 secrets; task role: Nova Lite and Pro, attachments/ and (read) kb-packs/ in S3"
 if [ "$ROLES_CREATED" = 1 ] && [ "$POLL_SECONDS" -gt 0 ]; then
   info "waiting 15 s for the new roles to become usable"
   sleep 15

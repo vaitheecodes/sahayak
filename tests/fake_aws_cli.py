@@ -1,7 +1,9 @@
 """A fake `aws` CLI for tests/test_aws_scripts.py.
 
-Only the calls scripts/aws_up.sh, aws_down.sh, aws_pause.sh, aws_resume.sh
-and aws_build_image.sh make. State lives in a
+Only the calls scripts/aws_up.sh, aws_down.sh, aws_pause.sh, aws_resume.sh,
+aws_kb_import.sh and aws_build_image.sh make. A one-off task (ecs run-task)
+takes the next of state["task_runs"] ({"lines": [...], "exit": 0}): its
+log lines and exit code. State lives in a
 JSON file (FAKE_AWS_STATE) and every call is appended to FAKE_AWS_LOG as
 a JSON argv list. --query is applied with jmespath and --output text is
 formatted like the real CLI (scalars as-is, lists tab-separated, None as
@@ -124,8 +126,8 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
         if op == "describe-availability-zones":
             return {"AvailabilityZones": [{"ZoneName": f"{REGION}{z}"} for z in "abc"]}
         if op == "describe-subnets":
-            name = _filter(o, "tag:Name")
-            hit = [{"SubnetId": x["id"]} for n, x in s.get("subnets", {}).items() if n == name]
+            names = (_filter(o, "tag:Name") or "").split(",")
+            hit = [{"SubnetId": x["id"]} for n, x in s.get("subnets", {}).items() if n in names]
             return {"Subnets": hit}
         if op == "create-subnet":
             name = _tag_name(o)
@@ -226,6 +228,19 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
             return {}
         if op in ("put-public-access-block", "put-bucket-encryption", "put-bucket-lifecycle-configuration"):
             bucket[op] = o[next(k for k in o if k.endswith("configuration"))][0]
+            return {}
+        if op == "put-object" and not _one(o, "key").endswith(".zip"):
+            import hashlib
+            key = f"s3://{_one(o, 'bucket')}/{_one(o, 'key')}"
+            body = open(_one(o, "body"), "rb").read()
+            s.setdefault("objects", {})[key] = {"sha256": hashlib.sha256(body).hexdigest(),
+                                                "sse": _one(o, "server-side-encryption"),
+                                                "owner": _one(o, "expected-bucket-owner")}
+            return {"ETag": '"abc"'}
+        if op == "delete-object":
+            key = f"s3://{_one(o, 'bucket')}/{_one(o, 'key')}"
+            s.get("objects", {}).pop(key, None)
+            s.setdefault("deleted_objects", []).append(key)
             return {}
         if op == "put-object":
             import zipfile
@@ -386,7 +401,28 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
             if not svc or _one(o, "cluster") != svc.get("cluster", "sahayak"):
                 return {"services": []}
             return {"services": [{"serviceArn": arn, "status": svc["status"],
+                                  "taskDefinition": f"arn:aws:ecs:{REGION}:{ACCOUNT}:task-definition/sahayak-api:3",
                                   "loadBalancers": [{"targetGroupArn": "arn:tg"}]}]}
+        if op == "describe-task-definition":
+            return {"taskDefinition": {"containerDefinitions": [{"name": "main", "logConfiguration": {
+                "options": {"awslogs-group": "/aws/ecs/sahayak/sahayak-api", "awslogs-stream-prefix": "ecs"}}}]}}
+        if op == "run-task":
+            runs = s.setdefault("task_runs", [])
+            if not runs:
+                raise ApiError("InvalidParameterException", "RunTask", "fake: no scripted task run left")
+            run = runs.pop(0)
+            tasks = s.setdefault("tasks", [])
+            overrides = json.loads(_file(_one(o, "overrides")))
+            tasks.append({"id": f"task{len(tasks) + 1}", "lines": run["lines"], "exit": run.get("exit", 0),
+                          "command": overrides["containerOverrides"][0]["command"],
+                          "container": overrides["containerOverrides"][0]["name"],
+                          "network": json.loads(_file(_one(o, "network-configuration"))),
+                          "task_definition": _one(o, "task-definition"), "cluster": _one(o, "cluster")})
+            return {"tasks": [{"taskArn": f"arn:aws:ecs:{REGION}:{ACCOUNT}:task/sahayak/{tasks[-1]['id']}"}],
+                    "failures": []}
+        if op == "describe-tasks":
+            task = next(t for t in s["tasks"] if _one(o, "tasks").endswith("/" + t["id"]))
+            return {"tasks": [{"containers": [{"exitCode": task["exit"]}]}]}
         if op == "create-express-gateway-service":
             s["service"] = {"status": "ACTIVE", "container": json.loads(_file(_one(o, "primary-container"))),
                             "args": sorted(o), "cluster": _one(o, "cluster", "default"),
@@ -400,7 +436,10 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
                 svc["scaling"] = json.loads(_one(o, "scaling-target"))
             return {}
         if op == "update-service":
-            svc["desired"] = int(_one(o, "desired-count"))
+            if "desired-count" in o:
+                svc["desired"] = int(_one(o, "desired-count"))
+            if "force-new-deployment" in o:
+                svc["deployments"] = svc.get("deployments", 0) + 1
             return {}
         if op == "describe-express-gateway-service":
             return {"service": {"activeConfigurations": [{
@@ -439,6 +478,9 @@ def handle(state: dict, service: str, op: str, o: dict) -> object:
         if op == "create-log-group":
             groups[_one(o, "log-group-name")] = {}
             return {}
+        if op == "get-log-events" and "limit" not in o:  # a one-off task's log
+            task = next(t for t in s["tasks"] if _one(o, "log-stream-name") == f"ecs/main/{t['id']}")
+            return {"events": [{"message": line} for line in task["lines"]]}
         if op == "get-log-events":
             lines = s.get("build_log", [])[-int(_one(o, "limit")):]
             return {"events": [{"message": line + "\n"} for line in lines]}

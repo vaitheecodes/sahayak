@@ -4,6 +4,7 @@
 !kb_ingester/
 !migrations/
 !scripts/db_migrate.py
+!scripts/kb_import.py
 !requirements-runtime.txt
 
 # Never inside the allowed folders: secrets, local state, caches.

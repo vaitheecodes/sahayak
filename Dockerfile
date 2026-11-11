@@ -4,8 +4,10 @@
 #
 # arm64 because the plan runs on Fargate Graviton (cheaper per vCPU-hour);
 # use --platform linux/amd64 for x86. Only runtime files go in: backend/,
-# kb_ingester/, the Postgres migrations and scripts/db_migrate.py (for a
-# one-off migration task). No .env, no local DB, no uploads (.dockerignore).
+# kb_ingester/, the Postgres migrations, scripts/db_migrate.py (for a
+# one-off migration task) and scripts/kb_import.py (the one-off KB pack
+# import, scripts/aws_kb_import.sh). No .env, no local DB, no uploads
+# (.dockerignore).
 # Every setting comes from the task definition's environment and secrets.
 
 FROM python:3.13-slim-bookworm AS build
@@ -28,7 +30,7 @@ WORKDIR /app
 COPY backend/ backend/
 COPY kb_ingester/ kb_ingester/
 COPY migrations/ migrations/
-COPY scripts/db_migrate.py scripts/
+COPY scripts/db_migrate.py scripts/kb_import.py scripts/
 # Readable by the app user whatever the build machine's file modes were
 # (COPY keeps them); owned by root and not writable by the process.
 # Byte-compiled as root so the app user starts faster.

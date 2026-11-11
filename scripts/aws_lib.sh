@@ -51,8 +51,11 @@ die() { printf '\nSTOPPED: %s\n' "$*" >&2; exit 1; }
 # removed on exit however the script ends.
 TMP_DIR=$(mktemp -d)
 chmod 700 "$TMP_DIR"
+# A script may set EXIT_HOOK to a function to run first (e.g. delete what
+# it uploaded); its failure doesn't hide the script's own exit code.
 on_exit() {
   local rc=$?
+  if [ -n "${EXIT_HOOK:-}" ]; then "$EXIT_HOOK" || true; fi
   rm -rf "$TMP_DIR"
   [ $rc -eq 0 ] || printf '\nFailed at step %d (exit %d). Nothing after it ran; re-running the script is safe.\n' "$STEP" "$rc" >&2
 }
