@@ -277,6 +277,11 @@ def _ground(text: str, data: AnswerInput, operation: str) -> str:
 def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> ChatReply:
     if isinstance(data, AnswerInput):
         text = _ground(text, data, operation or "answer")
+    text = grounding.strip_dangling_lead_ins(text)
+    if not re.search(r"[A-Za-z0-9]", text):
+        raise provider.AIError("AI reply was only a lead-in to steps",
+                               provider.AIFailure(kind="filter_rejected", operation=operation or "answer",
+                                                  code="only_lead_in"))
     if data.reply_format == "email":
         text = email_utils.format_email_reply(
             data.customer_name, drop_unasked(text, data.error_reported, data.how_to))

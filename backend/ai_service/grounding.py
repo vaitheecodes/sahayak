@@ -109,6 +109,31 @@ def ground_steps(text: str, kb: str) -> tuple[str, int]:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip(), dropped
 
 
+# A sentence that promises steps or a list. One that only ends in a colon
+# may introduce a quote or a code block, so it counts only at the very end.
+_LEAD_IN_PHRASE = re.compile(
+    r"\b(here'?s how|here is how|follow (these|the) steps|as follows|do the following)\W*$", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def strip_dangling_lead_ins(text: str) -> str:
+    """`text` without lead-in sentences ("Here's how:", "follow these
+    steps:") that no step or list line follows, as left when every
+    step was dropped or the model wrote none. Earlier sentences of the
+    same line stay."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        following = next((rest for rest in lines[i + 1:] if rest.strip()), "")
+        if not line.strip() or _STEP_LINE.match(line) or _STEP_LINE.match(following):
+            continue
+        sentences = _SENTENCE_END.split(line.strip())
+        while sentences and (_LEAD_IN_PHRASE.search(sentences[-1])
+                             or (not following and sentences[-1].rstrip().endswith(":"))):
+            sentences.pop()
+        lines[i] = " ".join(sentences)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def grounded_steps(steps: list[str], kb: str) -> list[str]:
     """The suggested steps the KB text supports."""
     return [s for s in steps if supported(s, kb)]
