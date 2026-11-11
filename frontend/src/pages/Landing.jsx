@@ -5,7 +5,7 @@ import ProductMark from "@/layout/ProductMark";
 import ThemeMenu from "@/layout/ThemeMenu";
 import { TooltipProvider } from "@/ui/tooltip";
 import { Button } from "@/ui/button";
-import { productName } from "@/utils/product";
+import { productName, signupOpen } from "@/utils/product";
 
 /* The public front door at / for signed-out visitors: what this help desk
  * does, one way in (sign in), how it works for customers and for the
@@ -86,9 +86,11 @@ export default function Landing() {
           <span className="truncate text-base font-semibold">{brand}</span>
           <span className="flex-1" />
           <ThemeMenu />
-          <Button asChild variant="outline" size="lg" className="hidden sm:inline-flex">
-            <Link to="/signup">Create an account</Link>
-          </Button>
+          {signupOpen() && (
+            <Button asChild variant="outline" size="lg" className="hidden sm:inline-flex">
+              <Link to="/signup">Create an account</Link>
+            </Button>
+          )}
           <Button asChild size="lg">
             <Link to="/login">Sign in</Link>
           </Button>

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { CircleAlert, Clock, Eye, EyeOff } from "lucide-react";
 import { api, HOME_FOR_ROLE, saveSession } from "../api";
 import ProductMark from "@/layout/ProductMark";
@@ -8,7 +8,7 @@ import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { TooltipProvider } from "@/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { productName } from "@/utils/product";
+import { productName, signupOpen } from "@/utils/product";
 
 /* One sign-in page for every role (/login), and customer sign-up
  * (/signup). The backend works out who the email belongs to and returns
@@ -63,6 +63,9 @@ export default function Login({ mode = "login" }) {
   useEffect(() => {
     document.title = isSignup ? "Create an account" : "Sign in";
   }, [isSignup]);
+
+  // Sign-up closed (admin-created accounts only): /signup goes to sign-in.
+  if (isSignup && !signupOpen()) return <Navigate to="/login" replace />;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -123,10 +126,12 @@ export default function Login({ mode = "login" }) {
                     <>
                       Already have one? <Link to="/login">Sign in</Link>
                     </>
-                  ) : (
+                  ) : signupOpen() ? (
                     <>
                       New here? <Link to="/signup">Create an account</Link>
                     </>
+                  ) : (
+                    "No account yet? Ask your support team for one."
                   )}
                 </p>
               </div>

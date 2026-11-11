@@ -547,7 +547,8 @@ def _apply_followup(conn, ticket_id: str, o: _FollowupOutcome, outbox: _Outbox) 
 def customer_signup(body: SignupRequest, request: Request):
     """The only public signup. Technicians and managers are created by
     the admin (/api/admin/staff); the admin is bootstrapped from env.
-    Limited per IP (backend/rate_limit.py)."""
+    Closed (403) when CUSTOMER_SIGNUP_ENABLED=false; limited per IP
+    (backend/rate_limit.py)."""
     rate_limit.check_signup(rate_limit.client_ip(request))
     return auth.signup_customer(body.name.strip(), body.email.strip(), body.password)
 
@@ -1187,13 +1188,15 @@ def manager_departments(user: dict = Depends(auth.require_user("manager"))):
 @app.get("/api/meta")
 def meta():
     """Public display configuration: admin-configured status labels, the
-    KB categories, and how many KB entries loaded (a count, no content)."""
+    KB categories, how many KB entries loaded (a count, no content), and
+    whether public customer sign-up is open."""
     return {
         "status_labels": app_settings.get("statuses").model_dump(),
         "categories": kb_categories.names(),
         "category_labels": kb_categories.labels(),
         "product": {"name": product.profile().name, "support_team_name": product.support_team()},
         "kb_entries": kb_retrieval.entry_count(),
+        "signup_open": auth.signup_enabled(),
     }
 
 

@@ -232,6 +232,21 @@ def test_customer_signup_is_public_and_rejects_staff_emails(client):
     assert taken.status_code == 400
 
 
+@pytest.mark.parametrize("value", ["false", "0", "off"])
+def test_customer_signup_can_be_closed(client, monkeypatch, value):
+    assert client.get("/api/meta").json()["signup_open"] is True
+    monkeypatch.setenv("CUSTOMER_SIGNUP_ENABLED", value)
+    assert client.get("/api/meta").json()["signup_open"] is False
+    res = client.post(
+        "/api/auth/customer/signup",
+        json={"name": "C", "email": "closed@example.com", "password": "password123"},
+    )
+    assert res.status_code == 403
+    assert "Sign-up is closed" in res.json()["detail"]
+    # Signing in is unaffected.
+    assert _login(client, ADMIN_EMAIL, ADMIN_PASSWORD).status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # Admin creates staff; forced password change
 # ---------------------------------------------------------------------------

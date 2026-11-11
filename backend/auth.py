@@ -1,6 +1,7 @@
 """Login, customer signup, admin bootstrap, and JWT session handling.
 
-Roles: customer, technician, manager, admin. Customers sign up publicly.
+Roles: customer, technician, manager, admin. Customers sign up publicly,
+unless CUSTOMER_SIGNUP_ENABLED=false (a pilot with admin-created accounts).
 Technicians and managers (the `staff` table) are created only by the
 admin. The admin is a single account bootstrapped from env on startup
 (`ensure_admin`) — there is no admin signup endpoint at all.
@@ -57,6 +58,13 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 def is_production() -> bool:
     return os.environ.get("APP_ENV", "development").strip().lower() == "production"
+
+
+def signup_enabled() -> bool:
+    """Public customer sign-up is on unless CUSTOMER_SIGNUP_ENABLED is
+    false/0/no/off. Read per call, so tests can flip it."""
+    value = os.environ.get("CUSTOMER_SIGNUP_ENABLED", "true").strip().lower()
+    return value not in ("false", "0", "no", "off")
 
 
 def hash_password(password: str) -> str:
@@ -245,6 +253,11 @@ def ensure_admin() -> None:
 # Signup / login / password change
 # ---------------------------------------------------------------------------
 def signup_customer(name: str, email: str, password: str) -> dict:
+    if not signup_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Sign-up is closed. Ask your support team for an account.",
+        )
     validate_new_password(password)
     conn = db.get_connection()
     try:
