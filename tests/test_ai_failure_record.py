@@ -20,7 +20,7 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError, ProxyConnectionError, ReadTimeoutError
 from fastapi.testclient import TestClient
 
-from backend import chats, db, main, runtime
+from backend import chats, db, kb_retrieval, main, runtime
 from backend.ai_service import AIError, backends, chat_response, provider
 from backend.ai_service.backends import BedrockBackend
 from tests import kb_fixture
@@ -48,7 +48,17 @@ def strict(monkeypatch):
 def app_client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
     with TestClient(main.app) as c:
+        # A report no KB entry covers is never answered: give the chats
+        # below the entry they ask about.
+        kb_retrieval.use([PAYROLL_ENTRY])
         yield c
+
+
+PAYROLL_ENTRY = {
+    "kb_entry_id": "KB-0001", "title": "Payroll export and payslips", "category": "ISSUE", "kind": "troubleshooting",
+    "questions": ["My payroll export stopped working", "Where is the payroll export page?",
+                  "my payslip stopped showing"],
+    "answer": "Check the Exports page under Payroll; payslips show there once the export has run.", "steps": []}
 
 
 def _customer(client):

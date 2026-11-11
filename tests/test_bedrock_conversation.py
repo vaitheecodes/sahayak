@@ -21,7 +21,7 @@ import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 
-from backend import chats, db, main
+from backend import chats, db, kb_retrieval, main
 from backend.ai_service import backends, provider
 from backend.ai_service.backends import BedrockBackend, BackendError, converse_messages
 
@@ -110,7 +110,17 @@ def strict(monkeypatch):
 def app_client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
     with TestClient(main.app) as c:
+        # A report no KB entry covers is never answered: give the
+        # conversations below the entry they ask about.
+        kb_retrieval.use([AGENT_ENTRY])
         yield c
+
+
+AGENT_ENTRY = {
+    "kb_entry_id": "KB-0001", "title": "Agent stopped sending data", "category": "ISSUE", "kind": "troubleshooting",
+    "questions": ["My Linux agent stopped sending data", "Which log file should I check for the agent?",
+                  "Where is the agent log on Linux?", "agent not reporting"],
+    "answer": "Restart the agent service, then check agent.log in the agent's logs folder.", "steps": []}
 
 
 def _customer(client):

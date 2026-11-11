@@ -105,6 +105,9 @@ class AnswerInput(BaseModel):
     # reply may ask for the exact error text (never otherwise).
     how_to: bool = False
     error_reported: bool = True
+    # The customer's own messages: a specific value they gave (the URL they
+    # pasted) may be repeated back (grounding.ground_values).
+    customer_text: str = ""
 
 
 class ClarifyInput(BaseModel):
@@ -134,6 +137,9 @@ class ClarifyInput(BaseModel):
     # reply may ask for the exact error text (never otherwise).
     how_to: bool = False
     error_reported: bool = True
+    # The customer's own messages: a specific value they gave (the URL they
+    # pasted) may be repeated back (grounding.ground_values).
+    customer_text: str = ""
     # ACCOUNT/DATA below the stricter bar: one question to pin down what
     # the customer means, then the ticket (graph.decide_route).
     high_risk: bool = False
@@ -141,6 +147,8 @@ class ClarifyInput(BaseModel):
 
 class ChatReply(BaseModel):
     text: str = _text(8000)
+    # The KB entry doesn't cover the latest message (chat_response.NOT_COVERED).
+    not_covered: bool = False
 
 
 class ContinuationInput(BaseModel):

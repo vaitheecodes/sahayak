@@ -259,11 +259,16 @@ def clean_chat_reply(text: str, subject_known: bool = True, error_reported: bool
     return cleaned
 
 
-def _ground(text: str, data: AnswerInput, operation: str) -> str:
+def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
     """An answer's steps must come from the KB entry it was given (the
-    top candidate, the one in the kb_guidance block): unsupported steps
-    are dropped and the drop is recorded for the admin."""
-    grounded, dropped = grounding.ground_steps(text, grounding.kb_text(data.kb_candidates[:1]))
+    top candidate, the one in the kb_guidance block), and every specific
+    value in any reply (domain, directive, quoted text, path, version,
+    port, limit) from that KB text or the customer's own messages:
+    unsupported steps and sentences are dropped and the drop is recorded
+    for the admin. A reply that loses most of its text is regenerated."""
+    answering = isinstance(data, AnswerInput)
+    kb = grounding.kb_text(data.kb_candidates[:1] if answering else data.kb_candidates)
+    grounded, dropped = grounding.ground_steps(text, kb) if answering else (text, 0)
     if dropped:
         provider.note_failure(provider.AIFailure(
             kind="filter_rejected", operation=operation, code="ungrounded_steps", outcome="filtered"))
@@ -271,12 +276,21 @@ def _ground(text: str, data: AnswerInput, operation: str) -> str:
         raise provider.AIError("AI reply was only ungrounded steps",
                                provider.AIFailure(kind="filter_rejected", operation=operation,
                                                   code="only_ungrounded_steps"))
-    return grounded
+    valued, dropped = grounding.ground_values(grounded, f"{kb}\n{data.customer_text}")
+    if dropped and len(valued) * 2 < len(grounded):
+        raise provider.AIError("AI reply was mostly values the KB doesn't give",
+                               provider.AIFailure(kind="filter_rejected", operation=operation,
+                                                  code="ungrounded_values"))
+    if dropped:
+        provider.note_failure(provider.AIFailure(
+            kind="filter_rejected", operation=operation, code="ungrounded_values", outcome="filtered"))
+    return valued
 
 
 def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> ChatReply:
-    if isinstance(data, AnswerInput):
-        text = _ground(text, data, operation or "answer")
+    if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().strip(".").upper() == NOT_COVERED:
+        return ChatReply(text=NOT_COVERED, not_covered=True)
+    text = _ground(text, data, operation or ("answer" if isinstance(data, AnswerInput) else "clarify"))
     text = grounding.strip_dangling_lead_ins(text)
     if not re.search(r"[A-Za-z0-9]", text):
         raise provider.AIError("AI reply was only a lead-in to steps",
@@ -316,9 +330,18 @@ TRIED_QUESTION = "What have you already tried so far?"
 OFFER_TICKET_CHAT = ("I can't narrow this down any further here. Use Raise a ticket below and our "
                      "support team will pick it up with this whole conversation.")
 OFFER_TICKET_EMAIL = "Our support team will look into this and reply here."
+# What the answer replies when its KB entry doesn't cover the customer's
+# latest message; graph.generate_response hands the request off.
+NOT_COVERED = "NOT_COVERED"
 _REGENERATE_NOTE = (
     "\n\nYour previous reply was empty once greetings, sign-offs and placeholder "
     "text were removed. Write the actual reply: an answer, or one useful question."
+)
+_VALUES_NOTE = (
+    "\n\nYour previous reply gave domains, settings, quoted text, commands, paths or "
+    "numbers that are in neither the kb_guidance block nor the customer's own messages. "
+    "Use only values from those. If the kb_guidance block doesn't answer the latest "
+    f"message, reply with exactly {NOT_COVERED}."
 )
 _MOVE_ON_NOTE = (
     "\n\nYour reply repeated one of your previous replies (the "
@@ -384,9 +407,9 @@ def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | Clarif
             if exc.failure.kind == "parse_schema":  # complete_text already retried
                 exc.failure.outcome = "fallback"
                 break
-            note = _REGENERATE_NOTE
+            note = _VALUES_NOTE if exc.failure.code == "ungrounded_values" else _REGENERATE_NOTE
             continue
-        if not repeats(reply.text, data.recent_ai_replies):
+        if reply.not_covered or not repeats(reply.text, data.recent_ai_replies):
             return reply
         provider.note_failure(provider.AIFailure(
             kind="filter_rejected", operation=operation, code="repeated_reply", attempts=attempt,
@@ -446,6 +469,13 @@ def answer(data: AnswerInput) -> ChatReply:
         return _answer_reply(data, role, no_match_note + how_to_note)
 
 
+_NOT_COVERED_RULE = (
+    " If the kb_guidance block doesn't answer the customer's latest message (it is "
+    "about something else, or doesn't say how to do what they asked), reply with "
+    f"exactly {NOT_COVERED} and nothing else: never fill the gap from general knowledge."
+)
+
+
 def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply:
     return _reply(
         f"{role}{no_match_note}\n\n"
@@ -458,7 +488,8 @@ def _answer_reply(data: AnswerInput, role: str, no_match_note: str) -> ChatReply
         "plainly that you don't have access to it and ask for it, or say a person "
         f"will need to check — never guess. {GROUNDING_RULES} Every step you give must "
         "come from the kb_guidance block: never add a menu path, setting, hostname, port "
-        "or number it doesn't contain; steps it doesn't support are removed.\n\n"
+        "or number it doesn't contain; steps it doesn't support are removed."
+        f"{_NOT_COVERED_RULE if data.kb_candidates else ''}\n\n"
         f"{_asking_rules(data, answering=True)}\n\n{_ASSUMPTION_RULES}",
         {
             "category": data.category or "unknown",

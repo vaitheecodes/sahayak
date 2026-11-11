@@ -199,6 +199,8 @@ def test_unknown_shapes_are_ai_errors(quickml_env, real_complete, in_request, bo
 def test_plain_text_reply_is_unwrapped(quickml_env, real_complete, in_request, raw, expected):
     _quickml(_ok(raw))
     assert provider.complete_text("Answer.", {"question": "q"}) == expected
+    if '"' in expected:
+        return  # quoted text nobody gave is dropped from a chat answer (tests/test_value_grounding.py)
     _quickml(_ok(raw))
     assert chat_response.answer(AnswerInput(ticket_text="How do I add a monitor?")).text == expected
 

@@ -64,7 +64,9 @@ def test_the_live_how_to_add_reply_is_regenerated_then_falls_back(monkeypatch):
     log = provider.start_failure_log()
     text = _answer(monkeypatch, HOW_TO_ADD)
     assert "follow these steps" not in text and not text.rstrip().endswith(":")
-    assert ("filter_rejected", "only_lead_in") in [(f.kind, f.code) for f in log]
+    # The lead-in goes (only_lead_in), or the whole sentence with its
+    # invented "script-src 'self'" (ungrounded_values, commit 3).
+    assert {f.code for f in log} & {"only_lead_in", "ungrounded_values"}
 
 
 def test_email_replies_lose_dangling_lead_ins_too(monkeypatch):

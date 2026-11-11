@@ -676,6 +676,19 @@ def decide_route(state: TicketState) -> dict:
             f"{category!r}) — forcing escalation"
         )
         clarification_attempts_out = clarification_attempts
+    elif not how_to and ticket_text and not is_vague(ticket_text) and not grounding_candidates(state)[0]:
+        # A fault report no KB entry covers: never answered from general
+        # knowledge. Clarifying questions (the answers may match an entry),
+        # then generate_response says there is no guide and hands off.
+        if clarification_attempts < max_attempts:
+            route, reason = "clarify", (
+                "no KB entry covers this report: a clarifying question "
+                f"(attempt {clarification_attempts + 1}/{max_attempts}), never an answer from general knowledge"
+            )
+            clarification_attempts_out = clarification_attempts + 1
+        else:
+            route, reason = "ai", "no KB entry covers this report after the clarifying rounds: no guide, a ticket"
+            clarification_attempts_out = clarification_attempts
     else:
         route, reason = "ai", (
             f"confidence {confidence:.2f} sufficient for category {category!r}"
@@ -764,6 +777,7 @@ def _reply_context(state: TicketState) -> dict:
         "vague": vague,
         "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
         "latest_message": messages[-1] if messages else "",
+        "customer_text": customer_text,
         "how_to": how_to,
         "error_reported": error_reported(state["ticket_text"]),
     }
@@ -796,16 +810,26 @@ def generate_response(state: TicketState) -> dict:
         **_reply_context(state),
     )
     top = data.kb_candidates[0] if data.kb_candidates else None
-    if top is None and data.how_to and not data.vague:
-        text = NO_KB_REPLY_EMAIL if data.reply_format == "email" else NO_KB_REPLY_CHAT
-        if data.reply_format == "email":
-            text = email_utils.format_email_reply(data.customer_name, text)
-        return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
+    if top is None and not data.vague:
+        return _no_guide(data)
     if top is not None and top.handling == "escalate_with_info" and top.response.strip():
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
                 "needs_info": {"kb_entry_id": top.kb_entry_id, "collect": list(top.collect)}}
-    return {"ai_response": chat_response.answer(data).text, "needs_info": None}
+    reply = chat_response.answer(data)
+    if reply.not_covered:
+        return _no_guide(data)
+    return {"ai_response": reply.text, "needs_info": None}
+
+
+def _no_guide(data: AnswerInput) -> dict:
+    """No KB entry answers this (none matched, or the matched one doesn't
+    cover the latest message): say so plainly and hand off, no model call,
+    never an answer from general knowledge."""
+    text = NO_KB_REPLY_EMAIL if data.reply_format == "email" else NO_KB_REPLY_CHAT
+    if data.reply_format == "email":
+        text = email_utils.format_email_reply(data.customer_name, text)
+    return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
 
 
 def ask_clarifying_question(state: TicketState) -> dict:

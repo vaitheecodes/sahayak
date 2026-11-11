@@ -256,8 +256,15 @@ def test_generate_response_wraps_email_replies(monkeypatch):
         return "Restart the agent service and check the proxy settings."
 
     monkeypatch.setattr(provider, "complete", _fake_complete)
+    entry = {"kb_entry_id": "KB-0001", "category": "SETUP", "intent": "agent", "score": 0.9,
+             "instruction": "The agent is not reporting",
+             "response": "Restart the agent service and check the proxy settings."}
     state = {"ticket_text": "agent not reporting", "category": "SETUP", "kb_candidates": [],
              "order_lookup": None, "reply_format": "email", "customer_name": "Dana Smith"}
+    # No KB entry: no model call, no answer from general knowledge.
+    assert graph.generate_response(state)["ai_response"].startswith("Hi Dana,\n\nI don't have a guide")
+    assert not captured
+    state["kb_candidates"] = [entry]
     reply = graph.generate_response(state)["ai_response"]
     assert reply.startswith("Hi Dana,\n\nRestart the agent service")
     assert reply.endswith("Regards,\nSupport Team")
