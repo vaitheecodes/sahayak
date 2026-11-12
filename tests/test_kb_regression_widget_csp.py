@@ -197,3 +197,80 @@ def test_every_reply_of_the_flow_is_checked_by_code_not_by_the_prompt():
     assert "'self' should fix" not in text and text.startswith("Your policy has to allow")
     assert "Allow the servers below:\n\n```" in text
     assert kb_store.response_text({"answer": "a", "snippets": [CONFIG]}).endswith(CONFIG)
+
+
+# ---------------------------------------------------------------------------
+# Live again (Nova Pro, the fixed CSP entry): the first reply said the answer
+# twice (its answer and its step 1 restate each other) and lost the regional
+# sentence; "ok how to solve it" got "At which screen or step are you...?"
+# (the continuation reply was rejected twice by the value check, then the
+# fallback question).
+# ---------------------------------------------------------------------------
+COM = "https://static.beaconrum.example.com"
+STEP_ONE = ("Update your Content Security Policy to permit loading resources from the Beacon RUM servers, "
+            "using the policy shown below.")
+POLICY_ENTRY = {
+    "kb_entry_id": "KB-0002", "title": "Configure the Content Security Policy for the Beacon RUM snippet",
+    "category": "ISSUE", "kind": "how-to",
+    "questions": ["Why is my RUM script blocked by the Content Security Policy?",
+                  "What CSP settings does the Beacon RUM script need?"],
+    "answer": ("If the RUM script is blocked by your site's Content Security Policy, allow the Beacon RUM servers "
+               "in your policy, using the example shown below. The domains depend on your region: for Europe, "
+               f"the script domain is {EU} instead of the .com one."),
+    "steps": [{"text": STEP_ONE}], "snippets": [CONFIG], "applies_to": ["Beacon RUM", "Content Security Policy"],
+    "source_url": "https://help.beaconrum.example.com/troubleshooting.html", "source_licence": "Synthetic test page"}
+RUM_TERMS = [{"label": "Beacon RUM", "kind": "module", "aliases": ["RUM"]}, TERMS[1]]
+
+
+def test_how_to_solve_it_gets_the_steps_and_snippet_again(client, monkeypatch, caplog):
+    kb_retrieval.use([POLICY_ENTRY])
+    topic_terms.use(RUM_TERMS)
+    model = _Model([
+        # The answer, its step 1 said again, and the regional sentence (with a trailing slash).
+        "If the RUM script is blocked by your site's Content Security Policy, allow the Beacon RUM servers in "
+        f"your policy, using the example shown below. {STEP_ONE} For Europe, the script domain is {EU}/ "
+        "instead of the .com one.",
+        f"The sources are {COM} for the script and https://collect.beaconrum.example.com for the data it sends.",
+    ])
+    monkeypatch.setattr(provider, "complete", model)
+    headers = _customer(client)
+    chat = client.post("/api/chats", headers=headers,
+                       json={"issue": "Why is my RUM script blocked by the Content Security Policy?"}).json()
+    first = chat["messages"][-1]["content"]
+    assert first.startswith("If the RUM script is blocked") and f"{EU}/ instead of the .com one." in first
+    assert STEP_ONE not in first and f"```\n{CONFIG}\n```" in first
+    assert "restates an earlier sentence" in caplog.text and STEP_ONE in caplog.text
+
+    before = len(model.ops)
+    chat = _say(client, headers, chat["session_id"], "ok how to solve it")
+    again = chat["messages"][-1]["content"]
+    assert again.startswith(f"{chat_response.STEPS_AGAIN_INTRO}\n1. {STEP_ONE}")
+    assert f"```\n{CONFIG}\n```" in again and chat_response.STEP_QUESTION not in again
+    assert model.ops[before:] == []   # no continuation check, no answer call: nothing to reject
+
+    chat = _say(client, headers, chat["session_id"], "what are the sources?")
+    sources = chat["messages"][-1]["content"]
+    assert sources.startswith(f"The sources are {COM}") and f"```\n{CONFIG}\n```" in sources
+    assert chat["status"] == "active"
+
+
+def test_a_dropped_sentence_is_logged_with_its_value_and_the_regional_sentence_survives(caplog):
+    entry = chat_response.KBCandidate(
+        kb_entry_id="KB-0002", category="ISSUE", intent="x", instruction=POLICY_ENTRY["questions"][0], score=0.9,
+        response=kb_store.response_text(POLICY_ENTRY), snippets=[CONFIG])
+    data = chat_response.AnswerInput(ticket_text="Customer: blocked", kb_candidates=[entry], customer_text="blocked")
+    text = chat_response._frame(f"Allow the Beacon RUM servers. For Europe, the script domain is {EU} instead. "
+                                "For Europe, data goes to https://collect.beaconrum.example.eu instead.",
+                                data, "answer").text
+    assert f"For Europe, the script domain is {EU} instead." in text and "collect.beaconrum.example.eu" not in text
+    assert "'https://collect.beaconrum.example.eu' is not in the KB entry" in caplog.text
+
+
+@pytest.mark.parametrize("message, steps", [
+    ("ok how to solve it", True), ("what next", True), ("Steps please!", True), ("how do I fix it?", True),
+    ("what are the sources?", False), ("how to add give me steps", False),
+    ("how to solve it, the page still breaks", False),
+])
+def test_a_request_for_the_steps_again(message, steps):
+    from backend import request_kind
+    assert request_kind.asks_for_steps(message) is steps

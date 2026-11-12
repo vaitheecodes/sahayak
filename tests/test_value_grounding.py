@@ -45,7 +45,7 @@ ALLOWED = f"{KB_TEXT}\n{CUSTOMER}"
 ])
 def test_ordinary_and_grounded_sentences_pass_untouched(sentence):
     assert value_problem(sentence, ALLOWED) is None
-    assert ground_values(sentence, ALLOWED) == (sentence, 0)
+    assert ground_values(sentence, ALLOWED) == (sentence, [])
 
 
 @pytest.mark.parametrize("sentence", [
@@ -61,13 +61,16 @@ def test_ordinary_and_grounded_sentences_pass_untouched(sentence):
     "Look for the \"Content-Security-Policy-Report-Only\" header.",  # quoted text the KB lacks
 ])
 def test_sentences_with_values_nobody_gave_are_dropped(sentence):
-    assert value_problem(sentence, ALLOWED)
-    assert ground_values(f"Your policy blocks it. {sentence}", ALLOWED) == ("Your policy blocks it.", 1)
+    problem = value_problem(sentence, ALLOWED)
+    assert problem
+    assert ground_values(f"Your policy blocks it. {sentence}", ALLOWED) == (
+        "Your policy blocks it.", [(sentence, problem)])
 
 
 def test_a_step_line_with_an_invented_value_is_dropped():
     text = "Do this:\n1. Open Settings > Region.\n2. Add `report-uri /csp` to the policy."
-    assert ground_values(text, ALLOWED) == ("Do this:\n1. Open Settings > Region.", 1)
+    assert ground_values(text, ALLOWED) == ("Do this:\n1. Open Settings > Region.",
+                                            [("2. Add `report-uri /csp` to the policy.", "report-uri /csp")])
 
 
 KB = KBCandidate(kb_entry_id="KB-0001", category="ISSUE", intent="policy", score=0.7,

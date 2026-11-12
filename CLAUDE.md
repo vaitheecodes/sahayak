@@ -346,7 +346,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   sentence carrying a domain/URL, a directive with its whole source list,
   quoted or backticked text, a path, or a version/port/limit number that
   neither the grounding entry nor the customer's own messages contain is
-  dropped; a reply losing most of its text is regenerated once. A
+  dropped (logged at WARNING with the sentence and the value); a reply
+  losing most of its text is regenerated once. An answer's sentence or
+  step that restates an earlier sentence (>= 60% of its 5+ content words,
+  `grounding.drop_restatements`) is dropped and logged too. A
   lead-in promising steps that don't follow ("Here's how:") is removed
   (`grounding.strip_dangling_lead_ins`). Steps in an answer that the top KB entry
   doesn't support are dropped (`ai_service/grounding.py`), the exact
@@ -429,7 +432,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   and instead falls through to the normal pipeline, where the hard
   override escalates it as it always has. A genuinely new/different
   message (same LLM call, negative result) likewise falls through
-  unchanged. Covered by `tests/test_continuation_check.py`
+  unchanged. A bare request for the steps again after an answer ("ok how
+  to solve it", "what next", "steps"; `request_kind.asks_for_steps`, the
+  whole message) is a continuation without the model check, and
+  `generate_response` re-presents the top entry's numbered steps and
+  snippets by code (`chat_response.steps_again`, no model call); an entry
+  with neither gets a normal continuation answer. Covered by
+  `tests/test_continuation_check.py`
   (stubbed-client prompt/parsing tests) and
   `tests/test_chat_followup_gates.py` (endpoint-level).
 

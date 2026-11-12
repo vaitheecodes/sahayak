@@ -242,7 +242,7 @@ def test_a_failed_continuation_check_goes_down_the_normal_path(client, monkeypat
     stub._results.append({**_ANSWERED, "ai_response": "Open Settings and pick a region."})
 
     calls_before = len(stub.invocations)
-    after = _send(client, headers, chat["session_id"], "steps please")
+    after = _send(client, headers, chat["session_id"], "which region should I pick?")
     assert len(stub.invocations) == calls_before + 1
     assert after["status"] == "active" and not after.get("ai_error")
     conn = db.get_connection()

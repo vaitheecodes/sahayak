@@ -819,7 +819,8 @@ def generate_response(state: TicketState) -> dict:
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
                 "needs_info": {"kb_entry_id": top.kb_entry_id, "collect": list(top.collect)}}
-    reply = chat_response.answer(data)
+    reply = (data.continuation and request_kind.asks_for_steps(data.latest_message)
+             and chat_response.steps_again(data)) or chat_response.answer(data)
     if reply.not_covered:
         return _no_guide(data)
     return {"ai_response": reply.text, "needs_info": None}

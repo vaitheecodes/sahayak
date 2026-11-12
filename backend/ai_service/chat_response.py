@@ -22,6 +22,7 @@ model writes anyway.
 
 from __future__ import annotations
 
+import logging
 import re
 from contextlib import nullcontext
 
@@ -36,6 +37,8 @@ from backend.ai_service.schemas import (
     ContinuationVerdict,
     KBCandidate,
 )
+
+logger = logging.getLogger(__name__)
 
 _EMAIL_BODY_NOTE = (
     " This reply is sent as an email. Write ONLY the body: no greeting, no "
@@ -278,6 +281,9 @@ def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
                                provider.AIFailure(kind="filter_rejected", operation=operation,
                                                   code="only_ungrounded_steps"))
     valued, dropped = grounding.ground_values(grounded, f"{kb}\n{data.customer_text}")
+    for sentence, value in dropped:
+        logger.warning("Reply sentence dropped (%s): value %r is not in the KB entry or the customer's "
+                       "messages: %r", operation, value, sentence)
     if dropped and len(valued) * 2 < len(grounded):
         raise provider.AIError("AI reply was mostly values the KB doesn't give",
                                provider.AIFailure(kind="filter_rejected", operation=operation,
@@ -292,6 +298,11 @@ def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> 
     if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().strip(".").upper() == NOT_COVERED:
         return ChatReply(text=NOT_COVERED, not_covered=True)
     text = _ground(text, data, operation or ("answer" if isinstance(data, AnswerInput) else "clarify"))
+    if isinstance(data, AnswerInput):
+        text, restated = grounding.drop_restatements(text)
+        for sentence in restated:
+            logger.warning("Reply sentence dropped (%s): restates an earlier sentence: %r",
+                           operation or "answer", sentence)
     block = snippet_block(data.kb_candidates[0]) if isinstance(data, AnswerInput) and data.kb_candidates else ""
     text = grounding.strip_dangling_lead_ins(text, followed=bool(block))
     if not re.search(r"[A-Za-z0-9]", text):
@@ -318,6 +329,27 @@ def snippet_block(entry: KBCandidate) -> str:
     source = ", ".join(part for part in (entry.source_url, entry.source_licence) if part)
     credit = f"\n\nSource: {source}" if entry.source_licence else ""
     return blocks + credit
+
+
+STEPS_AGAIN_INTRO = "Here are the steps from the guide:"
+SNIPPET_AGAIN_INTRO = "Here is what the guide gives:"
+
+
+def steps_again(data: AnswerInput) -> ChatReply | None:
+    """A short "how to solve it" / "steps" after an answer
+    (request_kind.asks_for_steps): the top entry's numbered steps and its
+    snippets, as written in the KB (no model call, so nothing to reject);
+    None when the entry has neither."""
+    entry = data.kb_candidates[0]
+    steps = [line.strip() for line in entry.response.splitlines()
+             if grounding._STEP_LINE.match(line) and line.strip() not in entry.snippets]
+    block = snippet_block(entry)
+    if not steps and not block:
+        return None
+    body = "\n".join([STEPS_AGAIN_INTRO, *steps]) if steps else SNIPPET_AGAIN_INTRO
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, body + block))
+    return ChatReply(text=body + block)
 
 
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:

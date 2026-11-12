@@ -52,6 +52,20 @@ _STARTS_WITH_TASK = re.compile(r"^\s*(please\s+)?(add|set ?up|configure|create|i
                                re.IGNORECASE)
 
 
+# The whole message asks for the steps again: "ok how to solve it",
+# "what next", "steps please". Anything longer is a real question.
+_STEPS_REQUEST = re.compile(
+    r"(?:(?:ok|okay|so|then|and|alright|right|fine)\s+)*"
+    r"(?:(?:please\s+)?(?:give|show|send|tell)\s+me\s+(?:the\s+)?steps|(?:the\s+|next\s+)?steps"
+    r"|what\s+(?:are\s+)?the\s+steps|what\s+(?:next|now)|what\s+(?:do|should)\s+i\s+do(?:\s+(?:next|now))?"
+    r"|how\s+(?:do\s+i|can\s+i|should\s+i|to|do\s+we)\s+(?:solve|fix|resolve|do)\s+(?:it|this|that))"
+    r"(?:\s+(?:please|pls|then|now))*")
+
+
+def asks_for_steps(text: str) -> bool:
+    return bool(_STEPS_REQUEST.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
+
+
 def is_fault(text: str) -> bool:
     return bool(_FAULT.search(text or ""))
 

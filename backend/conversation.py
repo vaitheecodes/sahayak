@@ -10,7 +10,7 @@ from typing import Literal
 
 from fastapi import BackgroundTasks
 
-from backend import email_utils, graph, handoff_signals, sla
+from backend import email_utils, graph, handoff_signals, request_kind, sla
 from backend.ai_service import AIError, grounding, suggest_steps, summarize_conversation, summarize_ticket
 from backend.ai_service.schemas import HandoffSummary, KBCandidate, SuggestStepsInput
 from backend.closing_ack import is_closing_acknowledgment
@@ -187,6 +187,8 @@ def followup_gate(message_text: str, prior_ai_response: str | None, answered: bo
     if answered and is_closing_acknowledgment(message_text):
         return "close"
     if answered and prior_ai_response and not graph.has_escalation_language(message_text):
+        if request_kind.asks_for_steps(message_text):  # "how to solve it": the answer's steps again
+            return "continuation"
         try:
             if graph.is_continuation_of_prior_response(message_text, prior_ai_response):
                 return "continuation"

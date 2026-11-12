@@ -530,6 +530,8 @@ change the EAS variable and rebuild.
 - **The local KB**, once the client's manual arrives: ingest it locally
   (mock AI for a dry run, then Bedrock with your go-ahead on cost),
   review, approve, export the pack.
+- Before the pilot goes on AWS, shorten or switch off the new
+  dropped-sentence log lines so customer text doesn't sit in CloudWatch.
 
 ---
 

@@ -151,7 +151,7 @@ def value_problem(sentence: str, allowed: str) -> str | None:
             if not source_set and name not in norm:
                 return name
     rest = _DIRECTIVE.sub(" ", sentence)
-    values = [u.rstrip(".,;:") for u in _URL.findall(rest)]
+    values = [u.rstrip(".,;:/") for u in _URL.findall(rest)]
     rest = _URL.sub(" ", rest)
     values += _DOMAIN.findall(rest)
     values += [next(g for g in groups if g) for groups in _QUOTED.findall(rest)]
@@ -160,25 +160,69 @@ def value_problem(sentence: str, allowed: str) -> str | None:
     return next((v for v in values if _normal(v) not in norm), None)
 
 
-def ground_values(text: str, allowed: str) -> tuple[str, int]:
+def ground_values(text: str, allowed: str) -> tuple[str, list[tuple[str, str]]]:
     """`text` without the sentences (and step lines) carrying a specific
     value `allowed` doesn't contain (value_problem). Returns the text and
-    how many sentences were dropped."""
-    out, dropped = [], 0
+    each dropped sentence with the value that dropped it."""
+    out, dropped = [], []
     for line in text.splitlines():
         if _STEP_LINE.match(line):
-            if value_problem(line, allowed):
-                dropped += 1
+            problem = value_problem(line, allowed)
+            if problem:
+                dropped.append((line.strip(), problem))
                 continue
             out.append(line)
             continue
         kept = []
         for sentence in _SENTENCE_END.split(line.strip()):
-            if sentence and value_problem(sentence, allowed):
-                dropped += 1
+            problem = value_problem(sentence, allowed) if sentence else None
+            if problem:
+                dropped.append((sentence, problem))
             else:
                 kept.append(sentence)
         out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip(), dropped
+
+
+# A sentence or step that says again what an earlier sentence of the reply
+# said ("allow the servers in your policy" / "1. Update your policy to allow
+# the servers"): most of its content words (RESTATES) are in one earlier
+# sentence. Short steps ("Go to Settings > Leave.") are never restatements.
+RESTATES = 0.6
+_RESTATE_MIN_WORDS = 5
+
+
+def drop_restatements(text: str) -> tuple[str, list[str]]:
+    """`text` without sentences and step lines that restate an earlier
+    prose sentence (code blocks untouched); numbered steps are renumbered.
+    Returns the text and the dropped sentences."""
+    out, dropped, seen, number, fenced = [], [], [], 0, False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        step = _STEP_LINE.match(line)
+        if fenced or line.lstrip().startswith("```") or not line.strip():
+            out.append(line)
+            continue
+        kept = []
+        for unit in [step.group(4)] if step else _SENTENCE_END.split(line.strip()):
+            words = content_words(unit)
+            if len(words) >= _RESTATE_MIN_WORDS and any(len(words & s) / len(words) >= RESTATES for s in seen):
+                dropped.append(unit)
+                continue
+            kept.append(unit)
+            if not step:
+                seen.append(words)
+        if not kept:
+            continue
+        if step:
+            indent, marker, space, _ = step.groups()
+            if marker[0].isdigit():
+                number += 1
+                marker = f"{number}{marker[-1]}"
+            out.append(f"{indent}{marker}{space}{kept[0]}")
+        else:
+            out.append(" ".join(kept))
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip(), dropped
 
 
