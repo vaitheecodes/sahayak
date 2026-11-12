@@ -54,7 +54,10 @@ def is_answer(reply: str) -> bool:
 
 
 def _generic(reply: str) -> bool:
-    return any(g.strip() and g.strip() in reply for g in _GENERIC) or bool(_GENERIC_RE.search(reply))
+    """A template question, or "which part of the product?" without the options."""
+    bare_subject = re.search(r"\bwhich part of\b", reply, re.IGNORECASE) and ":" not in reply and " or " not in reply
+    return bool(bare_subject or _GENERIC_RE.search(reply)) or any(
+        g.strip() and g.strip() in reply for g in _GENERIC if not g.startswith("Which part of"))
 
 
 def kb_text(pack: dict) -> str:
