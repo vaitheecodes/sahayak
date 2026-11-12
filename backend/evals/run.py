@@ -110,6 +110,32 @@ def _transcript(r: dict) -> list[str]:
     return out
 
 
+def _run_cases(cases_by_kb, packs, rows, workers, counted, run_dir):
+    from backend.ai_service import AIError
+    from backend.evals import judge, simulate
+
+    for kb, kb_cases in cases_by_kb.items():
+        pack, product = packs[kb]
+        client = harness.open_app(run_dir / f"{kb}.db", pack, product)
+        try:
+            with ThreadPoolExecutor(workers) as pool:
+                results = list(pool.map(lambda c: simulate.run(client, c), kb_cases))
+
+            def score(result):
+                try:
+                    return _verdicts(result, pack, kb, judge.judge)
+                except (harness.CapReached, AIError) as exc:   # not the bot's fault: left out
+                    result["error"] = f"judge: {exc}"
+                    return {}, None
+            with ThreadPoolExecutor(workers) as pool:
+                scored = list(pool.map(score, results))
+        finally:
+            client.__exit__(None, None, None)
+        for result, (verdicts, v) in zip(results, scored):
+            rows.append({"result": result, "verdicts": verdicts, "judge": v})
+        print(f"{kb}: {len(results)} conversations, {counted.total} calls so far")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kb", nargs="+", default=["demo", "brightdesk"], choices=["demo", "brightdesk"])
@@ -120,12 +146,12 @@ def main(argv=None) -> int:
     parser.add_argument("--cases", nargs="+", metavar="CASE_ID", help="only these cases")
     parser.add_argument("--estimate", action="store_true")
     parser.add_argument("--allow-over", action="store_true")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args(argv)
 
     bot_model = harness.NOVA_PRO if args.bot_model == "pro" else harness.NOVA_LITE
     harness.prepare_env(bot_model)
-    from backend.evals import cases as cases_mod, judge, simulate
+    from backend.evals import cases as cases_mod
 
     counted = harness.install_counted_backend(args.max_calls)
     packs = {kb: harness.load_pack(kb) for kb in args.kb}
@@ -160,28 +186,12 @@ def main(argv=None) -> int:
     run_dir = harness.OUT / "runs" / run_id
     run_dir.mkdir(parents=True)
     rows = []
-    for kb, kb_cases in cases_by_kb.items():
-        pack, product = packs[kb]
-        client = harness.open_app(run_dir / f"{kb}.db", pack, product)
-        try:
-            with ThreadPoolExecutor(args.workers) as pool:
-                results = list(pool.map(lambda c: simulate.run(client, c), kb_cases))
-
-            def score(result):
-                try:
-                    return _verdicts(result, pack, kb, judge.judge)
-                except harness.CapReached as exc:
-                    result["error"] = str(exc)
-                    return {}, None
-            with ThreadPoolExecutor(args.workers) as pool:
-                scored = list(pool.map(score, results))
-        finally:
-            client.__exit__(None, None, None)
-        for result, (verdicts, v) in zip(results, scored):
-            rows.append({"result": result, "verdicts": verdicts, "judge": v})
-        print(f"{kb}: {len(results)} conversations, {counted.total} calls so far")
-
+    try:
+        _run_cases(cases_by_kb, packs, rows, args.workers, counted, run_dir)
+    finally:
+        totals = harness.record(run_id, counted.summary())   # spent calls count even after a crash
     calls = counted.summary()
+
     rows = [r for r in rows if r["verdicts"]] + [r for r in rows if not r["verdicts"]]
     for r in rows:
         r["verdicts"] = r["verdicts"] or {n: ("n/a", "") for n in RULES}
@@ -193,7 +203,6 @@ def main(argv=None) -> int:
             (failures / f"{r['result']['case']['case_id']}.json").write_text(json.dumps(r, indent=1, ensure_ascii=False))
     text = report(run_dir, rows, {kb: p for kb, (p, _) in packs.items()}, calls, bot_model)
     (run_dir / "report.md").write_text(text)
-    totals = harness.record(run_id, calls)
     print(text.split("## Worst 10")[0])
     print(f"Run {run_id}: {run_dir / 'report.md'}. Ledger: {totals['spent']} calls, ${totals['cost_usd']:.2f}.")
     return 0

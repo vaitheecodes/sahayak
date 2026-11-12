@@ -9,6 +9,7 @@ import threading
 
 from pydantic import BaseModel, Field
 
+from backend.ai_service import AIError
 from backend.evals.cases import Case
 from backend.evals.harness import CapReached
 
@@ -92,4 +93,6 @@ def run(client, case: Case) -> dict:
                 break
     except CapReached as exc:
         result["error"] = str(exc)
+    except AIError as exc:   # the simulated customer's own call failed: not the bot's fault
+        result["error"] = f"simulator: {exc}"
     return result

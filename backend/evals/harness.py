@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -95,12 +96,29 @@ class CountedClient:
             if self.total >= self.cap:
                 raise CapReached(f"call cap {self.cap} reached")
             self.calls[model] += 1
-        response = self.inner.converse(**request)
+        response = self._converse(request)
         usage = response.get("usage", {})
         with self._lock:
             self.tokens_in[model] += usage.get("inputTokens", 0)
             self.tokens_out[model] += usage.get("outputTokens", 0)
         return response
+
+    def _converse(self, request):
+        """Throttled calls wait and try again (each attempt counted), so a
+        busy account doesn't show up as "AI unavailable" in the results."""
+        from botocore.exceptions import ClientError
+
+        for attempt in range(4):
+            try:
+                return self.inner.converse(**request)
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") != "ThrottlingException" or attempt == 3:
+                    raise
+            time.sleep(2 ** attempt * 2)
+            with self._lock:
+                if self.total >= self.cap:
+                    raise CapReached(f"call cap {self.cap} reached")
+                self.calls["nova-pro" if "nova-pro" in request.get("modelId", "") else "nova-lite"] += 1
 
     def cost(self) -> float:
         return sum(self.tokens_in[m] / 1e6 * PRICES[m][0] + self.tokens_out[m] / 1e6 * PRICES[m][1]
