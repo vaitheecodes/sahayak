@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from backend import categories, kb_store, topic_terms
@@ -56,8 +57,7 @@ def _drafting_model_differs() -> bool:
     return drafting != backends.BedrockBackend.model_id()
 
 
-class CapReached(Exception):
-    pass
+CapReached = backends.CallCapReached
 
 
 class Budget:
@@ -72,6 +72,15 @@ class Budget:
         if self.used >= self.cap:
             raise CapReached()
         self.used += 1
+
+    @contextmanager
+    def charging(self):
+        """Every real model call inside (provider retries included) spends one."""
+        token = backends.call_budget.set(self.spend)
+        try:
+            yield
+        finally:
+            backends.call_budget.reset(token)
 
 
 @dataclass
@@ -121,10 +130,10 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
     procedures = [] if reference else ordered_lists(chunk_text)[:op.MAX_PROCEDURES]
     data = DraftInput(chunk_text=chunk_text, heading_path=heading_path, page_title=page_title,
                       known_terms=known_terms, procedures=procedures, reference=reference)
-    budget.spend()
-    out.calls += 1
+    used_before = budget.used
     try:
-        drafted = op.draft_kb_entries(data)
+        with budget.charging():
+            drafted = op.draft_kb_entries(data)
     except AIError as exc:
         # The drafting model (Nova Pro by default) failed to answer, e.g. not
         # allowed or throttled: once more on the default model, budget allowing.
@@ -133,9 +142,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
                 or budget.left < CALLS_PER_CHUNK):
             raise
         out.dropped["drafting_model_fallback"] += 1
-        budget.spend()
-        out.calls += 1
-        drafted = op.draft_kb_entries(data, default_model=True)
+        with budget.charging():
+            drafted = op.draft_kb_entries(data, default_model=True)
 
     known = {t["label"].lower(): t["label"] for t in known_terms}
     out.terms = _terms(drafted, chunk_text, known, out.dropped)
@@ -202,9 +210,8 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
     to_check = [StepToCheck(id=n, step=s["text"], quote=s["quote"])
                 for n, s in enumerate((s for e in entries for s in e["steps"]), start=1)]
     if to_check:
-        budget.spend()
-        out.calls += 1
-        verdicts = {v.id: v.supported for v in op.check_step_support(to_check, heading_path).verdicts}
+        with budget.charging():
+            verdicts = {v.id: v.supported for v in op.check_step_support(to_check, heading_path).verdicts}
         n = 0
         for e in entries:
             kept = []
@@ -243,4 +250,5 @@ def draft_chunk(chunk_text: str, *, heading_path: str, page_title: str, source_u
         })
     out.categories = [{"name": c.name, "label": c.label.strip(), "description": c.description.strip()}
                       for name, c in proposed_categories.items() if name in used_categories]
+    out.calls = budget.used - used_before
     return out

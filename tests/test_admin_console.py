@@ -90,8 +90,8 @@ def test_admin_creates_customer_who_must_change_password(client):
     assert login["role"] == "customer" and login["must_change_password"] is True
     headers = _bearer(login["token"])
     assert client.get("/api/tickets/mine", headers=headers).status_code == 403
-    client.post("/api/auth/change-password",
-                json={"current_password": temp, "new_password": "erin-own-pass"}, headers=headers)
+    headers = _bearer(client.post("/api/auth/change-password",
+                json={"current_password": temp, "new_password": "erin-own-pass"}, headers=headers).json()["token"])
     assert client.get("/api/tickets/mine", headers=headers).status_code == 200
 
 
@@ -135,8 +135,8 @@ def test_admin_creates_manager_with_one_department(client):
     temp = res.json()["temporary_password"]
 
     headers = _bearer(_login(client, "nia@example.com", temp).json()["token"])
-    client.post("/api/auth/change-password",
-                json={"current_password": temp, "new_password": "nia-own-pass"}, headers=headers)
+    headers = _bearer(client.post("/api/auth/change-password",
+                json={"current_password": temp, "new_password": "nia-own-pass"}, headers=headers).json()["token"])
     assert [d["name"] for d in client.get("/api/manager/departments", headers=headers).json()] == ["General"]
 
 
@@ -361,8 +361,9 @@ def test_attachments_only_through_the_authorised_endpoint(client, tmp_path):
     url = f"/api/tickets/{created['ticket_id']}/attachments/{attachment['attachment_id']}"
     assert client.get(url).status_code == 401
     assert client.get(url, headers=_signup(client)[0]).status_code == 403
-    for headers in (customer, _demo(client, "technician"), _admin(client)):
+    for headers in (customer, _demo(client, "technician")):
         assert client.get(url, headers=headers).content == PNG
+    assert client.get(url, headers=_admin(client)).status_code == 403   # the admin has no ticket access
     # Never served statically.
     assert client.get(f"/uploads/{stored[0].name}").status_code == 404
 

@@ -123,7 +123,11 @@ review. Module map in `kb_ingester/__init__.py`.
   left queued/running (`recover_interrupted`). Caps: admin Settings ->
   Knowledge base limits (app_settings `kb`; env `KB_MODEL_CALLS_PER_RUN`
   / `_PER_DAY`), plus runs per hour per manager and one active run per
-  source. Near-duplicates (`dedupe.py`, TF-IDF cosine >= 0.8 over title,
+  source. Every real model call spends the budget, provider and Bedrock
+  retries included (`backends.call_budget`, set by `Budget.charging()`);
+  a chunk whose retries use up the cap stops the run (`run_cap`) and stays
+  undrafted. A run still queued/running counts toward today's cap
+  whatever day it started. Near-duplicates (`dedupe.py`, TF-IDF cosine >= 0.8 over title,
   questions, answer, steps vs. every draft/approved entry) are flagged.
 - **Review** (`review.py`, `api.py`): support engineers + managers read,
   edit drafts (version-checked; an edited step's quote must still be in
@@ -466,7 +470,7 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   otherwise, sent as a BackgroundTask). A pipeline failure on a new ticket
   still creates it, queued for a human. **Attachments**
   (`POST /api/tickets/{id}/attachments`, `attachments` table): max 5 per
-  message, 10 MB each, png/jpg/pdf/txt/log with the contents checked
+  message (counted under a write lock), 10 MB each, png/jpg/pdf/txt/log with the contents checked
   against the extension, stored under `db.uploads_dir()` (DB_PATH's
   parent `/uploads`) with random names. Covered by
   `tests/test_customer_tickets.py`.
@@ -782,7 +786,11 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   manager (Tech Lead) + support engineer + Platform Lead
   (`seed_data.DEMO_PLATFORM_LEAD`, no department) are seeded by
   `seed_data.seed_demo_staff`, never in production.
-  bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`). Covered by
+  bcrypt-hashed passwords, JWT bearer tokens (`JWT_SECRET`, with `iat`).
+  A password change refuses the account's tokens issued before it
+  (`password_changed_at`, Unix seconds; Postgres `0008_password_changed_at.sql`)
+  and returns a new token, which the web app saves; an unknown email
+  still checks a dummy bcrypt hash (no timing hint). Covered by
   `tests/test_roles_auth.py`.
 - **Manager types** (`backend/permissions.py`, `staff.manager_type`:
   SQLite `_ADDED_COLUMNS` + startup backfill, Postgres

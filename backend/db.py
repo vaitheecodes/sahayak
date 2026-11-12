@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS customers (
     email                TEXT NOT NULL UNIQUE,
     password_hash        TEXT NOT NULL,
     active               INTEGER NOT NULL DEFAULT 1,
-    must_change_password INTEGER NOT NULL DEFAULT 0
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    password_changed_at  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS staff (
@@ -68,14 +69,16 @@ CREATE TABLE IF NOT EXISTS staff (
     -- Managers: the one department they manage; support engineers: the one they work.
     department_id        TEXT REFERENCES departments(department_id) ON DELETE SET NULL,
     -- Managers only (backend/permissions.py MANAGER_TYPES); NULL for anyone else.
-    manager_type         TEXT
+    manager_type         TEXT,
+    password_changed_at  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS admins (
     admin_id      TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     email         TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+    password_changed_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
@@ -634,12 +637,17 @@ _ADDED_COLUMNS = {
     "customers": [
         ("active", "INTEGER NOT NULL DEFAULT 1"),
         ("must_change_password", "INTEGER NOT NULL DEFAULT 0"),
+        # Unix seconds; tokens issued before it are refused (auth._load_user).
+        # Postgres: 0008_password_changed_at.sql.
+        ("password_changed_at", "INTEGER"),
     ],
     "staff": [
         ("department_id", "TEXT REFERENCES departments(department_id) ON DELETE SET NULL"),
         # Postgres: 0006_manager_types.sql (with CHECKs on the values).
         ("manager_type", "TEXT"),
+        ("password_changed_at", "INTEGER"),
     ],
+    "admins": [("password_changed_at", "INTEGER")],
     "incident_clusters": [
         ("started_at", "TIMESTAMP"),
         ("resolved_at", "TIMESTAMP"),

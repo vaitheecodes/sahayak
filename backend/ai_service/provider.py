@@ -177,6 +177,8 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
             json_schema=schema,
             extra_messages=tuple(m["content"] for m in messages[2:]),
         )
+    except backends.CallCapReached:
+        raise
     except Exception as exc:  # noqa: BLE001 — any provider/network/config failure
         # Log the type only, and drop the chained exception (`from None`):
         # provider error text can echo request details, and callers log
@@ -294,6 +296,7 @@ def complete_json(instructions: str, data: dict[str, str], schema: type[BaseMode
     operation = operation or schema.__name__
     start = time.monotonic()
     for attempt in range(attempts):
+        backends.charge_call()   # each attempt is a real call against a caller's cap
         raw = complete(messages, temperature=temperature, json_mode=True, json_schema=json_schema,
                        operation=operation)
         try:
@@ -325,6 +328,7 @@ def complete_text(instructions: str, data: dict[str, str], *, temperature: float
     start = time.monotonic()
     code = "empty_reply"
     for _ in range(2):
+        backends.charge_call()
         text = unwrap_text(strip_reasoning(complete(messages, temperature=temperature, operation=operation)))
         if text and len(text) <= max_length:
             return text

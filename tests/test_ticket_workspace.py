@@ -84,8 +84,9 @@ def _new_technician(client, department_id=None):
     assert res.status_code == 200, res.text
     temp = res.json()["temporary_password"]
     headers = _login(client, email, temp)
-    client.post("/api/auth/change-password",
-                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers)
+    # The change revokes the temporary-password token.
+    headers = {"Authorization": "Bearer " + client.post("/api/auth/change-password",
+                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers).json()["token"]}
     return headers, res.json()["staff_id"]
 
 
@@ -419,7 +420,7 @@ def test_attachment_downloads_follow_the_staff_ticket_rules(client):
     assert client.get(ai_handled, headers=tech).status_code == 403
     assert client.get(ai_handled, headers=manager).status_code == 403
     assert client.get(out_of_scope, headers=tech).status_code == 200
-    # The admin keeps full access; the customer still gets their own.
+    # The admin has no ticket access; the customer still gets their own.
     for url in (in_scope, out_of_scope, ai_handled):
-        assert client.get(url, headers=admin).status_code == 200
+        assert client.get(url, headers=admin).status_code == 403
         assert client.get(url, headers=customer).status_code == 200

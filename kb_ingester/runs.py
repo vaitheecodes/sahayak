@@ -38,7 +38,7 @@ from backend import app_settings, audit, categories, db, kb_store
 from backend.ai_service import AIError
 from backend.timeutil import utcnow
 from kb_ingester import chunking, clean, dedupe
-from kb_ingester.drafting import CALLS_PER_CHUNK, Budget, draft_chunk
+from kb_ingester.drafting import CALLS_PER_CHUNK, Budget, CapReached, draft_chunk
 from kb_ingester.safe_fetch import FetchError, SafeFetcher, address_problem, check_url
 from kb_ingester.files import DocumentProblem
 from kb_ingester.sources import RawDocument, UrlSource
@@ -172,8 +172,10 @@ def calls_used_today(conn) -> int:
     since = utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     used = 0
     for row in conn.execute(
-            "SELECT status, model_calls, model_call_cap FROM kb_ingest_runs WHERE created_at >= ? "
-            "AND status IN ('queued', 'running', 'done', 'stopped', 'failed')", (since,)):
+            # A run still active counts whatever day it started: one started
+            # before 00:00 UTC must not free its reservation at midnight.
+            f"SELECT status, model_calls, model_call_cap FROM kb_ingest_runs WHERE (created_at >= ? "
+            f"OR status IN {ACTIVE}) AND status IN ('queued', 'running', 'done', 'stopped', 'failed')", (since,)):
         used += row["model_call_cap"] if row["status"] in ACTIVE else row["model_calls"]
     return used
 
@@ -494,6 +496,16 @@ def _execute(run_id: int) -> None:
             # No connection is held during the model calls.
             result = draft_chunk(chunk["text"], heading_path=chunk["heading_path"], page_title=chunk["page_title"] or "",
                                  source_url=chunk["url"], known_terms=terms, budget=budget)
+        except CapReached:
+            # Retries used up the cap mid-chunk: it stays undrafted for the next run.
+            conn = db.get_connection()
+            try:
+                _add_counts(conn, run_id, model_calls=budget.used - before)
+                conn.commit()
+            finally:
+                conn.close()
+            stop = estimate_info.get("cap_reason", "run_cap")
+            break
         except AIError:
             failures += 1
             conn = db.get_connection()

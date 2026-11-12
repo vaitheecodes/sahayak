@@ -226,6 +226,17 @@ def test_the_budget_is_spent_before_each_call(monkeypatch):
         _draft(monkeypatch, leave_drafts, cap=0)
 
 
+def test_a_retried_reply_spends_a_call_too(monkeypatch):
+    replies = [{"entries": "not a list"}]   # rejected by the schema, then retried
+    result, model, budget = _draft(monkeypatch, lambda chunk: replies.pop(0) if replies else leave_drafts(chunk))
+    assert (model.count("draft"), model.count("check")) == (2, 1)
+    assert budget.used == result.calls == 3
+    # With a cap of 2 the retry and the step check can't both run.
+    replies.append({"entries": "not a list"})
+    with pytest.raises(CapReached):
+        _draft(monkeypatch, lambda chunk: replies.pop(0) if replies else leave_drafts(chunk), cap=2)
+
+
 def test_the_prompt_lists_categories_and_the_product(monkeypatch):
     from backend import app_settings
 

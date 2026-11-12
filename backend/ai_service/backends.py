@@ -432,6 +432,20 @@ def model_task(task: str | None):
         _model_task.reset(token)
 
 
+class CallCapReached(Exception):
+    """The caller's model-call budget (`call_budget`) is used up."""
+
+
+# A caller that caps model calls (the KB ingester's Budget) sets a spend
+# function; it runs before every real model call, retries included.
+call_budget: contextvars.ContextVar = contextvars.ContextVar("call_budget", default=None)
+
+
+def charge_call() -> None:
+    if (spend := call_budget.get()) is not None:
+        spend()
+
+
 class BedrockBackend:
     """Amazon Bedrock Converse API via boto3. Credentials come from the
     default AWS chain only (AWS_PROFILE locally, the service role when
@@ -540,6 +554,7 @@ class BedrockBackend:
                 if not transient:
                     raise
                 logger.warning("Bedrock call failed (%s); retrying once", type(exc).__name__)
+                charge_call()
                 _sleep(BEDROCK_RETRY_DELAY + random.uniform(0, BEDROCK_RETRY_JITTER))
                 attempts = 2
                 response = client.converse(**request)

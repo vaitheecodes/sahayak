@@ -14,7 +14,9 @@ every account creation) so that lookup is never ambiguous.
 Every dependency re-reads the user's row on each request rather than
 trusting the token alone, so a deactivated account (staff or customer) or
 a pending forced password change takes effect immediately, not when the
-24h token expires. Failed sign-ins are recorded in the audit log.
+24h token expires. A password change refuses the account's tokens issued
+before it (`password_changed_at`) and returns a new one. Failed sign-ins
+are recorded in the audit log.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import logging
 import os
 import secrets
 import sys
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -54,6 +57,9 @@ _DEV_ADMIN_EMAIL = "admin@example.com"
 _DEV_ADMIN_PASSWORD = "admin-dev-password"
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+# Checked when no account has the email, so that answer takes as long as a
+# wrong password (no timing hint about which emails exist).
+_DUMMY_HASH = bcrypt.hashpw(b"no-such-account", bcrypt.gensalt()).decode()
 
 
 def is_production() -> bool:
@@ -101,6 +107,7 @@ def create_token(subject_id: str, role: Role) -> str:
     payload = {
         "sub": subject_id,
         "role": role,
+        "iat": int(time.time()),
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -301,6 +308,8 @@ def login(email: str, password: str) -> dict:
                     "must_change_password": must_change,
                     "token": create_token(row["id"], role),
                 }
+        if not candidates:
+            verify_password(password, _DUMMY_HASH)
         _login_failed(conn, email, "bad_credentials", candidates[0][0]["id"] if candidates else None)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     finally:
@@ -315,7 +324,8 @@ def _login_failed(conn, email: str, reason: str, account_id: str | None) -> None
     conn.commit()
 
 
-def change_password(user: dict, current_password: str, new_password: str) -> None:
+def change_password(user: dict, current_password: str, new_password: str) -> str:
+    """Returns a new token: the change refuses every earlier one."""
     validate_new_password(new_password)
     if current_password == new_password:
         raise HTTPException(status_code=400, detail="New password must differ from the current one")
@@ -327,20 +337,16 @@ def change_password(user: dict, current_password: str, new_password: str) -> Non
         ).fetchone()
         if row is None or not verify_password(current_password, row["password_hash"]):
             raise HTTPException(status_code=400, detail="Current password is incorrect")
-        if table in ("staff", "customers"):
-            conn.execute(
-                f"UPDATE {table} SET password_hash = ?, must_change_password = 0 WHERE {id_col} = ?",
-                (hash_password(new_password), user["id"]),
-            )
-        else:
-            conn.execute(
-                f"UPDATE {table} SET password_hash = ? WHERE {id_col} = ?",
-                (hash_password(new_password), user["id"]),
-            )
+        clear = ", must_change_password = 0" if table in ("staff", "customers") else ""
+        conn.execute(
+            f"UPDATE {table} SET password_hash = ?, password_changed_at = ?{clear} WHERE {id_col} = ?",
+            (hash_password(new_password), int(time.time()), user["id"]),
+        )
         audit.record(conn, user["id"], "auth.password_changed", "account", user["id"])
         conn.commit()
     finally:
         conn.close()
+    return create_token(user["id"], user["role"])
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +381,9 @@ def _load_user(credentials: HTTPAuthorizationCredentials | None) -> dict:
     row = dict(row)
     # A role change by the admin invalidates tokens minted for the old role.
     if table == "staff" and row["role"] != role:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # Issued before the last password change (a token taken before it).
+    if payload.get("iat", 0) < (row.get("password_changed_at") or 0):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     if not row.get("active", 1):
         raise HTTPException(status_code=403, detail="This account has been deactivated")

@@ -588,8 +588,8 @@ def me(user: dict = Depends(auth.get_current_user)):
 
 @app.post("/api/auth/change-password")
 def change_password(body: ChangePasswordRequest, user: dict = Depends(auth.get_current_user)):
-    auth.change_password(user, body.current_password, body.new_password)
-    return {"ok": True}
+    token = auth.change_password(user, body.current_password, body.new_password)
+    return {"ok": True, "token": token}
 
 
 # ---------------------------------------------------------------------------
@@ -1039,6 +1039,8 @@ def upload_attachments(
     name; the database keeps only the metadata."""
     conn = db.get_connection()
     try:
+        # Two uploads at once must not both pass the per-message count.
+        db.begin_write(conn, "attachments")
         _customer_ticket_or_error(conn, ticket_id, customer_id)
         message = conn.execute(
             "SELECT sender FROM ticket_messages WHERE message_id = ? AND ticket_id = ?",
@@ -1119,9 +1121,11 @@ def download_attachment(
     """The ticket's customer (only from messages they can see), a
     technician or manager who may open the ticket in the workspace
     (staff_tickets._ticket_for_staff: with the support team, and for a
-    manager in their departments), or the admin."""
+    manager in their departments). Never the admin (no ticket access)."""
     if user["must_change_password"]:
         raise HTTPException(status_code=403, detail="Password change required")
+    if user["role"] == "admin":
+        raise HTTPException(status_code=403, detail="Not allowed for this role")
     conn = db.get_connection()
     try:
         if user["role"] == "customer":

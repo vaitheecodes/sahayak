@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import itertools
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -20,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import db, email_utils, graph, main, runtime  # noqa: E402
+from backend import db, email_utils, graph, main, runtime, storage  # noqa: E402
 from backend.ai_service import provider, summarize_ticket  # noqa: E402
 from backend.ai_service.schemas import HandoffSummary  # noqa: E402
 
@@ -406,6 +408,30 @@ def test_more_than_five_attachments_rejected(client):
     assert _upload(client, headers, created["ticket_id"], created["message_id"], files[:2]).status_code == 400
 
 
+def test_two_uploads_at_once_cannot_pass_the_limit_together(client, monkeypatch):
+    headers, _ = _customer(client)
+    created = _raise(client, headers, _ai())
+    first_writing = threading.Event()
+    store = storage.get_storage()
+    real_put = type(store).put
+
+    def slow_put(self, *args):
+        first_writing.set()
+        time.sleep(0.5)   # the other upload reads the count meanwhile, unless it waits for the lock
+        real_put(self, *args)
+
+    monkeypatch.setattr(type(store), "put", slow_put)
+    files = [(f"f{i}.txt", TXT) for i in range(3)]
+    codes = []
+    first = threading.Thread(target=lambda: codes.append(
+        _upload(client, headers, created["ticket_id"], created["message_id"], files).status_code))
+    first.start()
+    first_writing.wait(5)
+    codes.append(_upload(client, headers, created["ticket_id"], created["message_id"], files).status_code)
+    first.join()
+    assert sorted(codes) == [200, 400]   # 3 + 3 > 5: the second sees the first's files
+
+
 def test_oversized_attachment_rejected(client):
     headers, _ = _customer(client)
     created = _raise(client, headers, _ai())
@@ -453,3 +479,6 @@ def test_attachments_only_on_own_ticket_and_own_messages(client):
     url = f"/api/tickets/{ticket_id}/attachments/{uploaded[0]['attachment_id']}"
     assert client.get(url, headers=other).status_code == 403
     assert client.get(url).status_code == 401
+    admin = client.post("/api/auth/login", json={"email": "admin@example.com",
+                                                 "password": "admin-dev-password"}).json()["token"]
+    assert client.get(url, headers={"Authorization": f"Bearer {admin}"}).status_code == 403   # no ticket access

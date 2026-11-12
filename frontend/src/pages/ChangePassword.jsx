@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import ThemeToggle from "../components/ThemeToggle";
 import { useNavigate } from "react-router-dom";
-import { api, clearSession, getRole, HOME_FOR_ROLE, setMustChangePassword } from "../api";
+import { api, clearSession, getRole, HOME_FOR_ROLE, saveSession } from "../api";
 
 /* Shown after signing in with a temporary password set by the admin.
  * The backend refuses every other staff endpoint until this succeeds. */
@@ -25,8 +25,9 @@ export default function ChangePassword() {
     }
     setSubmitting(true);
     try {
-      await api.changePassword(current, next);
-      setMustChangePassword(false);
+      // The change signs out every earlier token, this one included.
+      const { token } = await api.changePassword(current, next);
+      saveSession(token, false);
       navigate(HOME_FOR_ROLE[getRole()] || "/login");
     } catch (err) {
       setError(err.message);

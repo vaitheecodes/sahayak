@@ -98,8 +98,9 @@ def _technician(client, department=None):
     assert res.status_code == 200, res.text
     temp = res.json()["temporary_password"]
     headers = _login(client, email, temp)
-    client.post("/api/auth/change-password",
-                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers)
+    # The change revokes the temporary-password token.
+    headers = {"Authorization": "Bearer " + client.post("/api/auth/change-password",
+                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers).json()["token"]}
     return headers, res.json()["staff_id"]
 
 

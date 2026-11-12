@@ -105,8 +105,9 @@ def _network_manager(client):
     client.patch(f"/api/admin/staff/{staff_id}",
                  json={"department_id": network["department_id"]}, headers=admin)
     headers = _login(client, email, temp)
-    client.post("/api/auth/change-password",
-                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers)
+    # The change revokes the temporary-password token.
+    headers = {"Authorization": "Bearer " + client.post("/api/auth/change-password",
+                json={"current_password": temp, "new_password": "real-pass-456"}, headers=headers).json()["token"]}
     return headers
 
 

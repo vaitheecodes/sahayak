@@ -9,6 +9,7 @@ model is scripted; background runs execute inside the request
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -244,6 +245,31 @@ def test_the_daily_cap_is_shared_and_refuses_a_start_when_used_up(client, manage
     res = client.post(f"/api/kb/runs/{second['run_id']}/start",
                       json={"expected_model_calls": second["estimated_model_calls"]}, headers=manager)
     assert res.status_code == 429
+
+
+def test_a_retry_that_uses_up_the_cap_stops_the_run(client, manager, web, model):
+    # One chunk: cap 2 (draft + check), but the draft is rejected once and retried.
+    replies = [{"entries": "not a list"}]
+    model.drafts = lambda chunk: replies.pop(0) if replies else leave_drafts(chunk)
+    run = _run(client, manager, _source(client, manager))
+    assert (run["status"], run["stop_reason"], run["model_calls"], run["chunks"]) == ("stopped", "run_cap", 2, 0)
+
+
+def test_a_run_started_before_midnight_still_counts_today(client, manager):
+    from kb_ingester import runs
+    from backend.timeutil import utcnow
+    source_id = _source(client, manager)
+    yesterday = (utcnow() - timedelta(days=1)).isoformat()
+    conn = db.get_connection()
+    try:
+        conn.execute("INSERT INTO kb_ingest_runs (source_id, status, triggered_by, created_at, model_call_cap, "
+                     "model_calls) VALUES (?, 'running', 'x', ?, 10, 3)", (source_id, yesterday))
+        assert runs.calls_used_today(conn) == 10   # its whole reservation, not 0 after midnight
+        conn.execute("UPDATE kb_ingest_runs SET status = 'done'")
+        assert runs.calls_used_today(conn) == 0    # a finished run of yesterday is yesterday's
+    finally:
+        conn.rollback()
+        conn.close()
 
 
 def test_ai_failures_are_counted_and_end_the_run(client, manager, web, monkeypatch):

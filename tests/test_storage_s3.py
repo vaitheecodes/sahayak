@@ -189,7 +189,8 @@ def test_download_only_through_the_authorised_endpoint(client, s3):
     other_customer, _ = _signup(client)
     assert client.get(url, headers=other_customer).status_code == 403
     gets_before = len([c for c in s3.calls if c[0] == "get"])
-    for headers in (customer, _demo(client, "technician"), _admin(client)):
+    assert client.get(url, headers=_admin(client)).status_code == 403   # the admin has no ticket access
+    for headers in (customer, _demo(client, "technician")):
         res = client.get(url, headers=headers)
         assert res.status_code == 200 and res.content == PNG
         assert res.headers["content-type"] == "image/png"
@@ -199,7 +200,7 @@ def test_download_only_through_the_authorised_endpoint(client, s3):
         # The app streams the bytes: no redirect, no storage link anywhere.
         assert not any("amazonaws" in v or "X-Amz" in v or BUCKET in v for v in res.headers.values())
     # Refused requests never touched S3.
-    assert len([c for c in s3.calls if c[0] == "get"]) == gets_before + 3
+    assert len([c for c in s3.calls if c[0] == "get"]) == gets_before + 2
     detail = client.get(f"/api/tickets/{created['ticket_id']}", headers=customer).text
     assert "amazonaws" not in detail and BUCKET not in detail and "stored_name" not in detail
 

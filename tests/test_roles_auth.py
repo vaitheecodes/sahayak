@@ -276,6 +276,8 @@ def test_admin_creates_manager_who_must_change_password_first(client):
         headers=headers,
     )
     assert changed.status_code == 200, changed.text
+    # The change revokes the temporary-password token; the reply carries a new one.
+    headers = {"Authorization": f"Bearer {changed.json()['token']}"}
     assert client.get("/api/auth/me", headers=headers).json()["must_change_password"] is False
     assert client.get("/api/manager/departments", headers=headers).status_code == 200
     assert _login(client, "new-manager@example.com", "my-own-pass-456").status_code == 200
@@ -534,3 +536,25 @@ def test_production_on_postgres_refuses_to_start_without_ssl(db_path, monkeypatc
         with TestClient(main.app):
             pass
     assert "Zq8vT2mLw9xR4kPd" not in capsys.readouterr().err
+
+
+def test_a_password_change_revokes_earlier_tokens(client, monkeypatch):
+    real_time = auth.time.time
+    with monkeypatch.context() as m:
+        m.setattr(auth.time, "time", lambda: real_time() - 60)   # a token taken a minute ago
+        old = client.post("/api/auth/customer/signup", json={
+            "name": "Rae", "email": "rae@example.com", "password": "rae-pass-123"}).json()["token"]
+    assert client.get("/api/auth/me", headers=_bearer(old)).status_code == 200
+    changed = client.post("/api/auth/change-password", headers=_bearer(old),
+                          json={"current_password": "rae-pass-123", "new_password": "rae-pass-456"})
+    assert changed.status_code == 200
+    assert client.get("/api/auth/me", headers=_bearer(old)).status_code == 401
+    assert client.get("/api/auth/me", headers=_bearer(changed.json()["token"])).status_code == 200
+
+
+def test_an_unknown_email_still_checks_a_password(client, monkeypatch):
+    checked = []
+    real_verify = auth.verify_password
+    monkeypatch.setattr(auth, "verify_password", lambda p, h: checked.append(h) or real_verify(p, h))
+    assert _login(client, "nobody@example.com", "whatever-123").status_code == 401
+    assert checked == [auth._DUMMY_HASH]   # as slow as a wrong password: no hint the email is unknown

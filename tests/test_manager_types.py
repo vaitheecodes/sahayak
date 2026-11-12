@@ -200,8 +200,9 @@ def _signed_in(client, role, department=None, **extra):
     assert res.status_code == 200, res.text
     user = res.json()
     headers = _login(client, user["email"], user["temporary_password"])
-    client.post("/api/auth/change-password", json={"current_password": user["temporary_password"],
-                                                   "new_password": "real-pass-456"}, headers=headers)
+    # The change revokes the temporary-password token.
+    headers = {"Authorization": "Bearer " + client.post("/api/auth/change-password", json={"current_password": user["temporary_password"],
+                                                   "new_password": "real-pass-456"}, headers=headers).json()["token"]}
     return headers, user["user_id"]
 
 
