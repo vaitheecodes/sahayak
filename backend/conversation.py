@@ -182,7 +182,8 @@ def followup_gate(message_text: str, prior_ai_response: str | None, answered: bo
     4. classify — anything else goes through the full pipeline.
 
     Never raises for the continuation check: a failed check means classify."""
-    if handoff_signals.is_escalation_acceptance(message_text, prior_ai_response or ""):
+    if handoff_signals.asks_for_human(message_text) or handoff_signals.is_escalation_acceptance(
+            message_text, prior_ai_response or ""):
         return "handoff"
     if answered and is_closing_acknowledgment(message_text):
         return "close"

@@ -35,7 +35,7 @@ _COMMON = frozenset("""
 
 
 def kb_text(candidates: list[KBCandidate]) -> str:
-    return "\n".join(f"{c.instruction}\n{c.response}" for c in candidates)
+    return "\n".join(f"{c.instruction}\n{c.response}\n{c.source_url or ''}" for c in candidates)
 
 
 def _stem(word: str) -> str:

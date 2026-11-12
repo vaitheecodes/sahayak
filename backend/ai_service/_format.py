@@ -40,4 +40,6 @@ def kb_guidance_text(candidates: list[KBCandidate]) -> str:
         f"[{top.category} / {top.intent}] (match score {top.score:.2f})\n"
         f"Typical question: {top.instruction}\n"
         f"Canonical guidance: {top.response}"
+        # So "what are the sources?" can be answered with the guide's page.
+        + (f"\nSource page of this guide: {top.source_url}" if top.source_url else "")
     )

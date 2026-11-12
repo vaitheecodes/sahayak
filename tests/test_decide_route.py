@@ -170,6 +170,8 @@ def test_admin_routing_settings_change_the_decision(monkeypatch):
      "Customer: I'm not sure which one it is", []),                  # the bot's "not" never counts
     ("Customer: how do I clear the cache?\nAgent (AI): 1. Open settings.\nCustomer: it's still not working",
      ["negation"]),                                                  # the answer failed: a person takes over
+    ("Customer: clock-in fails\nAgent (AI): Allow location access.\nCustomer: done that, still getting the "
+     "same error", ["negation"]),                                    # "still ... same error": it didn't help
     ("what is this shit", ["offensive_language"]),
 ])
 def test_language_tags_come_from_the_latest_customer_message(transcript, tags):
@@ -193,3 +195,29 @@ def test_an_off_topic_message_gets_a_brief_fixed_reply_and_never_the_same_questi
     assert graph.off_topic_reply({**state, "ticket_text": "my payslip is wrong"}) is None
     assert graph.off_topic_reply({**state, "category": "ISSUE"}) is None
     assert graph.off_topic_reply({**state, "kb_candidates": [{"kb_entry_id": "KB-1"}]}) is None
+
+
+@pytest.mark.parametrize("message, human", [
+    ("I want to talk to a human", True), ("can I speak with someone from support", True), ("human please", True),
+    ("connect me to an agent", True), ("how do I connect Slack", False), ("my agent stopped reporting", False),
+    ("can someone help me with leave", False),
+])
+def test_an_explicit_request_for_a_person(message, human):
+    from backend import handoff_signals
+
+    assert handoff_signals.asks_for_human(message) is human
+
+
+def test_after_the_one_question_an_unnamed_module_no_longer_holds_an_entry_back(monkeypatch):
+    from backend import graph, topic_terms
+
+    topic_terms.use([{"label": "Beacon RUM", "kind": "module", "aliases": []},
+                     {"label": "Android", "kind": "platform", "aliases": []}])
+    rum = {"kb_entry_id": "KB-1", "category": "ISSUE", "applies_to": ["Beacon RUM"]}
+    android = {"kb_entry_id": "KB-2", "category": "ISSUE", "applies_to": ["Android"]}
+    state = {"ticket_text": "my browser can't reach the servers", "kb_candidates": [rum, android]}
+    usable, unconfirmed = graph.grounding_candidates({**state, "clarification_attempts": 0})
+    assert usable == [] and [c["kb_entry_id"] for c, _ in unconfirmed] == ["KB-1", "KB-2"]
+    usable, unconfirmed = graph.grounding_candidates({**state, "clarification_attempts": 1})
+    assert [c["kb_entry_id"] for c in usable] == ["KB-1"]           # a module: used after the question
+    assert [c["kb_entry_id"] for c, _ in unconfirmed] == ["KB-2"]   # a platform still has to be named

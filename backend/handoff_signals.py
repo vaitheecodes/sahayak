@@ -159,3 +159,18 @@ def is_escalation_acceptance(message_text: str, prior_ai_response: str) -> bool:
     if not normalized or len(normalized.split()) > _MAX_AFFIRMATIVE_WORDS:
         return False
     return normalized in _AFFIRMATIVE_PHRASES
+
+
+# The customer asks for a person outright (docs/CHAT_CONTRACT.md rule 13):
+# a ticket at once, whatever the conversation was about.
+_ASKS_FOR_HUMAN = re.compile(
+    r"\b(?:talk|speak|chat|connect|transfer|put|escalate)\b(?:\W+\w+){0,4}?\W+(?:to|with|me to)?\W*"
+    r"(?:a |an |the |some |your )?(?:human|person|real person|live agent|agent|someone|somebody|representative"
+    r"|support (?:team|engineer|person|staff)|engineer|executive)\b"
+    r"|\b(?:i want|i need|get me|give me)\W+(?:a |an )?(?:human|real person|live agent|representative)\b"
+    r"|^\W*(?:human|agent|real person|representative)(?:\W+please)?\W*$",
+    re.IGNORECASE)
+
+
+def asks_for_human(message_text: str) -> bool:
+    return bool(_ASKS_FOR_HUMAN.search(normalize_apostrophes(message_text or "")))

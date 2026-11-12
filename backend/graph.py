@@ -157,6 +157,9 @@ _ANSWER_FAILED = re.compile(
     r"\b(?:didn'?t|did not|doesn'?t|does not|isn'?t|is not|not|never|still|no longer)\b(?:\s+\w+){0,3}?\s+"
     r"(?:work|works|working|worked|help|helped|helping|fix|fixed|solve|solved|resolve|resolved|load|loading"
     r"|show|showing|appear|appearing)\b", re.IGNORECASE)
+# "still getting the same error", "the error persists": the answer didn't help either.
+_STILL_FAILING = re.compile(r"\b(?:still|persists?|persisting|same (?:error|issue|problem|message))\b",
+                            re.IGNORECASE)
 _AI_LINE = re.compile(r"^(?:Agent \(AI\)|ai):", re.MULTILINE)
 
 
@@ -173,7 +176,7 @@ def _tags(message: str, after_answer: bool) -> list[str]:
     tags = []
     if set(re.findall(r"[a-z']+", message.lower())) & _PROFANITY_WORDS:
         tags.append("offensive_language")
-    if after_answer and _ANSWER_FAILED.search(message):
+    if after_answer and (_ANSWER_FAILED.search(message) or _STILL_FAILING.search(message)):
         tags.append("negation")
     return tags
 
@@ -735,11 +738,18 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
         # Reviewed guides (kind "how-to", numbered steps from a help page)
         # before the generic canonical advice on the same subject.
         candidates.sort(key=lambda c: c.get("kind") != "how-to")
+    # The one clarifying question was asked: an entry held back only because
+    # the customer didn't name its module is used now (they may never use the
+    # KB's own word for it). Platforms and the like still gate: the Android
+    # guide never answers an iPad question.
+    asked = state.get("clarification_attempts", 0) >= app_settings.get("routing").max_clarification_attempts
     usable, unconfirmed = [], []
     for c in candidates:
         if topic_terms.names_another_variant(c, customer_text):
             continue
         missing = topic_terms.missing_terms(c, customer_text)
+        if asked and all(topic_terms.kind_of(t) == "module" for t in missing):
+            missing = set()
         if missing and c["category"] != requested:
             unconfirmed.append((c, missing))
         else:

@@ -55,8 +55,8 @@ AI_UNAVAILABLE = (
 )
 _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one any time."
 # No model call for these (docs/CHAT_CONTRACT.md rules 2 and 7).
-ACK_REPLY = ("Glad to help. If a step isn't clear, tell me which one. When it's solved, use "
-             "\"My issue is solved\" to close the chat.")
+ACK_REPLY = ("Glad to help. If a step isn't clear, tell me which one. When it's solved, the "
+             "My issue is solved button closes the chat.")
 
 
 def greeting() -> str:
