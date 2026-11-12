@@ -15,7 +15,9 @@ _RUBRIC = (
     "supported step is not invention. Empty list when nothing is invented.\n"
     "- covered: true when one of the entries answers the customer's main question (not just a related topic).\n"
     "- helpful (1-5): did the replies move the customer forward as far as the entries allow?\n"
-    "- tone (1-5): plain, kind, brief, no blame, polite with angry or off-topic customers.\n"
+    "- tone (1-5): plain, kind, brief, no blame, polite with angry or off-topic customers. For a message "
+    "unrelated to the product (sports, jokes), a brief polite refusal that offers help with the product is the "
+    "correct reply: do not mark it down for not answering the unrelated question.\n"
     "- note: one sentence on the main problem, or empty."
 )
 
@@ -32,6 +34,7 @@ def _entries_text(pack: dict) -> str:
     from backend.evals.cases import _entry_text
 
     return "\n\n".join(_entry_text(e) + (f"\nSnippets: {e.get('snippets')}" if e.get("snippets") else "")
+                       + (f"\nSource page: {e['source_url']}" if e.get("source_url") else "")
                        for e in pack["entries"])
 
 
