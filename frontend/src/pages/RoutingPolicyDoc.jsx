@@ -87,7 +87,7 @@ export default function RoutingPolicyDoc() {
                   </Row>
                   <Row label="Escalation language">{policy.escalation_language_tags.join(", ") || "None"}</Row>
                   <Row label="Clarifying questions">
-                    Up to <span className="tabular-nums">{policy.max_clarification_attempts}</span> before a hand-off
+                    Up to <span className="tabular-nums">{policy.max_clarification_attempts}</span> then an answer from the KB, or "no guide" and a ticket
                   </Row>
                 </dl>
               )

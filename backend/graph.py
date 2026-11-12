@@ -672,10 +672,12 @@ def decide_route(state: TicketState) -> dict:
         )
         clarification_attempts_out = clarification_attempts + 1
     elif below_base_bar:
-        route, reason = "human", (
+        # The questions are used up: answer from the KB entry that matches,
+        # or say there is no guide and raise a ticket (generate_response).
+        route, reason = "ai", (
             f"still below the confidence bar after {max_attempts} "
             f"clarification attempts (confidence {confidence:.2f}, category "
-            f"{category!r}) — forcing escalation"
+            f"{category!r}): answer from the KB, or no guide and a ticket"
         )
         clarification_attempts_out = clarification_attempts
     elif not how_to and ticket_text and not is_vague(ticket_text) and not grounding_candidates(state)[0]:

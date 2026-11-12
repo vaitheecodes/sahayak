@@ -57,7 +57,8 @@ class RoutingSettings(BaseModel):
     high_risk_categories: list[str] = Field(default_factory=lambda: [
         c for c in DEFAULT_HIGH_RISK if c in categories.names()])
     escalation_language_tags: list[str] = list(LANGUAGE_TAGS)
-    max_clarification_attempts: int = Field(default=3, ge=0, le=10)
+    # One clarifying question, then an answer, "no guide" or a ticket (docs/CHAT_CONTRACT.md rule 5).
+    max_clarification_attempts: int = Field(default=1, ge=0, le=10)
 
     @field_validator("high_risk_categories")
     @classmethod

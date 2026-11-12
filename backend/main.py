@@ -1235,7 +1235,8 @@ def routing_policy():
             "(never a clarifying question)",
             "other categories below the base confidence threshold -> "
             "clarify, up to max_clarification_attempts rounds",
-            "still below the bar after max attempts -> force human",
+            "still below the bar after max attempts -> ai: answered from the matched KB "
+            "entry, or 'no guide' and a ticket",
             "a report (not a how-to) no KB entry covers -> clarify, up to "
             "max_clarification_attempts rounds, then 'no guide' and a ticket (never an "
             "answer from general knowledge)",

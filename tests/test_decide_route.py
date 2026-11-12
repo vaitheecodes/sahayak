@@ -58,22 +58,17 @@ def test_vague_ticket_clarifies_then_resolves_within_max_attempts():
     assert result["clarification_attempts"] == 1
 
 
-def test_vague_ticket_never_clarifies_forces_human_on_attempt_after_max():
-    """Confidence never clears the bar -> clarify up to MAX_CLARIFICATION_ATTEMPTS
-    times, then decide_route forces human on the next call."""
-    attempts = 0
-    for expected_attempt_number in range(1, MAX_CLARIFICATION_ATTEMPTS + 1):
-        result = decide_route(_state(clarification_attempts=attempts))
-        assert result["route"] == "clarify", f"expected clarify on round {expected_attempt_number}"
-        assert result["clarification_attempts"] == expected_attempt_number
-        attempts = result["clarification_attempts"]
-
-    # one more round still below the bar, with attempts already at the max
-    result = decide_route(_state(clarification_attempts=attempts))
-    assert result["route"] == "human"
-    assert "forcing escalation" in result["route_reason"]
-    # not incremented further — clarification is over, no more rounds to count
-    assert result["clarification_attempts"] == MAX_CLARIFICATION_ATTEMPTS
+def test_one_clarifying_question_then_an_answer_or_no_guide():
+    """Confidence never clears the bar -> ONE clarifying question (the
+    default; docs/CHAT_CONTRACT.md rule 5), then route ai: generate_response
+    answers from the KB entry that matches, or says there is no guide and
+    raises a ticket. Never a bare hand-off, never a second question."""
+    assert MAX_CLARIFICATION_ATTEMPTS == 1
+    result = decide_route(_state(clarification_attempts=0))
+    assert (result["route"], result["clarification_attempts"]) == ("clarify", 1)
+    result = decide_route(_state(clarification_attempts=1))
+    assert result["route"] == "ai" and "no guide and a ticket" in result["route_reason"]
+    assert result["clarification_attempts"] == 1
 
 
 def test_escalation_tag_overrides_mid_clarification_immediately():
