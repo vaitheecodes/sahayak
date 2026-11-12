@@ -81,6 +81,12 @@ class ChatMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class FeedbackRequest(BaseModel):
+    message_id: str = Field(min_length=1, max_length=64)
+    note: str = Field(default="", max_length=1000)
+    consent: bool
+
+
 class EscalateChatRequest(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
 
@@ -521,6 +527,32 @@ def send_chat_message(
     finally:
         conn.close()
     return _finish_turn(turn, message, background_tasks)
+
+
+@router.post("/api/chats/{session_id}/feedback")
+def report_wrong_reply(session_id: str, body: FeedbackRequest,
+                       customer_id: str = Depends(auth.get_current_customer)):
+    """"This reply was wrong": the chat so far is saved for the chat eval,
+    only with the customer's consent."""
+    if not body.consent:
+        raise HTTPException(status_code=400, detail="Saving the conversation needs your consent")
+    conn = db.get_connection()
+    try:
+        _session_or_error(conn, session_id, customer_id)
+        messages = transcript_rows(conn, session_id)
+        if not any(m["message_id"] == body.message_id and m["role"] == "ai" for m in messages):
+            raise HTTPException(status_code=404, detail="No such reply in this chat")
+        feedback_id = f"FB-{uuid.uuid4().hex[:10]}"
+        conn.execute(
+            "INSERT INTO chat_feedback (feedback_id, session_id, message_id, customer_id, note, consent, "
+            "transcript, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            (feedback_id, session_id, body.message_id, customer_id, body.note.strip(),
+             json.dumps([{"role": m["role"], "content": m["content"]} for m in messages]), now()))
+        audit.record(conn, customer_id, "chat.reply_reported", "chat", session_id, message_id=body.message_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return {"feedback_id": feedback_id}
 
 
 @router.post("/api/chats/{session_id}/resolve")

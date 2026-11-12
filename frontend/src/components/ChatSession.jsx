@@ -161,7 +161,11 @@ export default function ChatSession({ initialSession, sessionId, onChanged, onOp
           aria-label="Conversation"
         >
           {messages.map((m) => (
-            <ChatMessage key={m.message_id} sender={m.role} message={m.content} createdAt={m.created_at} />
+            <ChatMessage key={m.message_id} sender={m.role} message={m.content} createdAt={m.created_at}>
+              {m.role === "ai" && m.message_id !== "pending" && (
+                <ReportReply sessionId={session.session_id} messageId={m.message_id} />
+              )}
+            </ChatMessage>
           ))}
           {busy === "send" && (
             <p className="chat-typing" role="status">
@@ -224,5 +228,51 @@ export default function ChatSession({ initialSession, sessionId, onChanged, onOp
         )}
       </div>
     </section>
+  );
+}
+
+
+// "This reply was wrong": saves the chat (with consent) as a test case for
+// the chat eval (backend/evals/), nothing else changes.
+function ReportReply({ sessionId, messageId }) {
+  const [open, setOpen] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [note, setNote] = useState("");
+  const [state, setState] = useState("idle"); // idle | sending | saved | error
+  const id = useId();
+
+  if (state === "saved") return <p className="mt-1 text-xs text-[var(--muted-fg)]">Thanks, saved for testing.</p>;
+  if (!open) {
+    return (
+      <button type="button" className="mt-1 text-xs text-[var(--muted-fg)] underline" onClick={() => setOpen(true)}>
+        This reply was wrong
+      </button>
+    );
+  }
+  async function send(e) {
+    e.preventDefault();
+    setState("sending");
+    try {
+      await api.chatReportReply(sessionId, { message_id: messageId, note, consent });
+      setState("saved");
+    } catch {
+      setState("error");
+    }
+  }
+  return (
+    <form className="mt-2 flex flex-col gap-2 text-xs" onSubmit={send}>
+      <label className="flex items-start gap-2" htmlFor={`${id}-consent`}>
+        <input id={`${id}-consent`} type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+        <span>Save this conversation so the team can test the bot against it.</span>
+      </label>
+      <label htmlFor={`${id}-note`} className="sr-only">What was wrong (optional)</label>
+      <textarea id={`${id}-note`} rows={2} maxLength={1000} placeholder="What was wrong? (optional)" value={note}
+        onChange={(e) => setNote(e.target.value)} className="rounded border border-[var(--input)] bg-[var(--sheet)] p-1" />
+      {state === "error" && <p role="alert">Couldn't save it. Try again.</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={!consent || state === "sending"}>Save</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
+    </form>
   );
 }

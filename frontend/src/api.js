@@ -192,6 +192,8 @@ export const api = {
   chatSend: (sessionId, message) =>
     request(`/chats/${sessionId}/messages`, { method: "POST", body: { message }, auth: true }),
   chatResolve: (sessionId) => request(`/chats/${sessionId}/resolve`, { method: "POST", auth: true }),
+  chatReportReply: (sessionId, { message_id, note, consent }) =>
+    request(`/chats/${sessionId}/feedback`, { method: "POST", body: { message_id, note, consent }, auth: true }),
   chatEscalate: (sessionId, subject) =>
     request(`/chats/${sessionId}/escalate`, {
       method: "POST",

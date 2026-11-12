@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -124,20 +123,24 @@ def load_or_generate(kb: str, pack: dict) -> list[Case]:
     return cases
 
 
-def feedback_cases(db_path: Path = DEMO_DB) -> list[Case]:
+def feedback_cases(conn=None) -> list[Case]:
     """Transcripts saved with "This reply was wrong" (chat_feedback), replayed
-    with the customer's messages as written: permanent regression cases."""
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return []
-    conn.row_factory = sqlite3.Row
+    with the customer's messages as written: permanent regression cases.
+    `conn`: a database connection; default the local demo database."""
+    own = conn is None
+    if own:
+        try:
+            conn = sqlite3.connect(f"file:{DEMO_DB}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return []
+        conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute("SELECT feedback_id, transcript FROM chat_feedback WHERE consent = 1").fetchall()
     except sqlite3.Error:   # an older database without the table
         rows = []
     finally:
-        conn.close()
+        if own:
+            conn.close()
     out = []
     for row in rows:
         said = [m["content"] for m in json.loads(row["transcript"]) if m["role"] == "customer"]

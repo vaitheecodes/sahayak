@@ -183,6 +183,20 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at);
 
+-- "This reply was wrong" on a bot reply, saved with the customer's consent:
+-- the chat as it was (customer-visible messages, JSON), replayed by the
+-- chat eval (backend/evals/cases.feedback_cases). Postgres: 0009_chat_feedback.sql.
+CREATE TABLE IF NOT EXISTS chat_feedback (
+    feedback_id TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL REFERENCES chat_sessions(session_id),
+    message_id  TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    consent     INTEGER NOT NULL,
+    transcript  TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL
+);
+
 -- Internal record for every AI-resolved chat, so staff can verify the
 -- outcome and close it separately from the (already closed) customer chat.
 CREATE TABLE IF NOT EXISTS chat_reviews (

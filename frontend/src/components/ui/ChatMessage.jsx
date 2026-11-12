@@ -25,7 +25,7 @@ function Avatar({ sender }) {
   );
 }
 
-export default function ChatMessage({ sender, message, createdAt }) {
+export default function ChatMessage({ sender, message, createdAt, children }) {
   if (sender === "system") {
     return (
       <div className="msg-system">
@@ -56,6 +56,7 @@ export default function ChatMessage({ sender, message, createdAt }) {
       <div className="msg-body">
         {isCustomer ? <p className="msg-plain">{message}</p> : <Markdown>{message}</Markdown>}
       </div>
+      {children}
       {isCustomer && stamp && (
         <time className="msg-time msg-time-right" title={absoluteTime(createdAt)}>
           {stamp}
