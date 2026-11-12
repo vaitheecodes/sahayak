@@ -849,8 +849,9 @@ def _no_guide(data: AnswerInput) -> dict:
     return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
 
 
-OFF_TOPIC_REPLY = "I can only help with questions about {product}. Is there something in {product} I can help with?"
-OFF_TOPIC_AGAIN = "I can only help with questions about {product} here."
+OFF_TOPIC_REPLY = ("Sorry, that's outside what I can help with: I'm the support assistant for {product}. "
+                   "Is there something in {product} I can help you with?")
+OFF_TOPIC_AGAIN = "I'll leave that one, sorry. Whenever you have a question about {product}, I'm here."
 
 
 def off_topic_reply(state: TicketState) -> str | None:

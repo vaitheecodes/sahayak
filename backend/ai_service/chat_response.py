@@ -295,7 +295,8 @@ def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
 
 
 def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> ChatReply:
-    if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().strip(".").upper() == NOT_COVERED:
+    # The marker alone, or with more text after it (which never reaches the customer).
+    if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().upper().startswith(NOT_COVERED):
         return ChatReply(text=NOT_COVERED, not_covered=True)
     text = _ground(text, data, operation or ("answer" if isinstance(data, AnswerInput) else "clarify"))
     if isinstance(data, AnswerInput):
@@ -390,7 +391,9 @@ def steps_again(data: AnswerInput) -> ChatReply | None:
 
 
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
-    ask_subject_first = not data.subject_known and not (answering and data.kb_candidates)
+    # With KB topics to choose between, the one question names them; "which
+    # part of the product?" only when there is nothing more specific to ask.
+    ask_subject_first = not data.subject_known and not data.kb_candidates and not data.unconfirmed_topics
     labels = topic_terms.subject_labels()
     subject = f"which part of the product it is about ({options_text(labels[:6])}), " if labels else ""
     rules = _ASKING_RULES.format(subject=subject,
@@ -463,9 +466,11 @@ def open_question(subject: str | None) -> str:
 def _fallback_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
     """A useful question that doesn't repeat a recent reply, else an offer
     of a ticket (chat) or a note that the team will look into it (email)."""
+    # A how-to never gets troubleshooting questions (docs/CHAT_CONTRACT.md rule 4).
+    troubleshooting = [] if data.how_to else [DETAIL_QUESTION if data.error_reported else STEP_QUESTION,
+                                              TRIED_QUESTION]
     options = ([open_question(data.subject)] if data.vague else []) + (
-        [subject_question()] if not data.subject_known else []) + [
-        DETAIL_QUESTION if data.error_reported else STEP_QUESTION, TRIED_QUESTION]
+        [subject_question()] if not data.subject_known else []) + troubleshooting
     for question in options:
         reply = ChatReply(text=email_utils.format_email_reply(data.customer_name, question)
                           if data.reply_format == "email" else clean_chat_reply(question))

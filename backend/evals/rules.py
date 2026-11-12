@@ -45,7 +45,9 @@ def _overlap(a: set, b: set) -> float:
 def is_question(reply: str) -> bool:
     """A clarifying reply: ends on a question, no steps, no snippet."""
     sentences = _sentences(reply)
-    return bool(sentences) and sentences[-1].endswith("?") and not _STEP.search(reply) and "```" not in reply
+    # Short: an answer that ends on a check-in ("Can you confirm...?") is an answer.
+    return (bool(sentences) and sentences[-1].endswith("?") and len(sentences) <= 2
+            and not _STEP.search(reply) and "```" not in reply)
 
 
 def is_answer(reply: str) -> bool:
