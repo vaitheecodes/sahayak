@@ -179,6 +179,32 @@ review. Module map in `kb_ingester/__init__.py`.
   `test_kb_quality.py` (lists, completeness, model setting, licence),
   `test_kb_ingest_api.py` (runs, caps, review, roles; runs on Postgres too).
 
+## Chat eval (`backend/evals/`, `docs/CHAT_CONTRACT.md`)
+
+`scripts/chat_eval.sh [--bot-model lite|pro] [--kb demo brightdesk]
+[--rerun-failed RUN] [--estimate]`: the chat contract (16 numbered rules)
+checked against the REAL Bedrock model. A Nova Lite customer
+(`EVAL_CUSTOMER_MODEL`) plays cases generated once per KB entry
+(paraphrased, vague, Tanglish/Hinglish with typos, direct or pasted
+error) plus per-KB cases (greeting first, topic switch, two near-misses,
+off-topic, angry, ok/hmm/thanks, a request for a person, follow-ups)
+against `/api/chats` in process, on a fresh SQLite DB with one KB: the
+demo DB's approved KB or the Brightdesk fixture (cases cached in
+`.local/chat-eval/cases/`). Code rules (`rules.py`) then a Nova Pro judge
+(`EVAL_JUDGE_MODEL`, `judge.py`: invented claims, coverage, helpfulness,
+tone); a rule 1 judge flag is re-judged, and what stays flagged, or a
+rule 3 failure the judge says isn't covered, is "disputed" (listed with
+the KB entry side by side in the report). Every Bedrock call is counted
+by a wrapped client (`harness.CountedClient`, throttling retried and
+counted), hard cap `--max-calls` (3000), the estimate printed first, and a
+ledger of all runs against `--budget` (6000) in `.local/chat-eval/`.
+Outputs per run: `report.md` (pass rate per rule, overall, worst 10,
+disputed), `results.json`, `failures/`. "This reply was wrong" in the web
+chat (`POST /api/chats/{id}/feedback`, consent required, `chat_feedback`,
+Postgres `0009`) saves the chat; `cases.feedback_cases` replays its
+customer turns as permanent cases. Not in the image (`.dockerignore`).
+Rule tests: `tests/test_chat_eval_rules.py`.
+
 ## Knowledge base (`backend/kb_store.py`)
 
 Tables (SQLite in `backend/db.py` SCHEMA + `_ADDED_COLUMNS`, Postgres in
@@ -307,9 +333,13 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   (new column, default 0) tracks the count; each chat reply re-invokes
   the graph, so `classify_ticket`/`decide_route` re-run on the fuller
   transcript and can resolve to `ai` once it's no longer ambiguous.
-  After `MAX_CLARIFICATION_ATTEMPTS` (3) rounds still below the bar,
-  `decide_route` forces `human` and the chat escalates through the same
-  `summarize_case()` path as an abusive-customer mid-chat escalation.
+  After `max_clarification_attempts` rounds (default 1, routing setting)
+  still below the bar, `decide_route` routes `ai`: `generate_response`
+  answers from the matched KB entry or says "no guide" and raises the
+  ticket (never a bare hand-off, never a second question). Once the
+  question was asked, an entry held back only because the customer didn't
+  name its module (not a platform/variant) is usable
+  (`graph.grounding_candidates`).
   **High-risk categories (default ACCOUNT/BILLING/DATA) below their stricter 90% bar
   never get KB-topic clarification or an AI answer**: an
   `escalate_with_info` KB entry gives its steps + collect list + safety
@@ -371,8 +401,16 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   `chat_messages` (`customer | ai`). Every customer message re-invokes
   the graph with the full transcript (after the per-message gates in
   `backend/conversation.followup_gate`, shared with ticket replies).
-  **Resolved**: only on the customer's confirmation (a bare "thanks"
-  after an AI answer, or "My issue is solved") — the session closes with
+  **Resolved**: only on the customer saying it is solved ("that worked",
+  "all set": `closing_ack.confirms_solved`, or the "My issue is solved"
+  button); a bare "thanks" / "ok" / "got it" / "hmm" gets `chats.ACK_REPLY`
+  and the chat stays open (tickets still close on any acknowledgment). A
+  greeting ("hi", `request_kind.is_small_talk`) gets `chats.greeting()`
+  (no model call), and the first real message replaces it as the chat's
+  `issue`. "I want to talk to a human" (`handoff_signals.asks_for_human`)
+  escalates at once. Off-topic (category OTHER, no KB candidate, no term
+  or product name: `graph.off_topic_reply`) gets a fixed brief reply, no
+  ticket. The session closes with
   an AI resolution summary and a `chat_reviews` row
   (`pending_review -> verified -> closed`, support engineers/admin via
   `/api/chat-reviews`, "Chat Reviews" tab); **no ticket is created**.
@@ -597,9 +635,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   high-risk categories (default ACCOUNT/BILLING/DATA) need ≥90%;
   `decide_route` tries `clarify` first for non-high-risk categories
   (see above) — high-risk categories below their bar still
-  escalate immediately, and `offensive_language`/`negation`/
-  `coordinated_syntax` language tags force immediate escalation
-  regardless of confidence, category, or clarification state.
+  escalate immediately, and the `offensive_language`/`negation`
+  language tags force immediate escalation regardless of confidence,
+  category, or clarification state. Tags come from the customer's latest
+  message only (`graph._detect_language_tags`): profanity (not frustration:
+  "useless" is answered), and, only after an AI reply, a report that it
+  didn't work ("still not working", "same error"). `coordinated_syntax` is
+  no longer detected (it handed off every long message; the chat eval
+  found "isn't working" in first reports handed off the same way).
   A confident report no KB entry covers is clarified, then handed off
   with "no guide" (never answered from general knowledge).
   `classify_ticket` runs a small regex heuristic to populate
