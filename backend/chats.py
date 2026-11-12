@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -113,7 +115,35 @@ def _session_or_error(conn, session_id: str, customer_id: str):
         raise HTTPException(status_code=404, detail="Chat not found")
     if session["customer_id"] != customer_id:
         raise HTTPException(status_code=403, detail="Not your chat")
-    return session
+    return _close_if_idle(conn, session)
+
+
+def idle_minutes() -> int:
+    return int(os.environ.get("CHAT_IDLE_TIMEOUT_MINUTES") or 30)
+
+
+IDLE_CLOSED_MESSAGE = ("This chat was closed after {minutes} minutes without a message. "
+                       "Start a new chat any time.")
+
+
+def _close_if_idle(conn, session):
+    """An open chat with no message for idle_minutes() is closed as
+    abandoned (no ticket, no model call), with a line saying so.
+    shortcut: checked when the customer next opens, lists or writes to the
+    chat (no scheduler), so staff lists may show it open until then; add a
+    periodic sweep if that matters."""
+    if session["status"] != "active":
+        return session
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=idle_minutes())).isoformat()
+    closed = conn.execute(
+        "UPDATE chat_sessions SET status = 'abandoned', updated_at = ? "
+        "WHERE session_id = ? AND status = 'active' AND updated_at < ?",
+        (now(), session["session_id"], cutoff)).rowcount
+    if not closed:
+        return session
+    _insert_chat_message(conn, session["session_id"], "ai", IDLE_CLOSED_MESSAGE.format(minutes=idle_minutes()))
+    conn.commit()
+    return _reload(conn, session["session_id"])
 
 
 def _reload(conn, session_id: str):
@@ -504,6 +534,9 @@ def list_chats(customer_id: str = Depends(auth.get_current_customer)):
     """Chat history, newest first (escalated ones also appear as tickets)."""
     conn = db.get_connection()
     try:
+        for row in conn.execute("SELECT * FROM chat_sessions WHERE customer_id = ? AND status = 'active'",
+                                (customer_id,)).fetchall():
+            _close_if_idle(conn, row)
         return [
             dict(row)
             for row in conn.execute(

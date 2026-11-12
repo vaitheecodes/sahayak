@@ -482,3 +482,16 @@ def test_attachments_only_on_own_ticket_and_own_messages(client):
     admin = client.post("/api/auth/login", json={"email": "admin@example.com",
                                                  "password": "admin-dev-password"}).json()["token"]
     assert client.get(url, headers={"Authorization": f"Bearer {admin}"}).status_code == 403   # no ticket access
+
+
+def test_a_resolved_ticket_closes_only_when_the_customer_says_it_is_solved(client):
+    # Same rule as chats (docs/CHAT_CONTRACT.md rule 7): "thanks" never closes.
+    headers, _ = _customer(client)
+    created = _raise(client, headers, _ai())
+    assert _row(created["ticket_id"])["status"] == "resolved"
+    url = f"/api/tickets/{created['ticket_id']}/reply"
+    assert client.post(url, json={"message": "thanks"}, headers=headers).status_code == 200
+    row = _row(created["ticket_id"])
+    assert row["status"] == "resolved"
+    assert client.post(url, json={"message": "that worked, thanks"}, headers=headers).status_code == 200
+    assert _row(created["ticket_id"])["status"] == "closed"

@@ -203,6 +203,9 @@ disputed), `results.json`, `failures/`. "This reply was wrong" in the web
 chat (`POST /api/chats/{id}/feedback`, consent required, `chat_feedback`,
 Postgres `0009`) saves the chat; `cases.feedback_cases` replays its
 customer turns as permanent cases. Not in the image (`.dockerignore`).
+Every run can also be scored with the original rules
+(`rules_original.py`, a frozen copy of the baseline's rules; `python -m
+backend.evals.rescore RUN ...` prints both side by side, no model calls).
 Rule tests: `tests/test_chat_eval_rules.py`.
 
 ## Knowledge base (`backend/kb_store.py`)
@@ -404,7 +407,12 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   **Resolved**: only on the customer saying it is solved ("that worked",
   "all set": `closing_ack.confirms_solved`, or the "My issue is solved"
   button); a bare "thanks" / "ok" / "got it" / "hmm" gets `chats.ACK_REPLY`
-  and the chat stays open (tickets still close on any acknowledgment). A
+  and the chat stays open; tickets follow the same rule (a bare "thanks"
+  on a resolved AI ticket is kept with no reply, `main._run_followup`). An
+  open chat with no message for `CHAT_IDLE_TIMEOUT_MINUTES` (default 30) is
+  closed as `abandoned` with `chats.IDLE_CLOSED_MESSAGE` (no ticket),
+  checked lazily when the customer next opens, lists or writes to it
+  (`chats._close_if_idle`). A
   greeting ("hi", `request_kind.is_small_talk`) gets `chats.greeting()`
   (no model call), and the first real message replaces it as the chat's
   `issue`. "I want to talk to a human" (`handoff_signals.asks_for_human`)

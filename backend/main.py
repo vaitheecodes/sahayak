@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 from backend import admin, admin_users, ai_failures, app_settings, auth, chats, db, email_utils, graph
-from backend import handoff_signals
+from backend import closing_ack, handoff_signals
 from backend import categories as kb_categories
 from backend import incidents, kb_retrieval, product
 from backend import db_postgres, incident_memory, incident_resolution, rate_limit, runtime, staff_tickets, storage
@@ -457,6 +457,9 @@ def _decide_followup(f: _Followup, message_text: str) -> _FollowupOutcome:
                         ticket["category"], ticket["confidence"])
 
     if gate == "close":
+        # Same rule as chats: only "that worked" / "solved" closes; "thanks" is kept, no reply.
+        if not closing_ack.confirms_solved(message_text):
+            return _FollowupOutcome("reply", {"route": ticket["route"], "message": None})
         return _FollowupOutcome("close", {"route": "closed", "message": _TICKET_CLOSED_MESSAGE})
 
     if gate == "continuation":

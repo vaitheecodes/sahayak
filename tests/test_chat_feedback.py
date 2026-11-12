@@ -29,3 +29,23 @@ def test_a_reported_reply_is_saved_with_consent_and_replayed_by_the_eval(client,
     finally:
         conn.close()
     assert (case.opener, case.script, case.simulate, case.expected) == ("how do I restart the agent", [], False, "any")
+
+
+def test_an_idle_chat_is_closed_as_abandoned_when_next_opened(client):  # noqa: F811
+    from backend import chats
+
+    headers = _customer(client)
+    chat = _start(client, headers, _ANSWER, issue="how do I restart the agent")
+    url = f"/api/chats/{chat['session_id']}"
+    assert client.get(url, headers=headers).json()["status"] == "active"     # not idle yet
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE chat_sessions SET updated_at = ? WHERE session_id = ?",
+                     ("2020-01-01T00:00:00+00:00", chat["session_id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    view = client.get(url, headers=headers).json()
+    assert view["status"] == "abandoned" and view["ticket_id"] is None
+    assert view["messages"][-1]["content"] == chats.IDLE_CLOSED_MESSAGE.format(minutes=chats.idle_minutes())
+    assert client.post(f"{url}/messages", json={"message": "hello?"}, headers=headers).status_code == 400
