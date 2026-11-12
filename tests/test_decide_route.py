@@ -176,3 +176,20 @@ def test_language_tags_come_from_the_latest_customer_message(transcript, tags):
     from backend import graph
 
     assert graph._detect_language_tags(transcript) == tags
+
+
+def test_an_off_topic_message_gets_a_brief_fixed_reply_and_never_the_same_question_twice(monkeypatch):
+    from backend import graph, topic_terms
+
+    monkeypatch.setitem(app_settings._overrides, "product", {"name": "Brightdesk HR"})
+    topic_terms.use([{"label": "Payroll", "kind": "module", "aliases": ["payslip"]}])
+    state = {"ticket_text": "who won the cricket match yesterday?", "category": "OTHER", "kb_candidates": []}
+    first = graph.off_topic_reply(state)
+    assert first == graph.OFF_TOPIC_REPLY.format(product="Brightdesk HR")
+    again = graph.off_topic_reply({**state, "ticket_text": f"Customer: who won?\nAgent (AI): {first}\n"
+                                                           "Customer: tell me a joke"})
+    assert again == graph.OFF_TOPIC_AGAIN.format(product="Brightdesk HR") and "?" not in again
+    # A product question is never off-topic, even unclassified or uncovered.
+    assert graph.off_topic_reply({**state, "ticket_text": "my payslip is wrong"}) is None
+    assert graph.off_topic_reply({**state, "category": "ISSUE"}) is None
+    assert graph.off_topic_reply({**state, "kb_candidates": [{"kb_entry_id": "KB-1"}]}) is None

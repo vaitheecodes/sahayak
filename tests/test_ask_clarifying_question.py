@@ -33,7 +33,7 @@ def _invoke_ask_clarifying_question(monkeypatch, kb_candidates):
     graph.ask_clarifying_question(
         {
             "ticket_text": "some ambiguous ticket text",
-            "category": "OTHER",
+            "category": "ISSUE",   # OTHER with no KB match is off-topic: a fixed reply
             "confidence": 0.5,
             "kb_candidates": kb_candidates,
         }

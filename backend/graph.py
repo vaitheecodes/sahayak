@@ -814,6 +814,8 @@ def generate_response(state: TicketState) -> dict:
         **_reply_context(state),
     )
     top = data.kb_candidates[0] if data.kb_candidates else None
+    if top is None and (off_topic := off_topic_reply(state)):
+        return {"ai_response": off_topic, "needs_info": None}
     if top is None and not data.vague:
         return _no_guide(data)
     if top is not None and top.handling == "escalate_with_info" and top.response.strip():
@@ -837,6 +839,28 @@ def _no_guide(data: AnswerInput) -> dict:
     return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
 
 
+OFF_TOPIC_REPLY = "I can only help with questions about {product}. Is there something in {product} I can help with?"
+OFF_TOPIC_AGAIN = "I can only help with questions about {product} here."
+
+
+def off_topic_reply(state: TicketState) -> str | None:
+    """A message about something else (the cricket score, a joke): the
+    classifier says OTHER, no KB entry is anywhere near, and no product term
+    or the product's name is in it. A fixed, brief reply, no ticket, never
+    the same question twice (docs/CHAT_CONTRACT.md rule 12)."""
+    latest = (_customer_messages(state["ticket_text"]) or [""])[-1]
+    if state.get("category") != "OTHER" or state.get("kb_candidates") or is_how_to(latest):
+        return None
+    if topic_terms.mentioned(latest) or set(re.findall(r"[a-z0-9]+", latest.lower())) & product.name_words():
+        return None
+    name = product.name()
+    asked = OFF_TOPIC_REPLY.format(product=name)
+    text = OFF_TOPIC_AGAIN.format(product=name) if asked in state["ticket_text"] else asked
+    if state.get("reply_format") == "email":
+        text = email_utils.format_email_reply(state.get("customer_name"), text)
+    return text
+
+
 def ask_clarifying_question(state: TicketState) -> dict:
     """clarify branch — the ticket/transcript is too ambiguous to classify
     confidently. Asks one targeted question grounded in the actual
@@ -844,6 +868,9 @@ def ask_clarifying_question(state: TicketState) -> dict:
     applies) rather than a free-floating meta-question about categories
     that don't exist in this taxonomy. Stored via `ai_response` so it
     flows through the same message path as generate_response's output."""
+    off_topic = off_topic_reply(state)
+    if off_topic:
+        return {"ai_response": off_topic}
     question = how_to_question(state)
     if question:  # fixed text: no model call, no record or account asked for
         if state.get("reply_format") == "email":
