@@ -48,7 +48,9 @@ def _verdicts(result, pack, kb, verdict_fn):
     tone_ok = v.tone >= 4
     if result["case"]["kind"] == "out_of_scope" and out[12][0] == "pass" and not tone_ok:
         out[12] = ("fail", f"tone {v.tone}")
-    out[16] = ("pass", "") if v.helpful >= 3 and tone_ok else ("fail", f"helpful {v.helpful}, tone {v.tone}: {v.note}")
+    # Off-topic: declining is right, so only the tone counts.
+    helpful_ok = v.helpful >= 3 or result["case"]["kind"] == "out_of_scope"
+    out[16] = ("pass", "") if helpful_ok and tone_ok else ("fail", f"helpful {v.helpful}, tone {v.tone}: {v.note}")
     return out, v.model_dump()
 
 
