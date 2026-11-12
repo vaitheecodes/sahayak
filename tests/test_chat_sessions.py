@@ -153,7 +153,7 @@ def test_confirmed_resolution_uses_fallback_summary_when_ai_is_down(client):
     being down only means the review gets a transcript-based summary."""
     headers = _customer(client)
     chat = _start(client, headers, _ANSWER)
-    after = _send(client, headers, chat["session_id"], "thanks")
+    after = _send(client, headers, chat["session_id"], "that fixed it")
     assert after["status"] == "resolved"
     (review,) = _query("SELECT summary FROM chat_reviews")
     summary = json.loads(review["summary"])

@@ -32,7 +32,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from backend import admin_reports, ai_failures, audit, auth, categories, db, graph, handoff_signals, incident_memory, incidents, permissions, runtime
+from backend import admin_reports, ai_failures, audit, auth, categories, closing_ack, db, graph, handoff_signals, incident_memory, incidents, permissions, product, request_kind, runtime
 from backend import ticket_lifecycle as lifecycle
 from backend.ai_service import AIError, provider, summarize_conversation
 from backend.conversation import (
@@ -54,6 +54,13 @@ AI_UNAVAILABLE = (
     "try again in a moment, or raise a ticket and our support team will pick it up."
 )
 _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one any time."
+# No model call for these (docs/CHAT_CONTRACT.md rules 2 and 7).
+ACK_REPLY = ("Glad to help. If a step isn't clear, tell me which one. When it's solved, use "
+             "\"My issue is solved\" to close the chat.")
+
+
+def greeting() -> str:
+    return f"Hi! What can I help you with in {product.name()} today?"
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -213,7 +220,7 @@ class _Turn:
 
 @dataclass
 class _Outcome:
-    kind: Literal["incident_answer", "answer", "resolve", "escalate"]
+    kind: Literal["incident_answer", "ack", "answer", "resolve", "escalate"]
     text: str | None = None              # AI reply to store first
     result: dict | None = None           # pipeline result (classification)
     last_route: str | None = None        # stored with the classification
@@ -317,6 +324,9 @@ def _store_customer_message(conn, session, message_text: str) -> _Turn:
         "SELECT content FROM chat_messages WHERE session_id = ? AND role = 'ai' "
         "ORDER BY created_at DESC, rowid DESC LIMIT 2", (session_id,)).fetchall()][::-1]
     _insert_chat_message(conn, session_id, "customer", message_text)
+    if request_kind.is_small_talk(session["issue"]) and not request_kind.is_small_talk(message_text):
+        # "hi" never stays the chat's problem text (the ticket subject, the hand-off brief).
+        conn.execute("UPDATE chat_sessions SET issue = ? WHERE session_id = ?", (message_text[:500], session_id))
     return _Turn(dict(_reload(conn, session_id)), _transcript_text(conn, session_id), prior_ai, recent_ai)
 
 
@@ -328,12 +338,19 @@ def _decide(turn: _Turn, message_text: str) -> _Outcome:
     if incident_answer is not None:
         return _Outcome("incident_answer", text=incident_answer)
 
-    gate = followup_gate(message_text, turn.prior_ai, answered=session["last_route"] == "ai")
+    if request_kind.is_small_talk(message_text):
+        return _Outcome("ack", text=greeting())
+    answered = session["last_route"] == "ai"
+    if answered and closing_ack.is_hesitation(message_text):
+        return _Outcome("ack", text=ACK_REPLY)
+    gate = followup_gate(message_text, turn.prior_ai, answered=answered)
 
     if gate == "handoff":
         summary, steps = _handoff(turn.transcript, session, "customer_request", session["category"])
         return _Outcome("escalate", summary=summary, steps=steps, reason_key="customer_request")
     if gate == "close":
+        if not closing_ack.confirms_solved(message_text):   # "thanks", "ok": the chat stays open
+            return _Outcome("ack", text=ACK_REPLY)
         return _Outcome("resolve", summary=_resolution_summary(
             turn.transcript, session["issue"], turn.prior_ai))
 
@@ -393,6 +410,8 @@ def _apply(conn, session_id: str, outcome: _Outcome, subject: str | None = None)
         _insert_chat_message(conn, session_id, "ai", outcome.text)
     if outcome.kind == "incident_answer":
         conn.execute("UPDATE chat_sessions SET last_route = 'ai' WHERE session_id = ?", (session_id,))
+    elif outcome.kind == "ack":
+        pass   # a greeting or an acknowledgment: nothing about the chat changes
     elif outcome.kind == "resolve":
         _write_resolution(conn, session, outcome.summary)
     else:

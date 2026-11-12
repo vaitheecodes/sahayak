@@ -28,7 +28,7 @@ import itertools
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, main, runtime
+from backend import chats, db, graph, main, runtime
 
 _email_counter = itertools.count()
 
@@ -93,25 +93,25 @@ _ESCALATE = {
 }
 
 
-def test_bare_thanks_after_answer_resolves_without_reinvoking_pipeline(client):
+def test_bare_thanks_after_answer_keeps_the_chat_open_and_that_worked_closes_it(client):
+    # docs/CHAT_CONTRACT.md rule 7: "thanks" / "ok" / "hmm" never close the chat.
     headers = _signup(client)
     chat, stub = _start_chat(client, headers, _ANSWERED)
-    assert chat["status"] == "active"
-
     calls_before = len(stub.invocations)
-    after = _send(client, headers, chat["session_id"], "thanks")
+    for ack in ("thanks", "ok", "hmm"):
+        after = _send(client, headers, chat["session_id"], ack)
+        assert after["status"] == "active" and after["messages"][-1]["content"] == chats.ACK_REPLY
+    assert len(stub.invocations) == calls_before                  # no model, no pipeline
 
+    after = _send(client, headers, chat["session_id"], "that worked, thanks")
+    assert after["status"] == "resolved" and after["ticket_id"] is None
     assert len(stub.invocations) == calls_before
-    assert after["status"] == "resolved"
-    assert after["ticket_id"] is None
-    assert (after["messages"][-2]["role"], after["messages"][-2]["content"]) == ("customer", "thanks")
-    assert after["messages"][-1]["role"] == "ai"
 
 
 def test_resolved_chat_rejects_further_messages(client):
     headers = _signup(client)
     chat, _ = _start_chat(client, headers, _ANSWERED)
-    _send(client, headers, chat["session_id"], "thanks")
+    _send(client, headers, chat["session_id"], "that worked")
 
     res = client.post(
         f"/api/chats/{chat['session_id']}/messages", json={"message": "hello again"}, headers=headers
@@ -253,3 +253,16 @@ def test_a_failed_continuation_check_goes_down_the_normal_path(client, monkeypat
     finally:
         conn.close()
     assert any('"network"' in d and '"fallback"' in d for d in details)
+
+
+def test_a_greeting_gets_a_greeting_and_the_real_question_becomes_the_problem_text(client):
+    # docs/CHAT_CONTRACT.md rule 2 (chat eval seed: "hi" then a question escalated at once).
+    headers = _signup(client)
+    stub = _StubGraph([_ANSWERED])
+    runtime.set_graph(stub)
+    chat = client.post("/api/chats", json={"issue": "hi"}, headers=headers).json()
+    assert chat["status"] == "active" and chat["messages"][-1]["content"] == chats.greeting()
+    assert stub.invocations == []                                   # no model, no KB lookup
+    after = _send(client, headers, chat["session_id"], "how do I install the Brightdesk app")
+    assert after["status"] == "active" and after["issue"] == "how do I install the Brightdesk app"
+    assert len(stub.invocations) == 1

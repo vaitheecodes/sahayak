@@ -117,3 +117,20 @@ def is_closing_acknowledgment(text: str) -> bool:
         return False
 
     return normalized in _ACK_PHRASES
+
+
+# Only these close an AI chat (docs/CHAT_CONTRACT.md rule 7): the customer
+# says it is solved. "thanks", "ok", "got it" are acknowledgments: the chat
+# stays open. Tickets still close on any closing acknowledgment.
+_SOLVED = re.compile(r"\b(work(ed|s|ing)?|solved|fixed|resolved|sorted|all set|all good|close)\b")
+_HESITATION = re.compile(r"\W*h+m+\W*(ok(ay)?)?\W*", re.IGNORECASE)
+
+
+def confirms_solved(text: str) -> bool:
+    return is_closing_acknowledgment(text) and bool(_SOLVED.search(_normalize(text)))
+
+
+def is_hesitation(text: str) -> bool:
+    """"hmm" after an answer: not a new question, not a close."""
+    return bool(_HESITATION.fullmatch(text.strip()))
+

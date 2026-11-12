@@ -62,6 +62,16 @@ _STEPS_REQUEST = re.compile(
     r"(?:\s+(?:please|pls|then|now))*")
 
 
+# Small talk only: a greeting gets a greeting back, never a KB lookup or a
+# problem text (docs/CHAT_CONTRACT.md rule 2).
+_SMALL_TALK = re.compile(r"(?:(?:hi+|hello+|hey+|hai|hii+|good (?:morning|afternoon|evening)|vanakkam|namaste"
+                         r"|namaskar|greetings|yo)\s*)+(?:there|team|all|everyone|sir|madam)?")
+
+
+def is_small_talk(text: str) -> bool:
+    return bool(_SMALL_TALK.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
+
+
 def asks_for_steps(text: str) -> bool:
     return bool(_STEPS_REQUEST.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
 

@@ -190,13 +190,13 @@ def test_yes_please_after_handoff_offer_escalates_without_reclassifying(client):
     assert after["ticket_id"] in after["messages"][-1]["content"]
 
 
-def test_thanks_after_handoff_offer_resolves_rather_than_escalating(client):
+def test_thanks_after_handoff_offer_is_not_an_escalation(client):
     headers = _signup(client)
     offer_answer = "Would you like me to connect you with our billing team?"
     chat, _ = _start_chat(client, headers, [_ai_result(offer_answer)])
 
     after = _send(client, headers, chat["session_id"], "thanks")
-    assert after["status"] == "resolved"
+    assert after["status"] == "active"     # gratitude: neither a hand-off nor a close
     assert after["ticket_id"] is None
 
 
@@ -207,5 +207,5 @@ def test_affirmative_without_a_handoff_offer_is_not_an_escalation(client):
         issue="how do I install the agent",
     )
     after = _send(client, headers, chat["session_id"], "ok")
-    # falls to the closing-ack gate instead
-    assert after["status"] == "resolved"
+    # falls to the closing-ack gate instead: an acknowledgment, the chat stays open
+    assert after["status"] == "active" and after["ticket_id"] is None
