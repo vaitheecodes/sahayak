@@ -274,13 +274,16 @@ def test_prompts_carry_the_asking_and_assumption_rules(monkeypatch, call, reply_
     for phrase in ("never ask for a user ID, employee ID, account ID",
                    "which part of the product it is about (Attendance, Expenses, Leave or Payroll)",
                    "the exact error text", "the screen or step", "what they have already tried",
-                   "this is about: ask for that first", "Never ask the customer to confirm",
+                   "Never ask the customer to confirm",
                    "when it covers what the customer asked, answer",
                    "Never assume a module, platform, integration or feature",
                    "never answer as if one of them applies"):
         assert phrase in instructions, phrase
     assert data["customer_details"] == "Product area: not stated yet"
     assert "Slack" in data["unconfirmed_topics"] and "Slack" not in instructions
+    # With KB topics to ask about, the question names them (chat eval: "which part of
+    # the product?" came before every topic question).
+    assert "this is about: ask for that first" not in instructions
 
 
 def test_context_blocks_default_to_none(monkeypatch):
@@ -305,7 +308,9 @@ def test_subject_first_only_when_unknown_and_nothing_to_answer_from(monkeypatch)
     assert rule not in instructions                  # already known
     instructions, _ = _prompt_and_data(monkeypatch, _call_clarify, subject_known=False,
                                        kb_candidates=[_CANDIDATE])
-    assert rule in instructions                      # a clarifying question: always when unknown
+    assert rule not in instructions                  # a clarifying question names the KB topics
+    instructions, _ = _prompt_and_data(monkeypatch, _call_clarify, subject_known=False)
+    assert rule in instructions                      # nothing more specific to ask
 
 
 def test_answer_first_when_the_kb_guidance_covers_the_request(monkeypatch):
