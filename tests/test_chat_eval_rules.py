@@ -51,3 +51,19 @@ def test_a_human_request_must_escalate_and_one_question_is_the_limit():
                   expected="ticket")[13] == "fail"
     v = _check("vague", [("it broke", "Which page is it on?", "active"), ("home", "Which browser is it?", "active")])
     assert v[5] == "fail"
+
+
+def test_the_original_rules_still_fail_a_hand_off_after_an_answer():
+    # rescore.py scores every run both ways: the original rule 3 fails any
+    # escalation; the current one only an escalation before the first answer.
+    from backend.evals import rescore
+
+    turns = [("how do i allow the widget?", ANSWER, "active"), ("still not working", "Passed to the team.", "escalated")]
+    case = {"case_id": "c", "kb": "t", "kind": "direct", "entry_id": "KB-0001", "expected": "answer"}
+    result = {"case": case, "issue": turns[0][0], "error": None,
+              "turns": [{"customer": c, "bot": b, "status": s, "ticket_id": "T" if s == "escalated" else None,
+                         "ai_error": None} for c, b, s in turns]}
+    assert rules.check(result, PACK, "t")[3][0] == "pass"
+    row = {"result": result, "verdicts": {"1": ["pass", ""]},
+           "judge": {"covered": True, "helpful": 4, "tone": 5, "invented": []}}
+    assert rescore.original_verdicts(row, PACK, "t")[3][0] == "fail"
