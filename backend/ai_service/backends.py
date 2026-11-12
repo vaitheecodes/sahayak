@@ -418,7 +418,9 @@ def converse_messages(turns) -> list[dict]:
 # BEDROCK_MODEL_ID_CHAT when it is set, else BEDROCK_MODEL_ID. Only the
 # customer-facing chat answer runs under a task (chat_response.answer).
 _model_task: contextvars.ContextVar[str | None] = contextvars.ContextVar("bedrock_model_task", default=None)
-TASK_MODEL_ENV = {"chat": "BEDROCK_MODEL_ID_CHAT"}
+# The chat eval's simulated customer and judge (backend/evals/).
+TASK_MODEL_ENV = {"chat": "BEDROCK_MODEL_ID_CHAT", "eval_customer": "EVAL_CUSTOMER_MODEL",
+                  "eval_judge": "EVAL_JUDGE_MODEL"}
 # Tasks whose model the admin sets in Settings (app_settings "ai_models").
 TASK_MODEL_SETTINGS = ("draft_kb_entries", "check_step_support")
 
