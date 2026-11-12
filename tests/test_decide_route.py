@@ -12,6 +12,8 @@ Run with: pytest tests/test_decide_route.py
 from __future__ import annotations
 
 import sys
+
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -159,3 +161,23 @@ def test_admin_routing_settings_change_the_decision(monkeypatch):
 
     monkeypatch.setitem(app_settings._overrides, "routing", {"escalation_language_tags": []})
     assert decide_route(state)["route"] == "ai"
+
+
+# ---------------------------------------------------------------------------
+# Language tags come from the customer's latest message (chat eval: every
+# first report with "not", "isn't" or a long sentence was handed off at once).
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("transcript, tags", [
+    ("My dashboard isn't working right.", []),                      # a first report: the problem itself
+    ("this is useless, nothing works!!! How do I clear the cache?", []),   # frustration is answered
+    ("I checked the page and then the logs and also the console but it says nothing at all", []),
+    ("Customer: how do I clear the cache?\nAgent (AI): 1. Open settings, not the menu.\n"
+     "Customer: I'm not sure which one it is", []),                  # the bot's "not" never counts
+    ("Customer: how do I clear the cache?\nAgent (AI): 1. Open settings.\nCustomer: it's still not working",
+     ["negation"]),                                                  # the answer failed: a person takes over
+    ("what is this shit", ["offensive_language"]),
+])
+def test_language_tags_come_from_the_latest_customer_message(transcript, tags):
+    from backend import graph
+
+    assert graph._detect_language_tags(transcript) == tags

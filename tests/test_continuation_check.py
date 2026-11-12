@@ -84,7 +84,7 @@ def test_uses_json_mode_and_zero_temperature(monkeypatch):
     "text",
     [
         "thanks, but it's still not working",
-        "this is useless and ridiculous",
+        "this is shit",
         "not resolved, and also still broken, so I guess that's it then",
     ],
 )
@@ -98,6 +98,9 @@ def test_escalation_language_detected(text):
         "what is the differnce",
         "how do I install the app on Android",
         "thanks, that worked",
+        # Frustration is answered politely, not handed off; "not sure" is no failure.
+        "this is useless and ridiculous",
+        "I'm not sure which one it is",
     ],
 )
 def test_no_escalation_language(text):

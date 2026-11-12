@@ -119,11 +119,15 @@ def check(result: dict, pack: dict, kb: str) -> dict[int, tuple[str, str]]:
     covered = kind in COVERED_KINDS and expected == "answer"
     problem = None
     if covered:
-        if any(NO_GUIDE in r for r in replies):
+        # Before the first answer: a hand-off after an answer the customer
+        # says didn't work is right.
+        first = next((n for n, r in enumerate(replies) if is_answer(r)), len(replies))
+        if any(NO_GUIDE in r for r in replies[:first + 1]):
             problem = "said it has no guide"
-        elif any(t["status"] == "escalated" for t in turns):
+        elif any(t["status"] == "escalated" for t in turns[:first]) or (
+                first < len(turns) and turns[first]["status"] == "escalated" and not is_answer(replies[first])):
             problem = "escalated"
-        elif not any(is_answer(r) for r in replies):
+        elif first == len(replies):
             problem = "never answered"
     verdict(3, problem, covered)
 

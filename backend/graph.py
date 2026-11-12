@@ -144,48 +144,47 @@ class TicketState(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# language-tag heuristic — stands in for the dataset's pre-decoded W/C/N
-# flags, since real incoming tickets have no such annotation
+# language tags: decide_route's hard override. Taken from the customer's
+# latest message only (never the bot's lines or older turns).
 # ---------------------------------------------------------------------------
-_PROFANITY_WORDS = {
-    "damn", "hell", "crap", "shit", "fuck", "bullshit", "garbage", "useless",
-    "terrible", "awful", "pathetic", "ridiculous", "unacceptable",
-}
-_NEGATION_WORDS = {"not", "no", "never", "n't", "won't", "can't", "didn't", "isn't"}
-_COORDINATING_CONJUNCTIONS = {"and", "but", "also", "then", "so"}
+# Abuse, not frustration: "useless" or "terrible" with a real question is
+# answered (politely); the chat eval found every frustrated question handed off.
+_PROFANITY_WORDS = {"shit", "fuck", "fucking", "bullshit", "crap", "bastard", "idiot", "stupid", "damn"}
+# The customer says the answer didn't work ("still not working", "didn't
+# help"): a person takes over. Only after an AI reply: "isn't working" in a
+# first report is the problem itself, and "not sure" is no failure.
+_ANSWER_FAILED = re.compile(
+    r"\b(?:didn'?t|did not|doesn'?t|does not|isn'?t|is not|not|never|still|no longer)\b(?:\s+\w+){0,3}?\s+"
+    r"(?:work|works|working|worked|help|helped|helping|fix|fixed|solve|solved|resolve|resolved|load|loading"
+    r"|show|showing|appear|appearing)\b", re.IGNORECASE)
+_AI_LINE = re.compile(r"^(?:Agent \(AI\)|ai):", re.MULTILINE)
 
 
-def _detect_language_tags(text: str) -> list[str]:
-    words = re.findall(r"[a-z']+", text.lower())
-    word_set = set(words)
+def _detect_language_tags(ticket_text: str) -> list[str]:
+    """offensive_language (abuse) and negation (an AI answer didn't work).
+    coordinated_syntax is no longer detected: a long message with "and" and
+    "but" is a normal report, and it used to hand off every one of them."""
+    messages = _customer_messages(ticket_text)
+    latest = messages[-1] if messages else ""
+    return _tags(latest, after_answer=bool(_AI_LINE.search(ticket_text)))
+
+
+def _tags(message: str, after_answer: bool) -> list[str]:
     tags = []
-
-    if word_set & _PROFANITY_WORDS:
+    if set(re.findall(r"[a-z']+", message.lower())) & _PROFANITY_WORDS:
         tags.append("offensive_language")
-    if word_set & _NEGATION_WORDS:
+    if after_answer and _ANSWER_FAILED.search(message):
         tags.append("negation")
-    # crude "compound sentence" signal: multiple coordinating conjunctions
-    # strung across a longer message
-    if len(words) > 15 and len(word_set & _COORDINATING_CONJUNCTIONS) >= 2:
-        tags.append("coordinated_syntax")
-
     return tags
 
 
 def has_escalation_language(text: str) -> bool:
-    """True if `text` trips one of decide_route's hard-override language
-    tags (offensive language, negation, coordinated/compound phrasing).
-    Used by ticket_chat to make sure the continuation shortcut (see
-    is_continuation_of_prior_response) never bypasses this override — a
-    continuation check judges topical relevance, not safety/urgency, and
-    the escalation override must still win regardless of how clearly
-    on-topic a frustrated or abusive follow-up is (e.g. "thanks, but
-    it's still not working" is topically a continuation, but the
-    negation means it still needs a human, not an auto-answer)."""
-    return bool(
-        set(_detect_language_tags(text))
-        & set(app_settings.get("routing").escalation_language_tags)
-    )
+    """True if a follow-up to an AI answer (`text`, the customer's message)
+    trips one of decide_route's hard-override language tags. Used by the
+    follow-up gate so the continuation shortcut never bypasses the
+    override: "thanks, but it's still not working" is on topic, but the
+    answer failed and a person must take over."""
+    return bool(set(_tags(text, after_answer=True)) & set(app_settings.get("routing").escalation_language_tags))
 
 
 # ---------------------------------------------------------------------------

@@ -169,13 +169,13 @@ def test_no_guide_after_the_question_raises_a_ticket(client):
 
 
 def test_not_sure_after_the_question_raises_a_ticket_never_a_second_question(client):
-    # "not" carries the negation tag, whose hand-off wins (routing policy).
+    # "not sure" is no failure report (no negation tag): still the how-to, with no guide.
     headers = _customer(client)
     chat = _chat(client, headers, "How do I add it")
     chat = _send(client, headers, chat, "not sure")
     assert chat["status"] == "escalated" and chat["ticket_id"]
     lines = _ai_lines(chat)
-    assert lines[0] == TYPE_QUESTION and len(lines) == 2 and chat["ticket_id"] in lines[1]
+    assert lines[:2] == [TYPE_QUESTION, graph.NO_KB_REPLY_CHAT] and chat["ticket_id"] in lines[2]
     assert "answer" not in client.model.ops()
 
 
