@@ -305,6 +305,7 @@ def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> 
                            operation or "answer", sentence)
     block = snippet_block(data.kb_candidates[0]) if isinstance(data, AnswerInput) and data.kb_candidates else ""
     text = grounding.strip_dangling_lead_ins(text, followed=bool(block))
+    block += variant_note(text, block)
     if not re.search(r"[A-Za-z0-9]", text):
         raise provider.AIError("AI reply was only a lead-in to steps",
                                provider.AIFailure(kind="filter_rejected", operation=operation or "answer",
@@ -329,6 +330,42 @@ def snippet_block(entry: KBCandidate) -> str:
     source = ", ".join(part for part in (entry.source_url, entry.source_licence) if part)
     credit = f"\n\nSource: {source}" if entry.source_licence else ""
     return blocks + credit
+
+
+_DOMAIN_PARTS = re.compile(r"\b((?:[a-z0-9-]+\.)+)([a-z]{2,6})\b", re.IGNORECASE)
+
+
+def variant_note(text: str, block: str) -> str:
+    """When the answer names a domain the snippet has under another ending
+    (the text: static.example.eu for Europe; the snippet: static.example.com),
+    a line under the snippet says so, so the two never contradict."""
+    fenced = {(m.group(1).lower(), m.group(2).lower()) for m in _DOMAIN_PARTS.finditer(block)}
+    notes = []
+    for m in _DOMAIN_PARTS.finditer(text):
+        stem, end = m.group(1).lower(), m.group(2).lower()
+        others = sorted(e for s, e in fenced if s == stem and e != end)
+        if others and (stem, end) not in fenced:
+            notes.append(f"The example above uses {stem}{others[0]}. Where the answer says {stem}{end} "
+                         "applies to you, use that in its place.")
+    return "".join(f"\n\n{n}" for n in dict.fromkeys(notes))
+
+
+def kb_answer(data: AnswerInput) -> ChatReply | None:
+    """The top entry's own answer, steps and snippets, composed by code: what
+    a reply our checks rejected twice is replaced with (never a generic
+    question). None when the entry has no text."""
+    entry = data.kb_candidates[0] if data.kb_candidates else None
+    if entry is None or data.vague:
+        return None
+    text = "\n".join(line for line in entry.response.splitlines() if line.strip() not in entry.snippets).strip()
+    text, _ = grounding.drop_restatements(text)
+    block = snippet_block(entry)
+    if not text and not block:
+        return None
+    block += variant_note(text, block)
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, text + block))
+    return ChatReply(text=text + block)
 
 
 STEPS_AGAIN_INTRO = "Here are the steps from the guide:"
@@ -467,6 +504,9 @@ def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | Clarif
             outcome="regenerated" if attempt == 1 else "fallback"))
         note = _MOVE_ON_NOTE
         extra = {"your_previous_replies": "\n---\n".join(data.recent_ai_replies)}
+    composed = kb_answer(data) if isinstance(data, AnswerInput) else None
+    if composed is not None and not repeats(composed.text, data.recent_ai_replies):
+        return composed
     return _fallback_reply(data)
 
 

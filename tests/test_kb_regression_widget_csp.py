@@ -274,3 +274,31 @@ def test_a_dropped_sentence_is_logged_with_its_value_and_the_regional_sentence_s
 def test_a_request_for_the_steps_again(message, steps):
     from backend import request_kind
     assert request_kind.asks_for_steps(message) is steps
+
+
+# ---------------------------------------------------------------------------
+# Chat eval seed (c): the snippet showed the .com domains while the text said
+# to use .eu; and a reply the value check rejected twice became a generic
+# question instead of the guide's own answer.
+# ---------------------------------------------------------------------------
+def _policy_input():
+    entry = chat_response.KBCandidate(
+        kb_entry_id="KB-0002", category="ISSUE", intent="x", instruction=POLICY_ENTRY["questions"][0], score=0.9,
+        response=kb_store.response_text(POLICY_ENTRY), snippets=[CONFIG])
+    return chat_response.AnswerInput(ticket_text="Customer: blocked", kb_candidates=[entry], customer_text="blocked")
+
+
+def test_the_snippet_never_contradicts_the_regional_text():
+    text = chat_response._frame(f"Allow the Beacon RUM servers. For Europe, the script domain is {EU} instead.",
+                                _policy_input(), "answer").text
+    note = text.split("```")[-1]
+    assert "static.beaconrum.example.com" in note and "static.beaconrum.example.eu" in note
+
+
+def test_a_reply_rejected_twice_is_the_entrys_own_answer(monkeypatch):
+    monkeypatch.setattr(provider, "complete_text",
+                        lambda *a, **k: "Add https://cdn.invented.example.org to the policy and reload.")
+    text = chat_response.answer(_policy_input()).text
+    assert text.startswith(POLICY_ENTRY["answer"]) and "invented" not in text
+    assert STEP_ONE not in text                                     # restates the answer: dropped
+    assert f"```\n{CONFIG}\n```" in text and chat_response.STEP_QUESTION not in text

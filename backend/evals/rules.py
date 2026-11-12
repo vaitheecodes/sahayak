@@ -77,10 +77,14 @@ def _contradicting_snippet(reply: str) -> str | None:
     if not fenced:
         return None
     in_fence = {(m.group(1).lower(), m.group(2).lower()) for m in _DOMAIN.finditer(fenced)}
-    for m in _DOMAIN.finditer(_prose(reply)):
+    prose = _prose(reply)
+    for m in _DOMAIN.finditer(prose):
         stem, end = m.group(1).lower(), m.group(2).lower()
         ends = {e for s, e in in_fence if s == stem}
-        if ends and end not in ends:
+        # A line naming both ("the example uses X; use Y in its place") resolves it.
+        explained = any(f"{stem}{end}" in line.lower() and any(f"{stem}{e}" in line.lower() for e in ends)
+                        for line in prose.splitlines())
+        if ends and end not in ends and not explained:
             return f"text says {stem}{end}, snippet has {stem}{'/'.join(sorted(ends))}"
     return None
 

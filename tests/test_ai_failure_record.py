@@ -190,8 +190,8 @@ def test_our_filter_rejecting_the_reply_is_not_ai_unavailable(app_client, strict
     res = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                           headers=headers).json()
     assert res["ai_error"] is None and res["status"] == "active"
-    # No error was reported ("stopped working"): never the exact error message.
-    assert res["messages"][-1]["content"] == chat_response.STEP_QUESTION
+    # Rejected twice: the entry's own answer, composed by code, never a generic question.
+    assert res["messages"][-1]["content"] == PAYROLL_ENTRY["answer"]
     outcomes = [(json.loads(r["detail"])["kind"], json.loads(r["detail"])["outcome"])
                 for r in _audit_rows(res["session_id"]) if r["action"] == "chat.ai_failure"]
     assert outcomes == [("filter_rejected", "regenerated"), ("filter_rejected", "fallback")]
