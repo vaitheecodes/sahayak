@@ -384,7 +384,17 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   quoted or backticked text, a path, or a version/port/limit number that
   neither the grounding entry nor the customer's own messages contain is
   dropped (logged at WARNING with the sentence and the value); a reply
-  losing most of its text is regenerated once. An answer's sentence or
+  losing most of its text is regenerated once.
+  **Instructions** (`grounding.ground_instructions`, every chat/email
+  reply): a sentence or line telling the customer to do something ("Try
+  restarting the app", "Have you tried disabling the firewall?") must be
+  backed by ONE passage of the grounding entry (a sentence or step, or two
+  adjacent ones) holding its action verb (or a same-action verb:
+  pick/choose/select...) and >= 50% of its content words, or >= 80% of
+  them; never by the customer's own words. Unbacked ones are dropped and
+  logged; a procedure that loses a step, or a reply that loses most of its
+  text, is regenerated once (`_STEPS_NOTE`), then the entry's own answer
+  (`chat_response.kb_answer`). An answer's sentence or
   step that restates an earlier sentence (>= 60% of its 5+ content words,
   `grounding.drop_restatements`) is dropped and logged too. A
   lead-in promising steps that don't follow ("Here's how:") is removed

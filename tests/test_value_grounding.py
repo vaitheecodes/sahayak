@@ -91,7 +91,8 @@ def test_the_invented_directive_sentence_is_dropped_from_an_answer(monkeypatch):
                                  "Allow https://cdn.example.com under script-src and https://collect.example.com "
                                  "under connect-src.")
     assert "'self' should fix" not in reply.text and "https://collect.example.com" in reply.text
-    assert [(f.code, f.outcome) for f in log] == [("ungrounded_values", "filtered")]
+    # "Adding script-src 'self' should fix it" is an instruction the entry doesn't give: dropped first.
+    assert [(f.code, f.outcome) for f in log] == [("ungrounded_steps", "filtered")]
 
 
 def test_a_reply_that_is_mostly_invented_values_is_regenerated(monkeypatch):

@@ -254,7 +254,10 @@ def test_b_a_covered_how_to_keeps_only_kb_steps_and_no_error_boilerplate(client)
     chat = _chat(client, headers, "how do I export the attendance report")
     assert chat["status"] == "active"
     (reply,) = _ai_lines(chat)
-    assert reply == "1. Open Attendance, then Reports.\n2. Pick the date range and click Export."
+    # The invented middle step can't be dropped from a procedure without leaving it
+    # incomplete: regenerated, then the guide's own answer and steps.
+    assert reply == ("Attendance reports can be exported as CSV or Excel from the Reports page.\n"
+                     "1. Open Attendance, then Reports.\n2. Pick the date range and click Export.")
     system = model.system_for("answer")
     assert "how-to request" in system and "exact error text" not in system
 

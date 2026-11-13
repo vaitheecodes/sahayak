@@ -188,6 +188,128 @@ def ground_values(text: str, allowed: str) -> tuple[str, list[tuple[str, str]]]:
 # said ("allow the servers in your policy" / "1. Update your policy to allow
 # the servers"): most of its content words (RESTATES) are in one earlier
 # sentence. Short steps ("Go to Settings > Leave.") are never restatements.
+# ---------------------------------------------------------------------------
+# Instructions anywhere in a reply: only the KB entry may back them
+# ---------------------------------------------------------------------------
+# A sentence or line that tells the customer to do something ("Try
+# restarting the app", "Have you tried disabling the firewall?", "If it's
+# missing, click Export") must be backed by ONE passage of the KB entry
+# (a sentence or step, or two adjacent ones): the passage has its action
+# verb and most of its content words. Never by the customer's own words:
+# "should I disable the firewall?" makes "disable the firewall" no safer.
+_ACTION_VERBS = """open click tap select choose go navigate enable disable turn toggle restart reboot reinstall
+    install uninstall clear delete remove add update upgrade check verify sign log set change edit copy paste allow
+    block contact reach refresh reload reset search download upload configure whitelist use type enter press submit
+    attach save cancel apply export import pick drag scroll wait visit""".split()
+_INSTRUCTION_LEAD = re.compile(
+    r"^(?:(?:if|when|once|to|for|after|before)\b[^,]{0,120},\s*)?"
+    r"(?:(?:please|so|then|next|also|first|finally|now|just)\b,?\s*)*"
+    r"(?:(?:have you tried|did you try|could you try|can you try|you (?:can|could|should|need to|must|may want to"
+    r"|might want to|will need to))\s+|(?:try|make sure (?:to|that you)?|ensure (?:that )?(?:you )?)\s+)?"
+    r"(?:(?:also|just|then|simply|first|now)\b,?\s*)*",
+    re.IGNORECASE)
+INSTRUCTION_SUPPORT = 0.5
+# Verbs that name the same action in a paraphrase ("choose the leave type"
+# for the KB's "pick the leave type"); any other action verb is its own group.
+_VERB_GROUPS = [
+    "open go navigate visit access head",
+    "select choose pick",
+    "click tap press hit",
+    "check verify look search find inspect confirm see review",
+    "enable allow turn permit grant",
+    "install download get",
+    "type enter fill",
+    "submit send save",
+]
+
+
+# Generic UI nouns: "click the Submit button" is "click Submit".
+_UI_NOUNS = frozenset("button page option field section screen tab link menu item list".split())
+INSTRUCTION_RESTATES = 0.8   # nearly every word in one passage: the verb may differ ("use X" / "X is")
+
+
+def _verb(word: str) -> str:
+    """Comparable form of a verb: "disable", "disabling", "disabled" alike."""
+    word = word.lower().split("-")[-1]
+    word = word[:-3] if word.endswith("ing") and len(word) > 4 else _stem(word)
+    return word[:-1] if word.endswith("e") else word
+
+
+_ACTIONS = frozenset(_verb(w) for w in _ACTION_VERBS)
+_GROUP = {_verb(w): n for n, group in enumerate(_VERB_GROUPS) for w in group.split()}
+
+
+def _same_action(verb: str, word: str) -> bool:
+    word = _verb(word)
+    return word == verb or (verb in _GROUP and _GROUP.get(word) == _GROUP[verb])
+
+
+def instruction_verb(sentence: str) -> str | None:
+    """The action verb when `sentence` tells the customer to do something."""
+    rest = _INSTRUCTION_LEAD.sub("", sentence.strip(), count=1)
+    match = re.match(r"[A-Za-z]+(?:-[A-Za-z]+)?", rest)
+    verb = _verb(match.group(0)) if match else ""
+    return verb if verb in _ACTIONS or verb in _GROUP else None
+
+
+# Sentence ends, but never after a bare step number ("1. Open Leave. 2. Pick...").
+_SENTENCE_BREAK = re.compile(r"(?<=[^\d\s][.!?])\s+")
+STEP_NUMBER = re.compile(r"(?:^|\s)\d+[.)]\s")
+
+
+def _passages(kb: str) -> list[str]:
+    units = [u.strip() for line in kb.splitlines() for u in _SENTENCE_BREAK.split(_STEP_LINE.sub(r"\4", line))
+             if u.strip()]
+    return units + [f"{a} {b}" for a, b in zip(units, units[1:])]
+
+
+def instruction_supported(sentence: str, kb: str) -> bool:
+    verb = instruction_verb(sentence)
+    if verb is None:
+        return True
+    from backend import product   # lazy: settings import categories
+
+    words = content_words(sentence) - _UI_NOUNS - {_stem(w) for w in product.name_words()}
+    looking = _GROUP.get(verb) == _GROUP[_verb("check")]   # looking for what the KB names
+    for passage in _passages(kb):
+        share = len(words & content_words(passage)) / len(words) if words else 1.0
+        if share >= INSTRUCTION_RESTATES:
+            return True
+        if share >= INSTRUCTION_SUPPORT and (looking or any(_same_action(verb, w)
+                                                             for w in _WORD.findall(passage.lower()))):
+            return True
+    return False
+
+
+def ground_instructions(text: str, kb: str) -> tuple[str, list[str]]:
+    """`text` without the instructions the KB entry doesn't back (code
+    blocks untouched; numbered steps renumbered). Returns the text and the
+    dropped instructions."""
+    out, dropped, number, fenced = [], [], 0, False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            continue
+        if fenced or not line.strip():
+            out.append(line)
+            continue
+        step = _STEP_LINE.match(line)
+        units = [step.group(4)] if step else _SENTENCE_BREAK.split(line.strip())
+        kept = [u for u in units if instruction_supported(re.sub(r"^\d+[.)]\s+", "", u), kb) or dropped.append(u)]
+        if not kept:
+            continue
+        if step:
+            indent, marker, space, _ = step.groups()
+            if marker[0].isdigit():
+                number += 1
+                marker = f"{number}{marker[-1]}"
+            out.append(f"{indent}{marker}{space}{kept[0]}")
+        else:
+            out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip(), dropped
+
+
 RESTATES = 0.6
 _RESTATE_MIN_WORDS = 5
 

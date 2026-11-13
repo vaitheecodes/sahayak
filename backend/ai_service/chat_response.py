@@ -280,6 +280,20 @@ def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
         raise provider.AIError("AI reply was only ungrounded steps",
                                provider.AIFailure(kind="filter_rejected", operation=operation,
                                                   code="only_ungrounded_steps"))
+    # Instructions: the KB entry only, never the customer's words.
+    instructed, dropped = grounding.ground_instructions(grounded, kb)
+    for sentence in dropped:
+        logger.warning("Reply sentence dropped (%s): an instruction the KB entry doesn't give: %r", operation, sentence)
+    lost_step = len(grounding.STEP_NUMBER.findall(instructed)) < len(grounding.STEP_NUMBER.findall(text))
+    if lost_step or (dropped and len(instructed) * 2 < len(grounded)):
+        # A procedure with a step missing, or most of the reply gone: regenerate, then the entry's own answer.
+        raise provider.AIError("AI reply gave instructions the KB entry doesn't",
+                               provider.AIFailure(kind="filter_rejected", operation=operation,
+                                                  code="ungrounded_steps"))
+    if dropped:
+        provider.note_failure(provider.AIFailure(
+            kind="filter_rejected", operation=operation, code="ungrounded_steps", outcome="filtered"))
+    grounded = instructed
     valued, dropped = grounding.ground_values(grounded, f"{kb}\n{data.customer_text}")
     for sentence, value in dropped:
         logger.warning("Reply sentence dropped (%s): value %r is not in the KB entry or the customer's "
@@ -430,6 +444,12 @@ _VALUES_NOTE = (
     "Use only values from those. If the kb_guidance block doesn't answer the latest "
     f"message, reply with exactly {NOT_COVERED}."
 )
+_STEPS_NOTE = (
+    "\n\nYour previous reply told the customer to do things the kb_guidance block doesn't say "
+    "(steps, checks, places in the product). Give only the actions the kb_guidance block gives, "
+    "nothing from general knowledge, even when the customer suggests one. If the kb_guidance "
+    f"block doesn't answer the latest message, reply with exactly {NOT_COVERED}."
+)
 _MOVE_ON_NOTE = (
     "\n\nYour reply repeated one of your previous replies (the "
     "your_previous_replies block). Don't repeat them: move the conversation "
@@ -500,7 +520,8 @@ def _reply(instructions: str, blocks: dict[str, str], data: AnswerInput | Clarif
             if exc.failure.kind == "parse_schema":  # complete_text already retried
                 exc.failure.outcome = "fallback"
                 break
-            note = _VALUES_NOTE if exc.failure.code == "ungrounded_values" else _REGENERATE_NOTE
+            note = {"ungrounded_values": _VALUES_NOTE, "ungrounded_steps": _STEPS_NOTE}.get(
+                exc.failure.code, _REGENERATE_NOTE)
             continue
         if reply.not_covered or not repeats(reply.text, data.recent_ai_replies):
             return reply

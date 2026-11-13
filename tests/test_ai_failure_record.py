@@ -135,6 +135,7 @@ def test_error_codes_are_names_only():
 # ---------------------------------------------------------------------------
 def test_a_provider_failure_is_recorded_on_the_chat(app_client, strict):
     headers = _customer(app_client)
+    strict.text = "Check the Exports page under Payroll."   # backed by the entry (instructions: KB only)
     first = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                             headers=headers).json()
     assert first["ai_error"] is None
@@ -199,6 +200,7 @@ def test_our_filter_rejecting_the_reply_is_not_ai_unavailable(app_client, strict
 
 def test_a_bad_continuation_verdict_falls_through_to_the_pipeline(app_client, strict):
     headers = _customer(app_client)
+    strict.text = "Payslips show on the Exports page once the export has run."
     first = app_client.post("/api/chats", json={"issue": "My payroll export stopped working"},
                             headers=headers).json()
     strict.TOOL_REPLIES = {**_StrictClient.TOOL_REPLIES, "ContinuationVerdict": {"is_continuation": "maybe"}}
@@ -214,6 +216,7 @@ def test_a_bad_continuation_verdict_falls_through_to_the_pipeline(app_client, st
 
 def test_a_ticket_follow_up_failure_is_recorded_on_the_ticket(app_client, strict):
     kb_fixture.load()
+    strict.text = "Open Google Play and search for Brightdesk HR."   # the Android guide's step
     headers = _customer(app_client)
     created = app_client.post("/api/tickets", json={"subject": "App install",
                                                     "description": "How do I install the Brightdesk app on Android?"},

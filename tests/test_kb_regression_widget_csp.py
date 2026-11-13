@@ -160,6 +160,7 @@ def test_chat_two_never_ends_on_a_lead_in_and_survives_a_dropped_call(client, mo
         "1. Open your server config.\n2. Add script-src 'self'.",
         "Your policy has to allow the Beacon RUM servers, as below:",
         "Add the line below to the head of your pages, or the same two directives to your policy header:",
+        "Add the line below to the head of your pages:",   # regenerated: still not in the entry
     ], continuation=lambda: AIError("Could not reach Bedrock", provider.AIFailure(
         kind="network", operation="ContinuationVerdict", code="ProxyConnectionError")))
     monkeypatch.setattr(provider, "complete", model)
@@ -174,7 +175,9 @@ def test_chat_two_never_ends_on_a_lead_in_and_survives_a_dropped_call(client, mo
     chat = _say(client, headers, chat["session_id"], "how to add give me steps")
     assert not chat.get("ai_error") and chat["status"] == "active"
     reply = chat["messages"][-1]["content"]
-    assert reply.startswith("Add the line below") and f"```\n{CONFIG}\n```" in reply
+    # "Add the line below to the head of your pages" isn't in the approved entry (only
+    # the snippet is): dropped, so the reply is the entry's own answer and snippet.
+    assert reply.startswith(DRAFT["entries"][0]["answer"]) and f"```\n{CONFIG}\n```" in reply
     conn = db.get_connection()
     try:
         details = [json.loads(r["detail"]) for r in conn.execute(
@@ -183,7 +186,7 @@ def test_chat_two_never_ends_on_a_lead_in_and_survives_a_dropped_call(client, mo
     finally:
         conn.close()
     assert {"kind": "network", "outcome": "fallback"}.items() <= next(d for d in details if d["kind"] == "network").items()
-    assert any(d["code"] in ("ungrounded_values", "only_ungrounded_steps") for d in details)
+    assert any(d["code"] in ("ungrounded_values", "only_ungrounded_steps", "ungrounded_steps") for d in details)
 
 
 def test_every_reply_of_the_flow_is_checked_by_code_not_by_the_prompt():
