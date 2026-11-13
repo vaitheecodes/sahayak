@@ -411,8 +411,8 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   on a resolved AI ticket is kept with no reply, `main._run_followup`). An
   open chat with no message for `CHAT_IDLE_TIMEOUT_MINUTES` (default 30) is
   closed as `abandoned` with `chats.IDLE_CLOSED_MESSAGE` (no ticket),
-  checked lazily when the customer next opens, lists or writes to it
-  (`chats._close_if_idle`). A
+  checked lazily when the chat or a chat list (customer or staff) is
+  loaded or written (`chats.close_idle_chats`, `_close_if_idle`). A
   greeting ("hi", `request_kind.is_small_talk`) gets `chats.greeting()`
   (no model call), and the first real message replaces it as the chat's
   `issue`. "I want to talk to a human" (`handoff_signals.asks_for_human`)

@@ -62,3 +62,22 @@ def test_the_eval_leaves_out_provider_outages_but_not_our_own_bugs(client):  # n
     assert outage["ai_error"] and bug["ai_error"]
     assert harness.infra_error(outage["session_id"]) is True
     assert harness.infra_error(bug["session_id"]) is False
+
+
+def test_an_idle_chat_is_closed_when_a_staff_list_loads(client):  # noqa: F811
+    from tests.test_chat_sessions import _login
+
+    headers = _customer(client)
+    chat = _start(client, headers, _ANSWER, issue="how do I restart the agent")
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE chat_sessions SET updated_at = ? WHERE session_id = ?",
+                     ("2020-01-01T00:00:00+00:00", chat["session_id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    tech = _login(client, "technician")
+    active = client.get("/api/staff/chats", params={"filter": "active"}, headers=tech).json()
+    assert chat["session_id"] not in [c["session_id"] for c in active]
+    detail = client.get(f"/api/staff/chats/{chat['session_id']}", headers=tech).json()
+    assert detail["status"] == "abandoned"

@@ -130,12 +130,23 @@ IDLE_CLOSED_MESSAGE = ("This chat was closed after {minutes} minutes without a m
                        "Start a new chat any time.")
 
 
+def close_idle_chats(conn, customer_id: str | None = None) -> None:
+    """Close every idle open chat (one customer's, or all for staff lists)."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=idle_minutes())).isoformat()
+    sql = "SELECT * FROM chat_sessions WHERE status = 'active' AND updated_at < ?"
+    params = [cutoff]
+    if customer_id:
+        sql, params = sql + " AND customer_id = ?", params + [customer_id]
+    for row in conn.execute(sql, params).fetchall():
+        _close_if_idle(conn, row)
+
+
 def _close_if_idle(conn, session):
     """An open chat with no message for idle_minutes() is closed as
     abandoned (no ticket, no model call), with a line saying so.
-    shortcut: checked when the customer next opens, lists or writes to the
-    chat (no scheduler), so staff lists may show it open until then; add a
-    periodic sweep if that matters."""
+    shortcut: checked when a chat or a chat list is loaded or written (no
+    scheduler); add a periodic sweep if something else must see it closed
+    on time."""
     if session["status"] != "active":
         return session
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=idle_minutes())).isoformat()
@@ -541,9 +552,7 @@ def list_chats(customer_id: str = Depends(auth.get_current_customer)):
     """Chat history, newest first (escalated ones also appear as tickets)."""
     conn = db.get_connection()
     try:
-        for row in conn.execute("SELECT * FROM chat_sessions WHERE customer_id = ? AND status = 'active'",
-                                (customer_id,)).fetchall():
-            _close_if_idle(conn, row)
+        close_idle_chats(conn, customer_id)
         return [
             dict(row)
             for row in conn.execute(
@@ -767,6 +776,7 @@ def staff_chats(
     times and message count."""
     conn = db.get_connection()
     try:
+        close_idle_chats(conn)
         params: list = []
         clauses = [_CHAT_FILTERS[filter], _chat_scope(conn, user, params)]
         if q and q.strip():
@@ -793,6 +803,9 @@ def staff_chat(session_id: str, user: dict = Depends(_staff_chat_user)):
     outside a manager's department is 404."""
     conn = db.get_connection()
     try:
+        idle = _reload(conn, session_id)
+        if idle is not None:
+            _close_if_idle(conn, idle)
         params: list = [session_id]
         row = conn.execute(
             "SELECT s.session_id, s.status, s.issue, s.summary, s.created_at, s.updated_at, s.resolved_at, "
