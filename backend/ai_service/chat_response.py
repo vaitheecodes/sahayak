@@ -335,7 +335,11 @@ def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> 
                            operation or "answer", sentence)
     block = snippet_block(data.kb_candidates[0]) if isinstance(data, AnswerInput) and data.kb_candidates else ""
     text = grounding.strip_dangling_lead_ins(text, followed=bool(block))
-    block += variant_note(text, block)
+    if block:
+        extra = region_sentence(data.kb_candidates[0], data.customer_text, text, block)
+        text = f"{text} {extra}" if extra else text
+        note = variant_note(text, block)
+        text = f"{text}\n\n{note}" if note else text
     if not re.search(r"[A-Za-z0-9]", text):
         raise provider.AIError("AI reply was only a lead-in to steps",
                                provider.AIFailure(kind="filter_rejected", operation=operation or "answer",
@@ -365,19 +369,39 @@ def snippet_block(entry: KBCandidate) -> str:
 _DOMAIN_PARTS = re.compile(r"\b((?:[a-z0-9-]+\.)+)([a-z]{2,6})\b", re.IGNORECASE)
 
 
-def variant_note(text: str, block: str) -> str:
-    """When the answer names a domain the snippet has under another ending
-    (the text: static.example.eu for Europe; the snippet: static.example.com),
-    a line under the snippet says so, so the two never contradict."""
+REGION_NOTE = "The example below shows the default domains; use the one for your region."
+
+
+def _other_endings(text: str, block: str) -> list[tuple[str, str]]:
+    """(domain, ending) in `text` whose name the snippet has only under another ending."""
     fenced = {(m.group(1).lower(), m.group(2).lower()) for m in _DOMAIN_PARTS.finditer(block)}
-    notes = []
-    for m in _DOMAIN_PARTS.finditer(text):
-        stem, end = m.group(1).lower(), m.group(2).lower()
-        others = sorted(e for s, e in fenced if s == stem and e != end)
-        if others and (stem, end) not in fenced:
-            notes.append(f"The example above uses {stem}{others[0]}. Where the answer says {stem}{end} "
-                         "applies to you, use that in its place.")
-    return "".join(f"\n\n{n}" for n in dict.fromkeys(notes))
+    return [(m.group(0), m.group(2).lower()) for m in _DOMAIN_PARTS.finditer(text)
+            if (m.group(1).lower(), m.group(2).lower()) not in fenced
+            and any(s == m.group(1).lower() for s, _ in fenced)]
+
+
+def variant_note(text: str, block: str) -> str:
+    """REGION_NOTE (above the snippet) when the answer names another region's
+    domain than the snippet's defaults, so the two never contradict."""
+    return REGION_NOTE if block and _other_endings(text, block) else ""
+
+
+def region_sentence(entry: KBCandidate, customer_text: str, text: str, block: str) -> str | None:
+    """The entry's own sentence for the customer's region ("for Europe, the
+    script domain is static.example.eu"), when the customer names it (its
+    ending, "EU", or a word of the sentence such as "Europe") and the reply
+    left it out. Only KB text: never a made-up regional domain."""
+    said = set(re.findall(r"[a-z]+", customer_text.lower()))
+    sentences = grounding._SENTENCE_BREAK.split(" ".join(entry.response.split()))
+    for sentence in sentences:
+        # Region words: capitalised words only this sentence has ("Europe", not the product's name).
+        elsewhere = " ".join([entry.intent, entry.instruction, *[x for x in sentences if x != sentence]]).lower()
+        region = {w.lower() for w in re.findall(r"[A-Z][a-z]{2,}", sentence) if w.lower() not in elsewhere}
+        named = any(w[:5] == r[:5] for w in said for r in region if len(w) > 3)
+        for domain, ending in _other_endings(sentence, block):
+            if domain.lower() not in text.lower() and (ending in said or named):
+                return sentence.strip()
+    return None
 
 
 def kb_answer(data: AnswerInput) -> ChatReply | None:
@@ -392,7 +416,8 @@ def kb_answer(data: AnswerInput) -> ChatReply | None:
     block = snippet_block(entry)
     if not text and not block:
         return None
-    block += variant_note(text, block)
+    note = variant_note(text, block)
+    text = f"{text}\n\n{note}" if note else text
     if data.reply_format == "email":
         return ChatReply(text=email_utils.format_email_reply(data.customer_name, text + block))
     return ChatReply(text=text + block)

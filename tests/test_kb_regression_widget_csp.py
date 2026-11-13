@@ -296,8 +296,21 @@ def _policy_input():
 def test_the_snippet_never_contradicts_the_regional_text():
     text = chat_response._frame(f"Allow the Beacon RUM servers. For Europe, the script domain is {EU} instead.",
                                 _policy_input(), "answer").text
-    note = text.split("```")[-1]
-    assert "static.beaconrum.example.com" in note and "static.beaconrum.example.eu" in note
+    assert text.split("```")[0].rstrip().endswith(chat_response.REGION_NOTE)   # above the snippet
+
+
+def test_an_eu_customer_gets_the_entrys_own_eu_sentence_never_an_invented_one():
+    # Seed (c): "we are on the EU data centre" got the .com policy and no .eu domain.
+    data = _policy_input().model_copy(update={"customer_text": "Why is my RUM script blocked? We are on the EU data centre."})
+    text = chat_response._frame("Allow the Beacon RUM servers in your policy, using the example shown below.",
+                                data, "answer").text
+    prose = text.split("```")[0]
+    assert f"for Europe, the script domain is {EU} instead of the .com one." in prose
+    assert prose.rstrip().endswith(chat_response.REGION_NOTE)
+    assert "collect.beaconrum.example.eu" not in text            # no .eu equivalent the KB doesn't list
+    us = _policy_input().model_copy(update={"customer_text": "Why is my RUM script blocked?"})
+    plain = chat_response._frame("Allow the Beacon RUM servers in your policy.", us, "answer").text
+    assert EU not in plain and chat_response.REGION_NOTE not in plain   # no region named: nothing added
 
 
 def test_a_reply_rejected_twice_is_the_entrys_own_answer(monkeypatch):

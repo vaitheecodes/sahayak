@@ -89,6 +89,7 @@ def _contradicting_snippet(reply: str) -> str | None:
         # A line naming both ("the example uses X; use Y in its place") resolves it.
         explained = any(f"{stem}{end}" in line.lower() and any(f"{stem}{e}" in line.lower() for e in ends)
                         for line in prose.splitlines())
+        explained = explained or chat_response.REGION_NOTE in prose   # the fixed neutral line
         if ends and end not in ends and not explained:
             return f"text says {stem}{end}, snippet has {stem}{'/'.join(sorted(ends))}"
     return None
