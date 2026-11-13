@@ -69,6 +69,21 @@ def test_the_original_rules_still_fail_a_hand_off_after_an_answer():
     assert rescore.original_verdicts(row, PACK, "t")[3][0] == "fail"
 
 
+def test_the_ticket_announced_twice_in_one_turn_fails_rule_8():
+    """Live chat CHAT-d1a22d8d: "no guide, I've raised a ticket" and then the ticket notice."""
+    turns = [{"customer": "Hi", "bot": "Hi! What can I help you with?", "bot_messages": ["Hi! What can I help you with?"],
+              "status": "active", "ticket_id": None, "ai_error": None},
+             {"customer": "where to add the script?", "status": "escalated", "ticket_id": "TCK-1", "ai_error": None,
+              "bot_messages": ["I don't have a guide for that yet, so I've raised a ticket and the team will reply.",
+                               "I've passed this to our support team as ticket TCK-1."]}]
+    turns[1]["bot"] = "\n\n".join(turns[1]["bot_messages"])
+    case = {"case_id": "c", "kb": "t", "kind": "how_to", "entry_id": None, "expected": "not_covered"}
+    result = {"case": case, "issue": turns[1]["customer"], "error": None, "turns": turns}
+    assert rules.check(result, PACK, "t")[8][0] == "fail"
+    turns[1]["bot_messages"] = turns[1]["bot_messages"][1:]
+    assert rules.check(result, PACK, "t")[8][0] == "pass"
+
+
 def test_every_case_runs_with_and_without_hi_and_each_entry_gets_a_negation_wording():
     from backend.evals.cases import NEGATION_PHRASES, Case, variants
 

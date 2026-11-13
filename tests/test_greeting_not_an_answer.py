@@ -49,6 +49,14 @@ def test_only_a_message_after_a_real_answer_gets_the_coverage_check(client, monk
     assert bool(calls) is checked
 
 
+def test_no_guide_and_the_ticket_number_are_one_message(client):
+    headers = _customer(client)
+    chat = _send(client, headers, _chat(client, headers, "Hi"), "how do I add a performance review cycle")
+    assert chat["status"] == "escalated"
+    after = _ai_lines(chat)[1:]
+    assert after == [after[0]] and after[0].startswith(chats.NO_GUIDE_LEAD) and chat["ticket_id"] in after[0]
+
+
 def test_my_issue_is_solved_needs_a_real_answer(client):
     headers = _customer(client)
     chat = _chat(client, headers, "Hi")

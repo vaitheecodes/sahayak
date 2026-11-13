@@ -28,7 +28,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, main, runtime
+from backend import chats, db, graph, main, runtime
 from backend.ai_service import provider
 from tests import kb_fixture
 
@@ -163,8 +163,9 @@ def test_no_guide_after_the_question_raises_a_ticket(client):
     chat = _send(client, headers, chat, "a performance review cycle")
     assert chat["status"] == "escalated" and chat["ticket_id"]
     lines = _ai_lines(chat)
-    assert lines[0] == TYPE_QUESTION and lines[1] == graph.NO_KB_REPLY_CHAT
-    assert chat["ticket_id"] in lines[2]
+    # "No guide" and the ticket number: one message.
+    assert lines == [TYPE_QUESTION, lines[1]] and lines[1].startswith(chats.NO_GUIDE_LEAD)
+    assert chat["ticket_id"] in lines[1]
     assert "answer" not in client.model.ops()  # no improvised steps
 
 
@@ -175,7 +176,8 @@ def test_not_sure_after_the_question_raises_a_ticket_never_a_second_question(cli
     chat = _send(client, headers, chat, "not sure")
     assert chat["status"] == "escalated" and chat["ticket_id"]
     lines = _ai_lines(chat)
-    assert lines[:2] == [TYPE_QUESTION, graph.NO_KB_REPLY_CHAT] and chat["ticket_id"] in lines[2]
+    assert lines == [TYPE_QUESTION, lines[1]] and lines[1].startswith(chats.NO_GUIDE_LEAD)
+    assert chat["ticket_id"] in lines[1]
     assert "answer" not in client.model.ops()
 
 
@@ -221,7 +223,7 @@ def test_a_clear_how_to_with_no_entry_gets_the_friendly_reply_and_a_ticket(clien
     chat = _chat(client, headers, "how do I add a performance review cycle")
     assert chat["status"] == "escalated"
     lines = _ai_lines(chat)
-    assert lines[0] == graph.NO_KB_REPLY_CHAT and chat["ticket_id"] in lines[1]
+    assert lines == [lines[0]] and lines[0].startswith(chats.NO_GUIDE_LEAD) and chat["ticket_id"] in lines[0]
     assert "guess" not in lines[0] and "answer" not in client.model.ops()
 
 
@@ -293,5 +295,5 @@ def test_a_task_the_guide_doesnt_name_gets_no_guide(client):
     assert _usable("How do I apply for leave?") == ["KB-0001"]
     headers = _customer(client)
     chat = _chat(client, headers, "Can I change the dates of my leave request?")
-    assert _ai_lines(chat)[0] == graph.NO_KB_REPLY_CHAT and chat["status"] == "escalated"
+    assert _ai_lines(chat)[0].startswith(chats.NO_GUIDE_LEAD) and chat["status"] == "escalated"
     assert "answer" not in client.model.ops()

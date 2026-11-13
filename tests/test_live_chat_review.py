@@ -29,7 +29,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import conversation, db, graph, main, request_kind, runtime
+from backend import chats, conversation, db, graph, main, request_kind, runtime
 from backend.ai_service import chat_response, grounding, provider
 from backend.ai_service.schemas import AnswerInput, ClarifyInput, HandoffSummary, KBCandidate
 from backend.ai_service.summarize_conversation import NOTHING_TRIED, tidy_handoff
@@ -223,8 +223,8 @@ def test_b_a_how_to_with_no_kb_entry_says_so_and_raises_a_ticket(client):
     headers = _customer(client)
     chat = _chat(client, headers, B)
     assert chat["status"] == "escalated"
-    first, ticket_line = _ai_lines(chat)
-    assert first == graph.NO_KB_REPLY_CHAT and chat["ticket_id"] in ticket_line
+    (first,) = _ai_lines(chat)   # "no guide" and the ticket number: one message
+    assert first.startswith(chats.NO_GUIDE_LEAD) and chat["ticket_id"] in first
     assert "answer" not in model.ops()  # no improvised steps
     ticket = _ticket(chat["ticket_id"])
     assert json.loads(ticket["ai_suggestions"]) == [conversation.NO_KB_STEPS]
@@ -275,7 +275,7 @@ def test_c_a_how_to_is_not_clarified_and_gets_an_honest_ticket(client):
     assert chat["status"] == "escalated"
     text = json.dumps(_ai_lines(chat))
     assert "referring to" not in text and "error message" not in text
-    assert _ai_lines(chat)[0] == graph.NO_KB_REPLY_CHAT
+    assert _ai_lines(chat)[0].startswith(chats.NO_GUIDE_LEAD)
     assert "clarify" not in model.ops() and "answer" not in model.ops()
     assert json.loads(_ticket(chat["ticket_id"])["ai_suggestions"]) == [conversation.NO_KB_STEPS]
 

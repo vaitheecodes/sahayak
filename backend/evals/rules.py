@@ -17,6 +17,7 @@ _GREETING = re.compile(r"\W*(hi|hello|hey|welcome|good (morning|afternoon|evenin
                        re.IGNORECASE)
 BARE_ACK = re.compile(r"\W*(ok(ay)?|k|thanks?|thank you|thx|hmm+|hm+|ok thanks)\W*", re.IGNORECASE)
 NO_GUIDE = "don't have a guide"
+_TICKET_RAISED = re.compile(r"\b(raised|passed|created)\b.{0,40}\bticket\b", re.IGNORECASE)
 _TROUBLESHOOTING = re.compile(r"what have you (already )?tried|which screen|what do you see|error message"
                               r"|at which (screen|step)", re.IGNORECASE)
 _GENERIC = [t.split("{")[0] for t in (chat_response.STEP_QUESTION, chat_response.DETAIL_QUESTION,
@@ -172,7 +173,10 @@ def check(result: dict, pack: dict, kb: str) -> dict[int, tuple[str, str]]:
             for b, wb in units[i + 1:]:
                 if a == b or (min(len(wa), len(wb)) >= 5 and _overlap(wa, wb) >= 0.8):
                     problem = problem or f"{a!r} / {b!r}"
-    verdict(8, problem)
+    # ... nor across one turn's messages: the ticket announced twice ("no guide, I've raised a ticket" + the notice).
+    twice = next((t for t in turns if sum(bool(_TICKET_RAISED.search(m)) for m in t.get("bot_messages", [])) > 1),
+                 None)
+    verdict(8, problem or (twice and f"ticket announced twice after {twice['customer'][:80]!r}"))
 
     # 9. Not covered: "no guide" and a ticket within two replies.
     first_two = turns[:2]

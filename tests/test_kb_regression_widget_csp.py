@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, kb_retrieval, kb_store, main, topic_terms
+from backend import chats, db, graph, kb_retrieval, kb_store, main, topic_terms
 from backend.ai_service import AIError, chat_response, provider
 from kb_ingester import chunking, clean
 from kb_ingester.drafting import Budget, draft_chunk
@@ -148,8 +148,9 @@ def test_chat_one_gets_the_config_then_no_guide_for_how_to_check(client, monkeyp
 
     chat = _say(client, headers, chat["session_id"], "how to check")
     # The guide doesn't say how to check a policy: said plainly, then a ticket.
-    assert [m["content"] for m in chat["messages"]][-2] == graph.NO_KB_REPLY_CHAT
-    assert chat["status"] == "escalated" and chat["ticket_id"] in chat["messages"][-1]["content"]
+    last = chat["messages"][-1]["content"]   # "no guide" and the ticket number: one message
+    assert chat["messages"][-2]["role"] == "customer" and last.startswith(chats.NO_GUIDE_LEAD)
+    assert chat["status"] == "escalated" and chat["ticket_id"] in last
     assert "HTTP headers" not in json.dumps(chat["messages"])
 
 

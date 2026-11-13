@@ -39,14 +39,14 @@ def _signup(client) -> dict:
     return {"Authorization": f"Bearer {res.json()['token']}"}
 
 
-def _bot_reply(view: dict) -> str:
+def _bot_messages(view: dict) -> list[str]:
     """The bot's messages after the customer's last one."""
     out = []
     for message in reversed(view.get("messages") or []):
         if message["role"] == "customer":
             break
         out.append(message["content"])
-    return "\n\n".join(reversed(out))
+    return out[::-1]
 
 
 def _next_message(case: Case, turns: list[dict]) -> _CustomerTurn:
@@ -78,7 +78,8 @@ def run(client, case: Case) -> dict:
             view = res.json()
             session_id = result["session_id"] = view["session_id"]
             result["issue"] = view.get("issue")
-            turns.append({"customer": message, "bot": _bot_reply(view), "status": view["status"],
+            bot = _bot_messages(view)
+            turns.append({"customer": message, "bot": "\n\n".join(bot), "bot_messages": bot, "status": view["status"],
                           "ticket_id": view.get("ticket_id"), "ai_error": view.get("ai_error")})
             if view["status"] != "active" or n + 1 >= case.turns:
                 break

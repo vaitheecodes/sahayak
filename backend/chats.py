@@ -57,6 +57,7 @@ AI_UNAVAILABLE = (
 )
 # Shown in the chat when the model can't be reached: an offer of a ticket,
 # never a bare error. "yes" accepts it (handoff_signals.offers_human_handoff).
+NO_GUIDE_LEAD = "I don't have a guide for that yet, so "
 OUTAGE_REPLY = ("I can't answer right now: the assistant is having a problem on our side. Would you like me "
                 "to raise a ticket so our support team picks this up? Reply yes, or use Raise a ticket below.")
 _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one any time."
@@ -347,11 +348,13 @@ def _write_escalation(conn, session, reason_key: str, summary, steps: list[str],
         f"Created from chat {session_id}. Our support team has the full conversation "
         "and will reply here.",
     )
+    # "No guide" and the ticket notice are one message, not two.
+    lead = NO_GUIDE_LEAD if reason_key == "kb_no_match" else ""
     _insert_chat_message(
         conn,
         session_id,
         "ai",
-        f"I've passed this to our support team as ticket {ticket_id}. They can see "
+        f"{lead}I've passed this to our support team as ticket {ticket_id}. They can see "
         "this whole conversation, so you won't need to repeat anything — you'll "
         "find the ticket under My tickets, and they'll reply there.",
     )
@@ -453,7 +456,7 @@ def _apply(conn, session_id: str, outcome: _Outcome, subject: str | None = None)
     session = _reload(conn, session_id)
     if session["status"] != "active":
         return False
-    if outcome.text is not None:
+    if outcome.text is not None and outcome.reason_key != "kb_no_match":   # the ticket notice says it
         _insert_chat_message(conn, session_id, "ai", outcome.text)
     if outcome.kind == "incident_answer":
         conn.execute("UPDATE chat_sessions SET last_route = 'ai' WHERE session_id = ?", (session_id,))
