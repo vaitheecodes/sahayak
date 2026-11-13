@@ -154,6 +154,7 @@ def main(argv=None) -> int:
     parser.add_argument("--estimate", action="store_true")
     parser.add_argument("--allow-over", action="store_true")
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--extra-cases", metavar="FILE", help="more cases (a JSON list), e.g. kept in .local/")
     args = parser.parse_args(argv)
 
     bot_model = harness.NOVA_PRO if args.bot_model == "pro" else harness.NOVA_LITE
@@ -173,6 +174,11 @@ def main(argv=None) -> int:
             counter.clear()
     if "demo" in cases_by_kb:
         cases_by_kb["demo"] += cases_mod.feedback_cases()
+    if args.extra_cases:
+        for extra in json.loads(Path(args.extra_cases).read_text()):
+            case = cases_mod.Case(**extra)
+            if case.kb in cases_by_kb:
+                cases_by_kb[case.kb].append(case)
     keep = set(args.cases or [])
     if args.rerun_failed:
         prev = json.loads((harness.OUT / "runs" / args.rerun_failed / "results.json").read_text())
@@ -181,7 +187,9 @@ def main(argv=None) -> int:
         cases_by_kb = {kb: [c for c in cs if c.case_id in keep] for kb, cs in cases_by_kb.items()}
     planned = estimate(cases_by_kb)
     n_cases = sum(len(c) for c in cases_by_kb.values())
-    print(f"Estimate: about {planned} Bedrock calls for {n_cases} conversations "
+    past = [r for r in harness.ledger()["runs"] if r["run"].endswith(f"-{args.bot_model}") and r["total_calls"]]
+    per_call = sum(r["cost_usd"] for r in past) / max(sum(r["total_calls"] for r in past), 1)
+    print(f"Estimate: about {planned} Bedrock calls for {n_cases} conversations, about ${planned * per_call:.2f} "
           f"(cap {args.max_calls}; spent so far {spent} of the {args.budget} budget).")
     if args.estimate:
         return 0
