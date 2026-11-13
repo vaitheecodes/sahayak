@@ -419,6 +419,11 @@ def converse_messages(turns) -> list[dict]:
 # BEDROCK_MODEL_ID_CHAT when it is set, else BEDROCK_MODEL_ID. Only the
 # customer-facing chat answer runs under a task (chat_response.answer).
 _model_task: contextvars.ContextVar[str | None] = contextvars.ContextVar("bedrock_model_task", default=None)
+
+# A transient error the backend retried and recovered from in this call:
+# (kind, code), read by provider.complete to log it and audit it.
+recovered_retry: contextvars.ContextVar[tuple[str, str] | None] = contextvars.ContextVar(
+    "recovered_retry", default=None)
 # The chat eval's simulated customer and judge (backend/evals/).
 TASK_MODEL_ENV = {"chat": "BEDROCK_MODEL_ID_CHAT", "eval_customer": "EVAL_CUSTOMER_MODEL",
                   "eval_judge": "EVAL_JUDGE_MODEL"}
@@ -561,6 +566,9 @@ class BedrockBackend:
                 _sleep(BEDROCK_RETRY_DELAY + random.uniform(0, BEDROCK_RETRY_JITTER))
                 attempts = 2
                 response = client.converse(**request)
+                code = exc.response["Error"]["Code"] if isinstance(exc, ClientError) else type(exc).__name__
+                kind = "timeout" if isinstance(exc, ReadTimeoutError) else BEDROCK_KINDS.get(code, "network")
+                recovered_retry.set((kind, code))
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             is_config, message = BEDROCK_ERRORS.get(code, (False, f"Bedrock error ({code or 'unknown'})"))

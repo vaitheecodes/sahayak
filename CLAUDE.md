@@ -840,7 +840,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   admin changes, password changes and failed logins — ids, statuses and
   field names only, never bodies or passwords; filterable at
   `GET /api/admin/audit` (Activity tab). **AI failures**
-  (`backend/ai_failures.py`): every failure of a chat turn, ticket reply
+  (`backend/ai_failures.py`; every model call also logs its operation and
+  latency to `backend.ai_calls`, and a timeout/throttling retried
+  successfully is audited with outcome `retried`): every failure of a chat turn, ticket reply
   or new ticket is audited as `chat.ai_failure` / `ticket.ai_failure`
   with kind (throttling, timeout, network, access_denied, validation, parse_schema,
   filter_rejected, config, unknown), error code name, attempts, latency,

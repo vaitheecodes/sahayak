@@ -31,6 +31,11 @@ from backend.ai_service import backends
 from backend.ai_service.backends import BackendError, ConfigError, env
 
 logger = logging.getLogger(__name__)
+# One INFO line per model call (operation, latency): shown in the backend log.
+call_log = logging.getLogger("backend.ai_calls")
+call_log.setLevel(logging.INFO)
+if not call_log.handlers:
+    call_log.addHandler(logging.StreamHandler())
 
 DATA_HANDLING_RULES = (
     "The input contains one or more data blocks such as "
@@ -54,7 +59,8 @@ class AIFailure:
     operation, and what happened next ("failed": the caller saw an
     AIError; "regenerated"/"fallback": our own check rejected a reply and
     the chat recovered; "filtered": steps the KB doesn't support were
-    dropped from a reply that was then sent). Never provider message text or customer text."""
+    dropped from a reply that was then sent; "retried": a timeout or
+    throttling the backend retried, and the retry worked). Never provider message text or customer text."""
 
     kind: str
     operation: str
@@ -169,6 +175,7 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
     backend = get_backend()
     schema = json_schema if json_schema is not None else ({} if json_mode else None)
     start = time.monotonic()
+    backends.recovered_retry.set(None)
     try:
         content = backend.generate(
             messages[0]["content"] if len(messages) > 1 else "",
@@ -187,6 +194,7 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
         detail = f" ({exc})" if isinstance(exc, BackendError) else ""
         level = logging.ERROR if isinstance(exc, ConfigError) else logging.WARNING
         logger.log(level, "AI provider call failed: %s%s", type(exc).__name__, detail)
+        call_log.info("AI call %s failed after %d ms", operation, _ms(start))
         if isinstance(exc, BackendError):
             failure = AIFailure(kind=exc.kind, operation=operation, code=exc.code, attempts=exc.attempts,
                                 latency_ms=_ms(start))
@@ -198,6 +206,11 @@ def complete(messages: list[dict], *, temperature: float = 0.2, json_mode: bool 
         raise AIError("AI provider returned an empty response",
                       AIFailure(kind="parse_schema", operation=operation, code="empty_reply",
                                 latency_ms=_ms(start)))
+    retry = backends.recovered_retry.get()
+    call_log.info("AI call %s: %d ms%s", operation, _ms(start), f" (retried after {retry[1]})" if retry else "")
+    if retry:   # recovered, but slow: the admin sees it (outcome "retried")
+        note_failure(AIFailure(kind=retry[0], operation=operation, code=retry[1], attempts=2,
+                               latency_ms=_ms(start), outcome="retried"))
     return content
 
 

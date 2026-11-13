@@ -374,3 +374,30 @@ def test_boto3_is_a_runtime_requirement():
 
     assert "boto3" in _runtime_requirements()
     assert backends.BACKENDS["bedrock"] is BedrockBackend
+
+
+@pytest.mark.parametrize("error, kind, code", [
+    (_TIMEOUT, "timeout", "ReadTimeoutError"),
+    (_client_error("ThrottlingException"), "throttling", "ThrottlingException"),
+    (_PROXY, "network", "ProxyConnectionError"),
+])
+def test_a_recovered_retry_is_logged_with_its_latency_and_recorded_for_the_admin(
+        real_complete, caplog, sleeps, error, kind, code):
+    """The live demo: a timeout retried successfully left only a slow turn
+    and no trace in the audit log."""
+    _bedrock(error, _tool_reply({"category": "SETUP", "confidence": 0.9}))
+    log = provider.start_failure_log()
+    with caplog.at_level(logging.INFO, logger="backend.ai_calls"):
+        _categorize()
+    assert [(f.kind, f.code, f.attempts, f.outcome) for f in log] == [(kind, code, 2, "retried")]
+    line = next(r.getMessage() for r in caplog.records if r.name == "backend.ai_calls")
+    assert line.startswith("AI call ") and " ms (retried after " in line
+
+
+def test_every_call_logs_its_operation_and_latency(real_complete, caplog):
+    _bedrock(_tool_reply({"category": "SETUP", "confidence": 0.9}))
+    log = provider.start_failure_log()
+    with caplog.at_level(logging.INFO, logger="backend.ai_calls"):
+        _categorize()
+    assert log == []
+    assert any(r.name == "backend.ai_calls" and r.getMessage().endswith(" ms") for r in caplog.records)
