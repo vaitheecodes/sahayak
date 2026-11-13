@@ -110,7 +110,7 @@ export default function ChatSession({ initialSession, sessionId, onChanged, onOp
   if (!session) return <p className="hint">Loading chat…</p>;
 
   const active = session.status === "active";
-  const hasAnswer = session.messages.some((m) => m.role === "ai");
+  const hasAnswer = Boolean(session.answered);
   const messages = pendingText
     ? [...session.messages, { message_id: "pending", role: "customer", content: pendingText }]
     : session.messages;

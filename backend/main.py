@@ -396,6 +396,7 @@ def _pipeline_state(ticket, ticket_text: str, customer_name: str, **extra) -> di
         "reply_format": "email",
         "customer_name": customer_name,
         "requested_category": ticket["requested_category"],
+        "answered": ticket["route"] == "ai",
     }
     state.update(extra)
     return state

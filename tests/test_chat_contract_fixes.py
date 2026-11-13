@@ -50,7 +50,7 @@ def test_what_are_the_sources_names_the_guide_and_its_page_without_a_model(monke
     entry = ENTRY.model_copy(update={"source_url": "https://help.example.com/widget"})
     monkeypatch.setattr(provider, "complete_text", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no model")))
     state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: what are the sources?",
-             "kb_candidates": [entry.model_dump() | {"kb_entry_id": "KB-1"}], "recent_ai_replies": ["Allow the servers."],
+             "kb_candidates": [entry.model_dump() | {"kb_entry_id": "KB-1"}], "recent_ai_replies": ["Allow the servers."], "answered": True,
              "reply_format": "chat"}
     reply = graph.generate_response(state)["ai_response"]
     assert reply == 'This comes from our guide "Allow the widget": https://help.example.com/widget.'
@@ -63,7 +63,7 @@ def test_a_follow_up_the_guide_doesnt_answer_gets_the_ticket_offer(monkeypatch):
     monkeypatch.setattr(provider, "complete_text", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no answer")))
     state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\n"
                             "Customer: will my manager get a notification?",
-             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "reply_format": "chat"}
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "answered": True, "reply_format": "chat"}
     result = graph.generate_response(state)
     assert result["ai_response"] == chat_response.FOLLOWUP_NOT_COVERED and result["needs_info"] is None
     from backend import handoff_signals
@@ -94,7 +94,7 @@ def test_asking_for_a_ticket_is_a_request_for_a_person_and_the_offer_is_never_re
     assert handoff_signals.asks_for_human("Yes, please raise a ticket.")
     monkeypatch.setattr(chat_response, "covers_latest", lambda data: False)
     state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: and the limits?",
-             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": [chat_response.FOLLOWUP_NOT_COVERED],
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": [chat_response.FOLLOWUP_NOT_COVERED], "answered": True,
              "reply_format": "chat"}
     result = graph.generate_response(state)
     assert result["ai_response"] == graph.NO_KB_REPLY_CHAT and result["needs_info"]["reason"] == "kb_no_match"
@@ -113,6 +113,6 @@ def test_a_failed_coverage_or_rewrite_call_answers_as_before(monkeypatch):
     monkeypatch.setattr(rewrite_query, "rewrite_query", down)
     monkeypatch.setattr(provider, "complete_text", lambda *a, **k: "Allow the widget's servers in your policy.")
     state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: which servers?",
-             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "reply_format": "chat"}
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "answered": True, "reply_format": "chat"}
     assert graph.generate_response(state)["ai_response"] == "Allow the widget's servers in your policy."
     assert graph.retrieve_kb_candidates({"ticket_text": "Customer: something unrelated entirely"}) == {"kb_candidates": []}

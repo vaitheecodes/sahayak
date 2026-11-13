@@ -27,7 +27,7 @@ _INTERNAL = re.compile(r"\bKB-\d{3,}\b|NOT_COVERED|\[(Customer|Your) [A-Z]?[a-z]
                        r"|\bkb_entry\b|\bgrounding\b")
 _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+)([a-z]{2,6})\b", re.IGNORECASE)
 COVERED_KINDS = {"paraphrased", "vague", "typo_mixed", "direct", "pasted_error", "small_talk", "topic_switch",
-                 "angry", "ok_thanks", "followup"}
+                 "angry", "ok_thanks", "followup", "negation"}
 
 
 def _prose(text: str) -> str:

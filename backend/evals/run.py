@@ -1,4 +1,4 @@
-"""scripts/chat_eval.sh [--kb demo brightdesk] [--bot-model lite|pro] [--max-calls 3000]
+"""scripts/chat_eval.sh [--kb demo brightdesk] [--bot-model lite|pro] [--max-calls 3500]
 [--rerun-failed RUN] [--estimate] [--allow-over]
 
 Prints the estimated Bedrock calls first and stops (exit 2) when the
@@ -147,8 +147,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kb", nargs="+", default=["demo", "brightdesk"], choices=["demo", "brightdesk"])
     parser.add_argument("--bot-model", default="lite", choices=["lite", "pro"])
-    parser.add_argument("--max-calls", type=int, default=3000)
-    parser.add_argument("--budget", type=int, default=6000, help="total calls across runs (the ledger)")
+    parser.add_argument("--max-calls", type=int, default=3500)
+    parser.add_argument("--budget", type=int, default=19000, help="total calls across runs (the ledger)")
     parser.add_argument("--rerun-failed", metavar="RUN", help="only the cases that failed in that run")
     parser.add_argument("--cases", nargs="+", metavar="CASE_ID", help="only these cases")
     parser.add_argument("--estimate", action="store_true")
@@ -179,6 +179,7 @@ def main(argv=None) -> int:
             case = cases_mod.Case(**extra)
             if case.kb in cases_by_kb:
                 cases_by_kb[case.kb].append(case)
+    cases_by_kb = {kb: cases_mod.variants(cs) for kb, cs in cases_by_kb.items()}
     keep = set(args.cases or [])
     if args.rerun_failed:
         prev = json.loads((harness.OUT / "runs" / args.rerun_failed / "results.json").read_text())

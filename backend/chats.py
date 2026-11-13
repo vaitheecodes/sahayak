@@ -228,6 +228,7 @@ def _view(conn, session_id: str, ai_error: str | None = None) -> dict:
         "resolved_at": session["resolved_at"],
         "ticket_id": session["escalated_ticket_id"],
         "messages": transcript_rows(conn, session_id),
+        "answered": session["last_route"] == "ai",   # "My issue is solved" needs a real answer
         "ai_error": ai_error,
     }
 
@@ -241,6 +242,7 @@ def _pipeline_state(session, transcript: str, **extra) -> dict:
         "reply_format": "chat",
         "customer_name": session["contact_name"],
         "requested_category": session["requested_category"],
+        "answered": session["last_route"] == "ai",
     }
     state.update(extra)
     return state
@@ -631,7 +633,8 @@ def resolve_chat(session_id: str, customer_id: str = Depends(auth.get_current_cu
         session = _session_or_error(conn, session_id, customer_id)
         _require_active(session)
         last_ai = _last_ai(conn, session_id)
-        if last_ai is None or last_ai == OUTAGE_REPLY:
+        # A greeting, a clarifying question or the outage reply isn't an answer.
+        if session["last_route"] != "ai" or last_ai == OUTAGE_REPLY:
             raise HTTPException(status_code=400, detail="The assistant hasn't answered yet")
         transcript = _transcript_text(conn, session_id)
     finally:

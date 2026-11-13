@@ -67,3 +67,16 @@ def test_the_original_rules_still_fail_a_hand_off_after_an_answer():
     row = {"result": result, "verdicts": {"1": ["pass", ""]},
            "judge": {"covered": True, "helpful": 4, "tone": 5, "invented": []}}
     assert rescore.original_verdicts(row, PACK, "t")[3][0] == "fail"
+
+
+def test_every_case_runs_with_and_without_hi_and_each_entry_gets_a_negation_wording():
+    from backend.evals.cases import NEGATION_PHRASES, Case, variants
+
+    base = [Case(case_id="t-KB-1-paraphrased", kb="t", kind="paraphrased", entry_id="KB-1", opener="Why is it blocked?"),
+            Case(case_id="t-small_talk", kb="t", kind="small_talk", opener="hi", script=["Why?"])]
+    out = {c.case_id: c for c in variants(base)}
+    assert set(out) == {"t-KB-1-paraphrased", "t-small_talk", "t-KB-1-negation",
+                        "t-KB-1-paraphrased-hi", "t-KB-1-negation-hi"}   # "hi" isn't greeted twice
+    assert out["t-KB-1-negation"].opener == f"Why is it blocked? {NEGATION_PHRASES[0]}"
+    hi = out["t-KB-1-negation-hi"]
+    assert hi.opener == "Hi" and hi.script == [out["t-KB-1-negation"].opener] and hi.turns == 3

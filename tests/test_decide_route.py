@@ -163,6 +163,7 @@ def test_admin_routing_settings_change_the_decision(monkeypatch):
 # first report with "not", "isn't" or a long sentence was handed off at once).
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("transcript, tags", [
+    ("Customer: Hi\nAgent (AI): Hi! What can I help you with?\nCustomer: my RUM script is not loading", []),
     ("My dashboard isn't working right.", []),                      # a first report: the problem itself
     ("this is useless, nothing works!!! How do I clear the cache?", []),   # frustration is answered
     ("I checked the page and then the logs and also the console but it says nothing at all", []),
@@ -177,7 +178,9 @@ def test_admin_routing_settings_change_the_decision(monkeypatch):
 def test_language_tags_come_from_the_latest_customer_message(transcript, tags):
     from backend import graph
 
-    assert graph._detect_language_tags(transcript) == tags
+    # The AI has answered only when the transcript's AI line is an answer, not the greeting.
+    answered = "Agent (AI)" in transcript and "Hi! What can I help" not in transcript
+    assert graph._detect_language_tags(transcript, answered) == tags
 
 
 def test_an_off_topic_message_gets_a_brief_fixed_reply_and_never_the_same_question_twice(monkeypatch):

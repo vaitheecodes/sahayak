@@ -196,8 +196,11 @@ tone); a rule 1 judge flag is re-judged, and what stays flagged, or a
 rule 3 failure the judge says isn't covered, is "disputed" (listed with
 the KB entry side by side in the report). Every Bedrock call is counted
 by a wrapped client (`harness.CountedClient`, throttling retried and
-counted), hard cap `--max-calls` (3000), the estimate printed first, and a
-ledger of all runs against `--budget` (6000) in `.local/chat-eval/`.
+counted), hard cap `--max-calls` (3500), the estimate printed first, and a
+ledger of all runs against `--budget` (19000) in `.local/chat-eval/`. Every case
+also runs after a "Hi" (`cases.variants`, `-hi` ids), and each entry gets a
+negation wording ("It's not loading.", kind `negation`); rule 8 fails a turn
+that announces the ticket twice.
 Outputs per run: `report.md` (pass rate per rule, overall, worst 10,
 disputed), `results.json`, `failures/`. "This reply was wrong" in the web
 chat (`POST /api/chats/{id}/feedback`, consent required, `chat_feedback`,
@@ -682,7 +685,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   language tags force immediate escalation regardless of confidence,
   category, or clarification state. Tags come from the customer's latest
   message only (`graph._detect_language_tags`): profanity (not frustration:
-  "useless" is answered), and, only after an AI reply, a report that it
+  "useless" is answered), and, only after a real AI answer (state
+  `answered`: the chat's / ticket's `last_route == 'ai'`; a greeting,
+  clarifying question or ticket notice doesn't count), a report that it
   didn't work ("still not working", "same error"). `coordinated_syntax` is
   no longer detected (it handed off every long message; the chat eval
   found "isn't working" in first reports handed off the same way).

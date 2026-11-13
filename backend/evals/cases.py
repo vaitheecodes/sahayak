@@ -6,6 +6,7 @@ models) uses the same cases; delete the file to regenerate."""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Literal
 
@@ -111,6 +112,27 @@ def _kb_level(kb: str, per_entry: list) -> list[Case]:
         Case(case_id=f"{kb}-followup", kb=kb, kind="followup", entry_id=a["kb_entry_id"], opener=ga.direct,
              script=["what next", "steps please", "what are the sources?"], turns=4, simulate=False, goal=ga.goal),
     ]
+
+
+# Said in a FIRST report ("not loading" is the symptom, not "your answer
+# didn't work"): the live demo handed one off at once after "Hi".
+NEGATION_PHRASES = ("It's not working.", "It's not loading.", "It's still failing.", "It doesn't work.")
+_GREETING_OPENER = re.compile(r"\W*(hi+|hello+|hey+|hai|vanakkam|namaste)\W*", re.IGNORECASE)
+
+
+def variants(cases: list[Case]) -> list[Case]:
+    """Per entry one negation wording of its paraphrased question, then
+    every case twice: as written and after a "Hi" (a greeting is not an
+    answer). Built in code from the cached cases: no model calls."""
+    paraphrased = [c for c in cases if c.kind == "paraphrased"]
+    negation = [c.model_copy(update={"case_id": c.case_id.removesuffix("-paraphrased") + "-negation",
+                                     "kind": "negation",
+                                     "opener": f"{c.opener} {NEGATION_PHRASES[n % len(NEGATION_PHRASES)]}"})
+                for n, c in enumerate(paraphrased)]
+    out = cases + negation
+    return out + [c.model_copy(update={"case_id": f"{c.case_id}-hi", "opener": "Hi",
+                                       "script": [c.opener, *c.script], "turns": c.turns + 1})
+                  for c in out if not _GREETING_OPENER.fullmatch(c.opener)]
 
 
 def load_or_generate(kb: str, pack: dict) -> list[Case]:

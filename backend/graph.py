@@ -134,6 +134,12 @@ class TicketState(TypedDict):
     # (chat_response repeat guard).
     recent_ai_replies: NotRequired[list[str]]
 
+    # The AI has answered in this conversation (the chat's / ticket's
+    # last_route is "ai"). A greeting, a clarifying question or a ticket
+    # notice is not an answer: "not loading" after "Hi!" is a first report,
+    # not a report that an answer failed.
+    answered: NotRequired[bool]
+
     route: NotRequired[Literal["ai", "human", "clarify"]]
     route_reason: NotRequired[str]
 
@@ -163,16 +169,13 @@ _ANSWER_FAILED = re.compile(
 # "still getting the same error", "the error persists": the answer didn't help either.
 _STILL_FAILING = re.compile(r"\b(?:still|persists?|persisting|same (?:error|issue|problem|message))\b",
                             re.IGNORECASE)
-_AI_LINE = re.compile(r"^(?:Agent \(AI\)|ai):", re.MULTILINE)
-
-
-def _detect_language_tags(ticket_text: str) -> list[str]:
+def _detect_language_tags(ticket_text: str, answered: bool) -> list[str]:
     """offensive_language (abuse) and negation (an AI answer didn't work).
     coordinated_syntax is no longer detected: a long message with "and" and
     "but" is a normal report, and it used to hand off every one of them."""
     messages = _customer_messages(ticket_text)
     latest = messages[-1] if messages else ""
-    return _tags(latest, after_answer=bool(_AI_LINE.search(ticket_text)))
+    return _tags(latest, after_answer=answered)
 
 
 def _tags(message: str, after_answer: bool) -> list[str]:
@@ -618,7 +621,7 @@ def classify_ticket(state: TicketState) -> dict:
     return {
         "category": category,
         "confidence": confidence,
-        "language_tags": _detect_language_tags(state["ticket_text"]),
+        "language_tags": _detect_language_tags(state["ticket_text"], bool(state.get("answered"))),
     }
 
 
@@ -874,7 +877,7 @@ def generate_response(state: TicketState) -> dict:
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
                 "needs_info": {"kb_entry_id": top.kb_entry_id, "collect": list(top.collect)}}
-    follow_up = bool(data.recent_ai_replies and data.latest_message and top is not None)
+    follow_up = bool(state.get("answered") and data.recent_ai_replies and data.latest_message and top is not None)
     if follow_up and request_kind.asks_for_sources(data.latest_message):
         return {"ai_response": chat_response.sources(data).text, "needs_info": None}
     steps = data.continuation and request_kind.asks_for_steps(data.latest_message) and chat_response.steps_again(data)
