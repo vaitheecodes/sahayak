@@ -340,17 +340,20 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     query = retrieval_query(state["ticket_text"])
     how_to = is_how_to(state["ticket_text"])
     candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=how_to)
-    rewrite = None
-    if not candidates and not is_vague(state["ticket_text"]) and kb_retrieval.entry_count():
-        # Nothing close in the customer's words: once more in the KB's own words.
+    used = None
+    weak = not candidates or candidates[0].score < kb_retrieval.STRONG_MATCH_SCORE
+    if weak and not is_vague(state["ticket_text"]) and kb_retrieval.entry_count():
+        # Nothing close in the customer's words (or only a weak match, which can be the
+        # wrong entry): once more in the KB's own words, kept only if it matches better.
         try:
-            rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics()) or None
+            rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics())
         except AIError:
-            rewrite = None
-        if rewrite:
-            candidates = kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to)
+            rewrite = ""
+        again = kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to) if rewrite else []
+        if again and (not candidates or again[0].score > candidates[0].score):
+            candidates, used = again, rewrite
     found = {"kb_candidates": _kb_candidates_to_dicts(candidates)}
-    return {**found, "query_rewrite": rewrite} if rewrite and candidates else found
+    return {**found, "query_rewrite": used} if used else found
 
 
 def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None,

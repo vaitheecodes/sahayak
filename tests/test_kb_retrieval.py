@@ -212,3 +212,24 @@ def test_a_weak_match_is_searched_again_in_the_kbs_own_words(monkeypatch):
 
     monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "")   # no topic: still nothing
     assert graph.retrieve_kb_candidates(state)["kb_candidates"] == []
+
+
+def test_a_weak_wrong_match_is_also_searched_again_and_the_better_one_kept(monkeypatch):
+    # Chat eval trace: a 0.356 match to the CSP entry stopped the rewrite; the clear-cache guide was 0.28.
+    from backend import graph
+    from backend.ai_service import rewrite_query
+
+    kb_retrieval.use([
+        {"kb_entry_id": "KB-1", "title": "Clear cached data", "category": "USAGE", "kind": "how-to",
+         "questions": ["How do I clear cached data?"], "answer": "Clearing the cache loads the latest version.",
+         "steps": []},
+        {"kb_entry_id": "KB-2", "title": "Update the policy", "category": "ISSUE", "kind": "how-to",
+         "questions": ["update policy header"], "answer": "Update the policy.", "steps": []},   # scores 0.36
+    ])
+    state = {"ticket_text": "How can I update my browser's stored pages?"}
+    monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "")
+    weak = graph.retrieve_kb_candidates(state)["kb_candidates"]
+    assert weak and weak[0]["kb_entry_id"] == "KB-2" and weak[0]["score"] < kb_retrieval.STRONG_MATCH_SCORE
+    monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "clear cached data")
+    result = graph.retrieve_kb_candidates(state)
+    assert result["kb_candidates"][0]["kb_entry_id"] == "KB-1" and result["query_rewrite"] == "clear cached data"
