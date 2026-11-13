@@ -42,6 +42,7 @@ ESCALATION_REASONS = {
     "customer_raised_ticket": "The customer raised a ticket from the chat.",
     "customer_reopened": "The customer reopened a ticket the AI had resolved.",
     "ai_cannot_resolve": "The AI assistant could not resolve the issue.",
+    "ai_unavailable": "The AI assistant couldn't reply (the model provider failed); the ticket came to the team.",
     "kb_no_match": (
         "No knowledge-base article covers this request; the AI told the customer so "
         "instead of improvising steps."

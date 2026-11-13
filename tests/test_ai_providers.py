@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from backend import chats, db, incidents, main, runtime
 from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider, schemas
 from backend.ai_service.backends import AppSailCredentials, QuickMLAppSailBackend
-from backend.ai_service.schemas import AnswerInput, CategorizeInput
+from backend.ai_service.schemas import AnswerInput, CategorizeInput, KBCandidate
 
 _counter = itertools.count()
 ENDPOINT_KEY = "endpoint-key-SECRET-111"
@@ -45,6 +45,11 @@ APPSAIL_HEADERS = {
     "X-Zc-Project-Secret-Key": PROJECT_SECRET,
 }
 CREDS = AppSailCredentials.from_headers({k.lower(): v for k, v in APPSAIL_HEADERS.items()})
+
+# The guide the scripted replies come from (instructions must be backed by the KB entry).
+_KB = [KBCandidate(kb_entry_id="KB-1", category="SETUP", intent="Agent offline", score=0.9,
+                   instruction="My agent is offline", response="Restart the agent service. Open Admin > Monitors and click Add.")]
+
 
 
 @pytest.fixture()
@@ -202,7 +207,7 @@ def test_plain_text_reply_is_unwrapped(quickml_env, real_complete, in_request, r
     if '"' in expected:
         return  # quoted text nobody gave is dropped from a chat answer (tests/test_value_grounding.py)
     _quickml(_ok(raw))
-    assert chat_response.answer(AnswerInput(ticket_text="How do I add a monitor?")).text == expected
+    assert chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="How do I add a monitor?")).text == expected
 
 
 @pytest.mark.parametrize("raw", [
@@ -315,7 +320,7 @@ def _signup(c):
 
 class _AIRoute:
     def invoke(self, state):
-        text = chat_response.answer(AnswerInput(ticket_text=state["ticket_text"])).text
+        text = chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text=state["ticket_text"])).text
         return {"route": "ai", "category": "SETUP", "confidence": 0.95, "ai_response": text,
                 "clarification_attempts": 0}
 

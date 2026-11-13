@@ -23,12 +23,17 @@ from fastapi.testclient import TestClient
 from backend import categories, chats, db, main, runtime
 from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider, schemas
 from backend.ai_service.backends import BedrockBackend
-from backend.ai_service.schemas import AnswerInput, CategorizeInput
+from backend.ai_service.schemas import AnswerInput, CategorizeInput, KBCandidate
 
 _counter = itertools.count()
 # Captured at import, before conftest's autouse fixture disables it.
 _REAL_COMPLETE = provider.complete
 AWS_MESSAGE = "User arn:aws:iam::111122223333:user/SECRET-USER is not authorized"
+
+# The guide the scripted replies come from (instructions must be backed by the KB entry).
+_KB = [KBCandidate(kb_entry_id="KB-1", category="SETUP", intent="Agent offline", score=0.9,
+                   instruction="My agent is offline", response="Restart the agent service. Open Admin > Monitors and click Add.")]
+
 
 
 @pytest.fixture()
@@ -164,7 +169,7 @@ def test_model_id_comes_from_settings(real_complete, monkeypatch):
 
 def test_text_request_has_no_json_reminder(real_complete):
     client = _bedrock("Restart the agent service.")
-    assert chat_response.answer(AnswerInput(ticket_text="agent offline")).text == "Restart the agent service."
+    assert chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="agent offline")).text == "Restart the agent service."
     blocks = client.calls[0]["messages"][0]["content"]
     assert len(blocks) == 1 and client.calls[0]["inferenceConfig"]["temperature"] == 0.3
     assert "toolConfig" not in client.calls[0]
@@ -221,7 +226,7 @@ def test_fences_and_reasoning_are_stripped(real_complete, raw):
 
 def test_plain_text_wrapper_is_unwrapped(real_complete):
     _bedrock('{"response": "Restart the agent."}')
-    assert chat_response.answer(AnswerInput(ticket_text="agent offline")).text == "Restart the agent."
+    assert chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="agent offline")).text == "Restart the agent."
 
 
 def test_retry_adds_the_correction_to_the_same_user_turn(real_complete):
@@ -325,7 +330,7 @@ def test_the_retry_is_not_counted_against_the_validation_retry(real_complete, sl
 # ---------------------------------------------------------------------------
 class _AIRoute:
     def invoke(self, state):
-        text = chat_response.answer(AnswerInput(ticket_text=state["ticket_text"])).text
+        text = chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text=state["ticket_text"])).text
         return {"route": "ai", "category": "SETUP", "confidence": 0.95, "ai_response": text,
                 "clarification_attempts": 0}
 

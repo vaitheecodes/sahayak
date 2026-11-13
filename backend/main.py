@@ -282,10 +282,9 @@ _EMAIL_HANDOFF_BODY = (
 )
 _EMAIL_HANDOFF_CLOSING = "You don't need to do anything else for now."
 
-_AI_UNAVAILABLE = (
-    "Our AI assistant is unavailable right now. Your message is saved and "
-    "nothing about your ticket has changed — please try again shortly."
-)
+# A ticket already exists, so an AI failure on a reply hands it to the team
+# (_escalate_after_failure) and the customer is told so, never "AI unavailable".
+_AI_UNAVAILABLE = "A person will reply here soon."
 
 AI_SENDER_NAME = "Support Bot"
 SUPPORT_TEAM_NAME = "Support"
@@ -353,7 +352,7 @@ def _ticket_handoff(transcript: str, ticket, reason_key: str, category) -> tuple
 
 
 def _write_escalation(conn, ticket, summary, steps: list[str], category, confidence,
-                      outbox: _Outbox) -> None:
+                      outbox: _Outbox, body: str = _EMAIL_HANDOFF_BODY) -> None:
     """Hand an AI-handled ticket to the support team: attach the AI
     hand-off brief (summary + suggested steps; staff-only, also appended
     to `ticket_text` so the queue preview shows it), move the ticket into
@@ -382,7 +381,7 @@ def _write_escalation(conn, ticket, summary, steps: list[str], category, confide
         conn,
         ticket,
         email_utils.format_email_reply(
-            _display_name(conn, ticket), _EMAIL_HANDOFF_BODY, _EMAIL_HANDOFF_CLOSING
+            _display_name(conn, ticket), body, _EMAIL_HANDOFF_CLOSING
         ),
         outbox,
     )
@@ -935,8 +934,24 @@ def _record_ai_failures(ticket_id: str, failures: list) -> None:
         conn.close()
 
 
+def _escalate_after_failure(ticket_id: str, followup: _Followup, outbox: _Outbox) -> dict:
+    """The AI couldn't reply: the ticket goes to the support team (the
+    hand-off brief has its own fallback, no model needed)."""
+    summary, steps = _ticket_handoff(followup.transcript, followup.ticket, "ai_unavailable",
+                                     followup.ticket["category"])
+    conn = db.get_connection()
+    try:
+        ticket = _load_ticket(conn, ticket_id)
+        if ticket["route"] != "human" and ticket["status"] != "closed":
+            _write_escalation(conn, ticket, summary, steps, ticket["category"], ticket["confidence"], outbox,
+                              body=_AI_UNAVAILABLE)
+            conn.commit()
+    finally:
+        conn.close()
+    return {"route": "human", "ai_error": _AI_UNAVAILABLE}
+
+
 def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, outbox: _Outbox) -> dict:
-    unavailable = {"route": followup.ticket["route"], "ai_error": _AI_UNAVAILABLE}
     failures = ai_provider.start_failure_log()
     try:
         outcome = _decide_followup(followup, message_text)
@@ -944,7 +959,7 @@ def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, out
         logger.exception("AI follow-up failed for %s", ticket_id)
         ai_failures.note_exception(exc, failures)
         _record_ai_failures(ticket_id, failures)
-        return unavailable
+        return _escalate_after_failure(ticket_id, followup, outbox)
     conn = db.get_connection()
     try:
         response = _apply_followup(conn, ticket_id, outcome, outbox)
@@ -955,7 +970,7 @@ def _finish_followup(ticket_id: str, followup: _Followup, message_text: str, out
         outbox.clear()
         ai_failures.note_exception(exc, failures, operation="store_turn")
         _record_ai_failures(ticket_id, failures)
-        return unavailable
+        return _escalate_after_failure(ticket_id, followup, outbox)
     finally:
         conn.close()
     _record_ai_failures(ticket_id, failures)

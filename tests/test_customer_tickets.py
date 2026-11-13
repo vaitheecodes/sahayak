@@ -495,3 +495,18 @@ def test_a_resolved_ticket_closes_only_when_the_customer_says_it_is_solved(clien
     assert row["status"] == "resolved"
     assert client.post(url, json={"message": "that worked, thanks"}, headers=headers).status_code == 200
     assert _row(created["ticket_id"])["status"] == "closed"
+
+
+def test_an_ai_failure_on_a_ticket_reply_hands_it_to_a_person(client):
+    # The ticket exists, so the customer is told a person will reply (never "AI unavailable").
+    headers, _ = _customer(client)
+    clarify = {"route": "clarify", "category": "ISSUE", "confidence": 0.5,
+               "ai_response": "Which alert?", "clarification_attempts": 1}
+    ticket_id = _raise(client, headers, clarify)["ticket_id"]
+    runtime.set_graph(_StubGraph([RuntimeError("model down")]))
+    res = client.post(f"/api/tickets/{ticket_id}/reply", json={"message": "The email alert"}, headers=headers).json()
+    assert res["ai_error"] == main._AI_UNAVAILABLE == "A person will reply here soon."
+    row = _row(ticket_id)
+    assert (row["route"], row["status"]) == ("human", "open")
+    thread = client.get(f"/api/tickets/{ticket_id}", headers=headers).json()["messages"]
+    assert "A person will reply here soon." in thread[-1]["message"]

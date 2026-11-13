@@ -538,7 +538,10 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   "Regards, Support Team"; AI replies are also emailed via
   `email_utils.send_email` when SMTP is configured (silent no-op
   otherwise, sent as a BackgroundTask). A pipeline failure on a new ticket
-  still creates it, queued for a human. **Attachments**
+  still creates it, queued for a human; an AI failure on a reply to an
+  AI-handled ticket hands it to the team the same way, replying "A person
+  will reply here soon." (`main._escalate_after_failure`, reason
+  `ai_unavailable`). **Attachments**
   (`POST /api/tickets/{id}/attachments`, `attachments` table): max 5 per
   message (counted under a write lock), 10 MB each, png/jpg/pdf/txt/log with the contents checked
   against the extension, stored under `db.uploads_dir()` (DB_PATH's
