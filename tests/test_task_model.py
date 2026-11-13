@@ -7,10 +7,15 @@ import pytest
 
 from backend.ai_service import backends, categorize_ticket, chat_response, provider
 from backend.ai_service.backends import BedrockBackend
-from backend.ai_service.schemas import AnswerInput, CategorizeInput, ClarifyInput
+from backend.ai_service.schemas import AnswerInput, CategorizeInput, ClarifyInput, KBCandidate
 from tests.test_bedrock_conversation import _REAL_COMPLETE, _StrictClient
 
 LITE, PRO = "apac.amazon.nova-lite-v1:0", "apac.amazon.nova-pro-v1:0"
+
+# The guide behind the fake client's "Restart the agent service." (instructions: KB only).
+_KB = [KBCandidate(kb_entry_id="KB-1", category="SETUP", intent="Install the agent", score=0.9,
+                   instruction="how do I install the agent", response="Restart the agent service.")]
+
 
 
 @pytest.fixture()
@@ -46,9 +51,9 @@ def test_chat_override_applies_only_inside_the_chat_task(monkeypatch):
 def test_only_the_chat_answer_uses_the_chat_model(monkeypatch, client):
     monkeypatch.setenv("BEDROCK_MODEL_ID_CHAT", PRO)
     categorize_ticket.categorize_ticket(CategorizeInput(ticket_text="My Linux agent stopped sending data"))
-    chat_response.answer(AnswerInput(ticket_text="Customer: how do I install the agent"))
-    chat_response.clarify(ClarifyInput(ticket_text="Customer: it is broken", category="ISSUE"))
-    chat_response.answer(AnswerInput(ticket_text="how do I install the agent", reply_format="email",
+    chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="Customer: how do I install the agent"))
+    chat_response.clarify(ClarifyInput(kb_candidates=_KB, ticket_text="Customer: it is broken", category="ISSUE"))
+    chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="how do I install the agent", reply_format="email",
                                      customer_name="Dana"))
     assert _models(client) == [LITE, PRO, LITE, LITE]
 
@@ -56,12 +61,12 @@ def test_only_the_chat_answer_uses_the_chat_model(monkeypatch, client):
 def test_a_regenerated_chat_answer_stays_on_the_chat_model(monkeypatch, client):
     monkeypatch.setenv("BEDROCK_MODEL_ID_CHAT", PRO)
     client.text = "[Your answer here]"  # rejected by the chat filter, then regenerated
-    chat_response.answer(AnswerInput(ticket_text="Customer: how do I install the agent"))
+    chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="Customer: how do I install the agent"))
     assert _models(client) == [PRO, PRO]
 
 
 def test_without_the_override_everything_uses_the_default(monkeypatch, client):
     monkeypatch.delenv("BEDROCK_MODEL_ID_CHAT", raising=False)
     categorize_ticket.categorize_ticket(CategorizeInput(ticket_text="My Linux agent stopped sending data"))
-    chat_response.answer(AnswerInput(ticket_text="Customer: how do I install the agent"))
+    chat_response.answer(AnswerInput(kb_candidates=_KB, ticket_text="Customer: how do I install the agent"))
     assert _models(client) == [LITE, LITE]

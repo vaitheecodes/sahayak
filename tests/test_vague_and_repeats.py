@@ -20,7 +20,7 @@ import pytest
 
 from backend import graph
 from backend.ai_service import chat_response, provider
-from backend.ai_service.schemas import AnswerInput, ClarifyInput
+from backend.ai_service.schemas import AnswerInput, ClarifyInput, KBCandidate
 from tests import kb_fixture
 
 OPEN_PAYROLL = chat_response.open_question("Payroll")
@@ -146,6 +146,10 @@ def _scripted(monkeypatch, *replies):
     return calls
 
 
+# The expense guide: it backs the scripted "Open Expenses, click New Claim..." (instructions: KB only).
+_EXPENSE = [KBCandidate(**kb_fixture.candidate("KB-0008"))]
+
+
 def _answer(**fields):
     return chat_response.answer(AnswerInput(
         ticket_text=_t("I have an issue with adding an expense", EXPENSE_QUESTION),
@@ -155,7 +159,7 @@ def _answer(**fields):
 def test_a_repeat_is_regenerated_with_an_instruction_to_move_on(monkeypatch):
     calls = _scripted(monkeypatch, PREVIOUS, "Open Expenses, click New Claim and attach the receipt.")
     log = provider.start_failure_log()
-    reply = _answer(recent_ai_replies=[PREVIOUS])
+    reply = _answer(recent_ai_replies=[PREVIOUS], kb_candidates=_EXPENSE)
     assert reply.text == "Open Expenses, click New Claim and attach the receipt."
     assert len(calls) == 2
     instructions, data = calls[1]
@@ -208,7 +212,7 @@ def test_recent_replies_reach_the_prompt_input(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_answer_prompt_answers_the_latest_question_first(monkeypatch):
     calls = _scripted(monkeypatch, "Open Expenses and click New Claim.")
-    _answer()
+    _answer(kb_candidates=_EXPENSE)
     instructions, data = calls[0]
     assert "latest message (the customer_latest_message block)" in instructions
     assert "answer that question first" in instructions

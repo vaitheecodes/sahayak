@@ -96,7 +96,7 @@ def test_injection_in_a_snippet_flags_the_draft(monkeypatch):
 
 def test_a_snippet_is_shown_under_the_answer_with_its_licence(monkeypatch):
     entry = KBCandidate(kb_entry_id="KB-0001", category="SETUP", intent="widget", score=0.8,
-                        instruction="My policy blocks the widget", response=f"Allow the servers.\n{CONFIG}",
+                        instruction="My policy blocks the widget", response=f"Add the widget's servers to your policy.\n{CONFIG}",
                         snippets=[CONFIG], source_url="https://help.example.com/widget",
                         source_licence="CC BY 4.0, Example Inc.")
     monkeypatch.setattr(provider, "complete_text", lambda *a, **k: "Add the widget's servers to your policy:")
