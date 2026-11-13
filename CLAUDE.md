@@ -374,7 +374,11 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   customer's subject (`graph.on_customer_subject`: half the customer's
   words, or a strong match whose question names their main subject, so
   extra words don't hide a guide while "an overtime report for leave
-  approvals" isn't the apply-for-leave entry; `kind: how-to` guides rank
+  approvals" isn't the apply-for-leave entry; and the entry must name
+  the customer's task, their first task verb or a same-task one
+  (`graph.does_the_task`: change/edit/modify, cancel/withdraw, export/
+  download...; generic verbs don't count), so "can I change my leave
+  dates" isn't the apply-for-leave entry either; `kind: how-to` guides rank
   first; troubleshooting entries never ground it), or, with none, says "I
   don't have a guide for that yet" and raises the ticket
   (`NO_KB_REPLY_*`, no model call, `needs_info.reason = "kb_no_match"`,

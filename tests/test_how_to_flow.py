@@ -284,3 +284,14 @@ def test_the_ticket_form_asks_by_email_then_answers(client):
     ai = [m["message"] for m in thread["messages"] if m["sender"] == "ai"]
     assert len(ai) == 2 and ANSWER in ai[1]
     assert "answer" in client.model.ops()
+
+
+def test_a_task_the_guide_doesnt_name_gets_no_guide(client):
+    # Chat eval near-miss: "can I change the dates" matched the apply-for-leave guide and
+    # the bot invented "you can edit the dates". The guide must name the task.
+    assert _usable("Can I change the dates of my leave request?") == []
+    assert _usable("How do I apply for leave?") == ["KB-0001"]
+    headers = _customer(client)
+    chat = _chat(client, headers, "Can I change the dates of my leave request?")
+    assert _ai_lines(chat)[0] == graph.NO_KB_REPLY_CHAT and chat["status"] == "escalated"
+    assert "answer" not in client.model.ops()

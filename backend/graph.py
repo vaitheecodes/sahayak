@@ -47,7 +47,7 @@ from typing_extensions import NotRequired
 
 from backend import app_settings, categories, db, email_utils, kb_retrieval, product, request_kind, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
-from backend.ai_service import chat_response, rewrite_query
+from backend.ai_service import chat_response, grounding, rewrite_query
 from backend.ai_service.schemas import (
     AnswerInput,
     CategorizeInput,
@@ -416,6 +416,30 @@ def on_customer_subject(candidate: dict, customer_text: str) -> bool:
             and _main_subject(customer_text) in question)
 
 
+# Verbs that name the task itself: a guide on applying for leave doesn't
+# answer "can I change my leave dates" (chat eval: the bot invented "you can
+# edit the dates"). Same-task verbs share a group; generic verbs (get, do,
+# see, open) are no task.
+_TASK_VERB_GROUPS = ["change edit modify update amend", "delete remove", "cancel withdraw", "add create new",
+                     "apply request", "clear empty", "install", "uninstall", "export download", "import upload", "reset",
+                     "upgrade", "enable", "disable", "connect integrate link", "disconnect unlink", "attach",
+                     "approve", "reject decline", "transfer move", "rename", "restore", "extend", "merge"]
+_TASK_VERB = {grounding._verb(w): n for n, group in enumerate(_TASK_VERB_GROUPS) for w in group.split()}
+
+
+def _task_groups(text: str) -> list[int]:
+    return [_TASK_VERB[v] for v in map(grounding._verb, re.findall(r"[a-z]+", text.lower())) if v in _TASK_VERB]
+
+
+def does_the_task(candidate: dict, customer_text: str) -> bool:
+    """The entry names the customer's task (their first task verb, or a same-task one)."""
+    asked = _task_groups(customer_text)
+    if not asked:
+        return True
+    entry = " ".join([candidate.get("intent") or "", candidate["instruction"], candidate.get("response") or ""])
+    return asked[0] in _task_groups(entry)
+
+
 def answers_how_to(candidate: dict, customer_text: str) -> bool:
     """A KB entry that can answer a how-to: about doing something (not a
     fault, not e.g. "how long are records kept"), on the customer's
@@ -425,7 +449,7 @@ def answers_how_to(candidate: dict, customer_text: str) -> bool:
     kind = candidate.get("kind")
     about_a_task = (kind == "how-to" if kind else
                     not request_kind.is_fault(instruction) and request_kind.mentions_task(instruction))
-    return about_a_task and on_customer_subject(candidate, customer_text)
+    return about_a_task and on_customer_subject(candidate, customer_text) and does_the_task(candidate, customer_text)
 
 
 # The AI's own how-to questions (fixed text, no model call). Asked at most
@@ -738,7 +762,8 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     picked category counts as confirmed (the customer chose that topic).
     An entry about another variant than the one named (the Android guide
     for an iPad app) is neither."""
-    customer_text = f"{_customer_authored_text(state['ticket_text'])}\n{state.get('query_rewrite') or ''}".strip()
+    # The rewrite first: in the KB's words it names the task (does_the_task reads the first one).
+    customer_text = f"{state.get('query_rewrite') or ''}\n{_customer_authored_text(state['ticket_text'])}".strip()
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
     how_to = is_how_to(state["ticket_text"])
