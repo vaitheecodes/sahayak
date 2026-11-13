@@ -7,6 +7,7 @@
 - Chat Reviews: technicians and managers.
 - Incidents: managers (technicians only the ones assigned to them).
 - Try a Ticket: technicians and managers, at /api/try-a-ticket.
+- Unanswered questions (KB gaps): managers only, question text and count.
 - Routing policy: public and read-only (the /docs page).
 """
 
@@ -209,6 +210,7 @@ NOT_FOR_ADMIN = [
     ("get", "/api/manager/sla", None),
     ("get", "/api/manager/tickets", None),
     ("get", "/api/manager/technicians", None),
+    ("get", "/api/manager/unanswered", None),
     ("post", "/api/manager/tickets/TKT-x/reassign", {"technician_id": None}),
     ("post", "/api/manager/tickets/TKT-x/priority", {"priority": "high"}),
     ("get", "/api/staff/dashboard", None),
@@ -231,3 +233,48 @@ def test_the_old_admin_report_and_ticket_endpoints_are_gone(client, path):
     assert client.get(path, headers=_admin(client)).status_code == 404
     res = client.post("/api/admin/tickets/TKT-x/reassign", headers=_admin(client), json={"technician_id": None})
     assert res.status_code in (404, 405)
+
+
+# ---------------------------------------------------------------------------
+# Unanswered questions: managers only, question text and count
+# ---------------------------------------------------------------------------
+def _save_unanswered(*questions):
+    conn = db.get_connection()
+    try:
+        for n, q in enumerate(questions):
+            conn.execute("INSERT INTO kb_unanswered (unanswered_id, question, channel, conversation_id, reason, "
+                         "created_at) VALUES (?, ?, 'chat', ?, 'no_guide', ?)",
+                         (f"UQ-{n}", q, f"CHAT-{n}", f"2026-01-01T00:00:0{n}+00:00"))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_unanswered_questions_are_403_for_the_admin_technicians_and_customers(client):
+    for headers in (_admin(client), _demo(client, "technician"), _customer(client)):
+        assert client.get("/api/manager/unanswered", headers=headers).status_code == 403
+    assert client.get("/api/manager/unanswered").status_code == 401
+    # The admin's old URL is gone.
+    assert client.get("/api/admin/unanswered", headers=_admin(client)).status_code in (404, 405)
+
+
+def test_managers_get_question_text_and_count_only_most_asked_first(client):
+    _save_unanswered("how do I add a shift rota", "How do I add a  shift rota", "where is the audit log")
+    lead = _bearer(client.post("/api/auth/login", json={
+        "email": seed_data.DEMO_PLATFORM_LEAD["email"], "password": seed_data.DEMO_PLATFORM_LEAD["password"]}))
+    for headers in (_demo(client, "manager"), lead):
+        body = client.get("/api/manager/unanswered", headers=headers).json()
+        assert body["total"] == 3
+        assert [(q["question"].lower().split()[:3], q["count"]) for q in body["questions"]] == [
+            (["how", "do", "i"], 2), (["where", "is", "the"], 1)]
+        # No customer, chat or ticket: nothing but the text and the count.
+        assert all(set(q) == {"question", "count"} for q in body["questions"])
+        assert "CHAT-" not in str(body)
+
+
+def test_every_manager_type_may_see_the_list_and_nobody_else_has_the_permission():
+    from backend import permissions
+
+    assert all(permissions.allowed({"role": "manager", "manager_type": t}, "unanswered")
+               for t in permissions.MANAGER_TYPES)
+    assert permissions.allowed({"role": "technician"}, "unanswered") is None

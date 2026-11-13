@@ -520,7 +520,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   other follow-up first gets one yes/no call, does the guide answer the
   latest message (`chat_response.covers_latest`); if not,
   `FOLLOWUP_NOT_COVERED` (the guide doesn't cover it; a ticket offer, "yes"
-  raises it), never an answer. The check is off in tests unless a test
+  raises it), never an answer. Only after a real answer (state `answered`).
+  Every "no guide" / not-covered question is saved in `kb_unanswered`
+  (Postgres `0010`; never for Try a ticket) and listed, most asked first,
+  at Manager → Unanswered questions (`GET /api/manager/unanswered`;
+  managers only, `permissions.PERMISSIONS[..]["unanswered"]`, the admin and
+  support engineers get 403; question text and count only, no customer,
+  chat or ticket; not department-scoped). In a chat,
+  "no guide" and the ticket number are one message (`chats.NO_GUIDE_LEAD`). The check is off in tests unless a test
   turns it on (`tests/conftest._followups_covered`).
   Covered by
   `tests/test_continuation_check.py`
@@ -562,14 +569,15 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
 - **Role layout** (`layout/nav.js`, `pages/{Admin,Manager,Technician}Portal.jsx`).
   **Admin: people and system only** — People (Users, Departments) ·
   System (Settings incl. SLA targets, Activity log); 403 on every ticket,
-  dashboard, SLA-report, chat, chat-review, incident and Try-a-ticket
-  endpoint (`tests/test_role_scope.py`). **Manager: own department only**
+  dashboard, SLA-report, chat, chat-review, incident, unanswered-questions
+  and Try-a-ticket endpoint (`tests/test_role_scope.py`). **Manager: own department only**
   (`staff.department_id`; a ticket or chat is in it when the department
   owns `COALESCE(category, requested_category)`), lists, counts and
   direct ids alike (`backend/manager.py`, `staff_tickets._ticket_for_staff`
   403, `chats._chat_scope` 404): Overview (Dashboard "Dashboard ·
   <department>", SLA) · Work (Department tickets with reassign + priority,
-  Chats, Chat reviews, Incidents) · Knowledge base (+ Try a ticket).
+  Chats, Chat reviews, Incidents, Unanswered questions) · Knowledge base
+  (+ Try a ticket).
   Reassign goes only to support engineers whose `department_id` is the
   manager's (support engineers may now "work" one department, set under Users).
   A Platform Lead (see Manager types) has every department, a department

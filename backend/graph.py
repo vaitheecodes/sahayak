@@ -39,7 +39,10 @@ changing ticket or chat state.
 
 from __future__ import annotations
 
+import logging
 import re
+import uuid
+from datetime import datetime, timezone
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -56,6 +59,8 @@ from backend.ai_service.schemas import (
     HistoryItem,
     KBCandidate,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Routing config
@@ -872,7 +877,7 @@ def generate_response(state: TicketState) -> dict:
     if top is None and (off_topic := off_topic_reply(state)):
         return {"ai_response": off_topic, "needs_info": None}
     if top is None and not data.vague:
-        return _no_guide(data)
+        return _no_guide(data, state)
     if top is not None and top.handling == "escalate_with_info" and top.response.strip():
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
@@ -889,22 +894,45 @@ def generate_response(state: TicketState) -> dict:
             covered = True   # the check failed: answer as before
         if not covered:
             if chat_response.FOLLOWUP_NOT_COVERED in data.recent_ai_replies[-1:]:
-                return _no_guide(data)   # offered once already: never the same question twice
+                return _no_guide(data, state)   # offered once already: never the same question twice
+            _note_unanswered(state, data, "followup_not_covered")
             return {"ai_response": chat_response.followup_not_covered(data).text, "needs_info": None}
     reply = steps or chat_response.answer(data)
     if reply.not_covered:
-        return _no_guide(data)
+        return _no_guide(data, state)
     return {"ai_response": reply.text, "needs_info": None}
 
 
-def _no_guide(data: AnswerInput) -> dict:
+def _no_guide(data: AnswerInput, state: TicketState) -> dict:
     """No KB entry answers this (none matched, or the matched one doesn't
     cover the latest message): say so plainly and hand off, no model call,
     never an answer from general knowledge."""
+    _note_unanswered(state, data, "no_guide")
     text = NO_KB_REPLY_EMAIL if data.reply_format == "email" else NO_KB_REPLY_CHAT
     if data.reply_format == "email":
         text = email_utils.format_email_reply(data.customer_name, text)
     return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
+
+
+def _note_unanswered(state: TicketState, data: AnswerInput, reason: str) -> None:
+    """Save the question for the admin's Unanswered questions list. Never
+    for Try a ticket (SIM- ids: nothing is persisted), and never fails the turn."""
+    conversation_id = state.get("ticket_id") or ""
+    if not data.latest_message or conversation_id.startswith("SIM-"):
+        return
+    try:
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO kb_unanswered (unanswered_id, question, channel, conversation_id, reason, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (f"UQ-{uuid.uuid4().hex[:12]}", data.latest_message[:1000], state.get("channel") or "chat",
+                 conversation_id, reason, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        logger.exception("Saving an unanswered question failed")
 
 
 # "I need to change something with our account": a task with no object.

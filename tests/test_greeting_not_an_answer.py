@@ -64,3 +64,25 @@ def test_my_issue_is_solved_needs_a_real_answer(client):
     assert client.post(f"/api/chats/{chat['session_id']}/resolve", headers=headers).status_code == 400
 
 
+def test_no_guide_questions_are_saved_for_the_managers_list(client):
+    for text in ("how do I add a performance review cycle", "How do I add a  performance review cycle",
+                 "how do I set up shift rotas"):
+        _chat(client, _customer(client), text)
+    (p,) = [p for p in seed_data.DEMO_STAFF if p["role"] == "manager"]
+    manager = {"Authorization": "Bearer " + client.post(
+        "/api/auth/login", json={"email": p["email"], "password": p["password"]}).json()["token"]}
+    rows = client.get("/api/manager/unanswered", headers=manager).json()["questions"]
+    assert [r["count"] for r in rows] == [2, 1] and rows[0]["question"].lower().startswith("how do i add a")
+
+
+def test_try_a_ticket_and_staff_save_no_unanswered_question(client):
+    state = {"ticket_id": "SIM-1", "customer_id": "C1", "channel": "chat",
+             "ticket_text": "Customer: how do I add a performance review cycle"}
+    state.update(graph.retrieve_kb_candidates(state))
+    graph.generate_response(state)
+    conn = db.get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) AS n FROM kb_unanswered").fetchone()["n"] == 0
+    finally:
+        conn.close()
+    assert client.get("/api/manager/unanswered", headers=_customer(client)).status_code == 403

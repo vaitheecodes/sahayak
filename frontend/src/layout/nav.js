@@ -18,6 +18,7 @@ import {
   Ticket,
   Timer,
   Users,
+  MessageCircleQuestion,
 } from "lucide-react";
 
 /* The menu for each role: `groups` is the full menu (the slide-in panel),
@@ -109,6 +110,7 @@ export const NAV = {
           { to: "/manager/chat-reviews", label: "Chat reviews", icon: MessageSquareText },
           { to: "/manager/incidents", label: "Incidents", icon: Siren },
           { to: "/manager/teams", label: "Teams", icon: Network, needs: "teams" },
+          { to: "/manager/unanswered", label: "Unanswered questions", icon: MessageCircleQuestion, needs: "unanswered" },
         ],
       },
       KNOWLEDGE_BASE,

@@ -92,7 +92,8 @@ def test_the_permission_table_has_every_type_and_the_peers_match():
     assert set(permissions.PERMISSIONS) == set(permissions.MANAGER_TYPES) == set(permissions.LABELS)
     peers = [permissions.PERMISSIONS[t] for t in ("tech_lead", "product_manager", "incident_manager")]
     assert peers[0] == peers[1] == peers[2]
-    assert all(v == permissions.DEPARTMENT for k, v in peers[0].items() if k != "teams")
+    assert all(v == permissions.DEPARTMENT for k, v in peers[0].items() if k not in ("teams", "unanswered"))
+    assert all(permissions.PERMISSIONS[t]["unanswered"] for t in permissions.MANAGER_TYPES)
     assert permissions.sees_all({"role": "manager", "manager_type": "platform_lead"})
     # A manager from before types, and anyone who isn't a manager.
     assert permissions.manager_type({"role": "manager", "manager_type": None}) == "tech_lead"

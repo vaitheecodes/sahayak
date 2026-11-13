@@ -190,6 +190,29 @@ def manager_technicians(department: str | None = DepartmentParam, user: dict = D
         conn.close()
 
 
+@router.get("/api/manager/unanswered")
+def manager_unanswered(limit: int = Query(default=100, ge=1, le=500), user: dict = Depends(_manager)):
+    """Questions the KB didn't cover (graph._note_unanswered): the same
+    text (case and spacing aside) counted once, most asked first. Question
+    text and count only: no customer, chat or ticket. Every manager type
+    (`unanswered` in permissions.PERMISSIONS); the admin gets 403 like on
+    tickets."""
+    if not permissions.allowed(user, "unanswered"):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    conn = db.get_connection()
+    try:
+        # shortcut: groups the newest 5,000 in Python; a GROUP BY when the table grows past that.
+        rows = conn.execute("SELECT question FROM kb_unanswered ORDER BY created_at DESC LIMIT 5000").fetchall()
+    finally:
+        conn.close()
+    groups: dict[str, dict] = {}
+    for r in rows:   # newest first: a group keeps its latest wording
+        g = groups.setdefault(" ".join(r["question"].lower().split()), {"question": r["question"], "count": 0})
+        g["count"] += 1
+    ranked = sorted(groups.values(), key=lambda g: g["count"], reverse=True)   # stable: ties newest first
+    return {"questions": ranked[:limit], "total": len(rows)}
+
+
 @router.get("/api/manager/teams")
 def manager_teams(user: dict = Depends(_manager)):
     """Every department's managers (with their type) and support engineers

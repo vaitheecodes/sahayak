@@ -39,11 +39,12 @@ ALL = "all"                # every department
 # reassign:   which support engineers a ticket may be handed to
 # incidents:  which incidents are listed (ALL for incident_manager widens it)
 # teams:      the Teams page (every department's managers and engineers)
+# unanswered: the Unanswered questions list (KB gaps; question text and count only)
 PERMISSIONS: dict[str, dict] = {
-    "tech_lead":        {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False},
-    "product_manager":  {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False},
-    "incident_manager": {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False},
-    "platform_lead":    {"tickets": ALL, "reassign": ALL, "incidents": ALL, "teams": True},
+    "tech_lead":        {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False, "unanswered": True},
+    "product_manager":  {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False, "unanswered": True},
+    "incident_manager": {"tickets": DEPARTMENT, "reassign": DEPARTMENT, "incidents": DEPARTMENT, "teams": False, "unanswered": True},
+    "platform_lead":    {"tickets": ALL, "reassign": ALL, "incidents": ALL, "teams": True, "unanswered": True},
 }
 
 

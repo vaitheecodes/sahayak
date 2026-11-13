@@ -16,6 +16,7 @@ import DepartmentTickets from "../components/DepartmentTickets";
 import IncidentsPanel from "../components/IncidentsPanel";
 import SlaPanel from "../components/SlaPanel";
 import StaffChats from "../components/StaffChats";
+import UnansweredPanel from "../components/UnansweredPanel";
 import Dashboard from "../components/dashboard/Dashboard";
 import DepartmentPicker from "../components/manager/DepartmentPicker";
 import Teams from "../components/manager/Teams";
@@ -29,6 +30,7 @@ const SECTIONS = {
   "chat-reviews": "Chat reviews",
   incidents: "Incidents",
   teams: "Teams",
+  unanswered: "Unanswered questions",
 };
 // The pages a Platform Lead can narrow to one department.
 const PICKS_DEPARTMENT = new Set(["dashboard", "sla", "tickets"]);
@@ -61,6 +63,7 @@ export default function ManagerPortal() {
         {section === "chats" && <StaffChats />}
         {section === "chat-reviews" && <ChatReviews />}
         {section === "incidents" && <IncidentsPanel />}
+        {section === "unanswered" && <UnansweredPanel />}
       </div>
     </AppShell>
   );

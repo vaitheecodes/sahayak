@@ -323,6 +323,8 @@ export const api = {
     return request(`/admin/audit?${params}`, { auth: true });
   },
 
+  managerUnanswered: () => request("/manager/unanswered", { auth: true }),
+
   adminDepartments: () => request("/admin/departments", { auth: true }),
   adminCreateDepartment: (name, categories) =>
     request("/admin/departments", { method: "POST", body: { name, categories }, auth: true }),
