@@ -201,6 +201,8 @@ def test_an_off_topic_message_gets_a_brief_fixed_reply_and_never_the_same_questi
     ("I want to talk to a human", True), ("can I speak with someone from support", True), ("human please", True),
     ("connect me to an agent", True), ("how do I connect Slack", False), ("my agent stopped reporting", False),
     ("can someone help me with leave", False),
+    ("Yes, please raise a ticket.", True), ("please create a ticket", True),
+    ("How do I raise a ticket in the app?", False), ("where can I open a ticket?", False),   # asking how
 ])
 def test_an_explicit_request_for_a_person(message, human):
     from backend import handoff_signals

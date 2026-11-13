@@ -168,10 +168,17 @@ _ASKS_FOR_HUMAN = re.compile(
     r"(?:a |an |the |some |your )?(?:human|person|real person|live agent|agent|someone|somebody|representative"
     r"|support (?:team|engineer|person|staff)|engineer|executive)\b"
     r"|\b(?:i want|i need|get me|give me)\W+(?:a |an )?(?:human|real person|live agent|representative)\b"
-    r"|^\W*(?:human|agent|real person|representative)(?:\W+please)?\W*$"
-    r"|\b(?:raise|create|open|log|file|submit)\s+(?:a\s+|the\s+)?(?:support\s+)?ticket\b",
+    r"|^\W*(?:human|agent|real person|representative)(?:\W+please)?\W*$",
     re.IGNORECASE)
 
 
+_ASKS_FOR_TICKET = re.compile(r"\b(?:raise|create|open|log|file|submit)\s+(?:a\s+|the\s+)?(?:support\s+)?ticket\b",
+                              re.IGNORECASE)
+# "How do I raise a ticket in the app?" asks how, it doesn't ask for one.
+_ASKS_HOW = re.compile(r"^\W*(?:how|where|when|why|what|which|can i|could i|is there|is it possible)\b",
+                       re.IGNORECASE)
+
+
 def asks_for_human(message_text: str) -> bool:
-    return bool(_ASKS_FOR_HUMAN.search(normalize_apostrophes(message_text or "")))
+    text = normalize_apostrophes(message_text or "")
+    return bool(_ASKS_FOR_HUMAN.search(text)) or (bool(_ASKS_FOR_TICKET.search(text)) and not _ASKS_HOW.search(text))
