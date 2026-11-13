@@ -277,7 +277,7 @@ _PROXY = ProxyConnectionError(proxy_url="http://127.0.0.1:3128", error="refused"
 
 @pytest.mark.parametrize("error, message, level, calls", [
     (_client_error("ThrottlingException"), "throttled", logging.WARNING, 2),
-    (_client_error("ServiceUnavailableException"), "unavailable", logging.WARNING, 1),
+    (_client_error("ServiceUnavailableException"), "unavailable", logging.WARNING, 2),   # transient: retried once
     (_client_error("ModelTimeoutException"), "timed out", logging.WARNING, 2),
     (_client_error("AccessDeniedException"), "IAM policy", logging.ERROR, 1),
     (_client_error("ValidationException"), "BEDROCK_MODEL_ID", logging.ERROR, 1),

@@ -47,7 +47,7 @@ from typing_extensions import NotRequired
 
 from backend import app_settings, categories, db, email_utils, kb_retrieval, product, request_kind, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
-from backend.ai_service import chat_response, grounding, rewrite_query
+from backend.ai_service import AIError, chat_response, grounding, rewrite_query
 from backend.ai_service.schemas import (
     AnswerInput,
     CategorizeInput,

@@ -98,3 +98,21 @@ def test_asking_for_a_ticket_is_a_request_for_a_person_and_the_offer_is_never_re
              "reply_format": "chat"}
     result = graph.generate_response(state)
     assert result["ai_response"] == graph.NO_KB_REPLY_CHAT and result["needs_info"]["reason"] == "kb_no_match"
+
+
+def test_a_failed_coverage_or_rewrite_call_answers_as_before(monkeypatch):
+    # Live eval: Bedrock's ServiceUnavailableException in covers_latest hit an unimported AIError (NameError).
+    from backend import graph
+    from backend.ai_service import AIError, rewrite_query
+
+    def down(*a, **k):
+        raise AIError("down", provider.AIFailure(kind="network", operation="covers_latest",
+                                                 code="ServiceUnavailableException"))
+
+    monkeypatch.setattr(chat_response, "covers_latest", down)
+    monkeypatch.setattr(rewrite_query, "rewrite_query", down)
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: "Allow the widget's servers in your policy.")
+    state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: which servers?",
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "reply_format": "chat"}
+    assert graph.generate_response(state)["ai_response"] == "Allow the widget's servers in your policy."
+    assert graph.retrieve_kb_candidates({"ticket_text": "Customer: something unrelated entirely"}) == {"kb_candidates": []}

@@ -373,13 +373,14 @@ TOOL_NAME_UNSAFE = re.compile(r"[^a-zA-Z0-9_-]")
 
 # Transient Bedrock errors get one retry after a short backoff: throttling
 # and timeouts only. Access, validation and configuration errors never do.
-BEDROCK_RETRY_CODES = frozenset({"ThrottlingException", "ModelTimeoutException"})
+BEDROCK_RETRY_CODES = frozenset({"ThrottlingException", "ModelTimeoutException", "ServiceUnavailableException"})
 # AWS error code -> failure kind (anything else: config if BEDROCK_ERRORS
 # says so, else unknown).
 BEDROCK_KINDS = {
     "ThrottlingException": "throttling",
     "ServiceQuotaExceededException": "throttling",
     "ModelTimeoutException": "timeout",
+    "ServiceUnavailableException": "network",   # Bedrock briefly down: an outage, retried once
     "AccessDeniedException": "access_denied",
     "ValidationException": "validation",
 }
