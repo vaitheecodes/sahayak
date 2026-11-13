@@ -199,15 +199,17 @@ def test_chat_turn_after_an_ai_failure_sends_a_valid_request(app_client, strict)
     second = app_client.post(f"/api/chats/{session_id}/messages",
                              json={"message": "Which log file should I check?"}, headers=headers).json()
     assert second["ai_error"] == chats.AI_UNAVAILABLE
-    assert [m["role"] for m in second["messages"]] == ["customer", "ai", "customer"]
+    # The bot offers a ticket instead of a bare error (chats.OUTAGE_REPLY).
+    assert [m["role"] for m in second["messages"]] == ["customer", "ai", "customer", "ai"]
+    assert second["messages"][-1]["content"] == chats.OUTAGE_REPLY
 
-    # Turn 3: two customer messages in a row in the history.
+    # Turn 3: the outage reply in the history still makes a valid request.
     strict.text = "Check agent.log in the agent's logs folder."
     calls_before = len(strict.calls)
     third = app_client.post(f"/api/chats/{session_id}/messages",
                             json={"message": "Where is that log on Linux?"}, headers=headers).json()
     assert third["ai_error"] is None and third["status"] == "active"
-    assert [m["role"] for m in third["messages"]] == ["customer", "ai", "customer", "customer", "ai"]
+    assert [m["role"] for m in third["messages"]] == ["customer", "ai", "customer", "ai", "customer", "ai"]
     assert third["messages"][-1]["content"] == "Check agent.log in the agent's logs folder."
 
     assert strict.rejected == []

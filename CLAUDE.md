@@ -434,7 +434,12 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   customer's ticket view shows it as a collapsible "Chat transcript".
   **AI failure** never changes chat state: the customer's message is
   kept, everything after it is rolled back (SAVEPOINT), the response
-  carries `ai_error`, and "Raise a ticket" still works. Summaries come
+  carries `ai_error`, the bot replies `chats.OUTAGE_REPLY` (offers a
+  ticket: "yes" raises it; never counts as an answer for "My issue is
+  solved"), and "Raise a ticket" still works. The chat eval marks a
+  conversation with a provider failure (`harness.infra_error`: kind
+  throttling / timeout / network / access_denied / config) `infra_error`
+  and leaves it out of the score. Summaries come
   from `backend/ai_service/summarize_conversation.py` (validated pydantic output,
   retry once, deterministic fallback marked `source: "fallback"` — set by
   code, never the model). Pre-session chat-type ticket rows are migrated

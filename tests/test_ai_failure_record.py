@@ -161,7 +161,7 @@ def test_a_provider_failure_is_recorded_on_the_chat(app_client, strict):
     assert view.status_code == 200
     body = view.json()
     assert [f["kind"] for f in body["ai_failures"]] == ["throttling", "throttling"]
-    assert body["message_counts"] == {"customer": 2, "ai": 1}
+    assert body["message_counts"] == {"customer": 2, "ai": 2}   # the answer, then the ticket offer
     assert "zebracorn" not in view.text
     assert app_client.get(f"/api/admin/chats/{sid}", headers=headers).status_code in (401, 403)
     audit = app_client.get("/api/admin/audit", params={"entity": "chat", "entity_id": sid},

@@ -49,3 +49,16 @@ def test_an_idle_chat_is_closed_as_abandoned_when_next_opened(client):  # noqa: 
     assert view["status"] == "abandoned" and view["ticket_id"] is None
     assert view["messages"][-1]["content"] == chats.IDLE_CLOSED_MESSAGE.format(minutes=chats.idle_minutes())
     assert client.post(f"{url}/messages", json={"message": "hello?"}, headers=headers).status_code == 400
+
+
+def test_the_eval_leaves_out_provider_outages_but_not_our_own_bugs(client):  # noqa: F811
+    from backend.ai_service import AIError, provider
+    from backend.evals import harness
+
+    headers = _customer(client)
+    throttled = AIError("down", provider.AIFailure(kind="throttling", operation="answer", code="ThrottlingException"))
+    outage = _start(client, headers, throttled, issue="how do I restart the agent")
+    bug = _start(client, headers, RuntimeError("our bug"), issue="how do I restart the agent")
+    assert outage["ai_error"] and bug["ai_error"]
+    assert harness.infra_error(outage["session_id"]) is True
+    assert harness.infra_error(bug["session_id"]) is False

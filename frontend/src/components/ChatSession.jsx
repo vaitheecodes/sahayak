@@ -57,7 +57,8 @@ export default function ChatSession({ initialSession, sessionId, onChanged, onOp
   const [input, setInput] = useState("");
   const [pendingText, setPendingText] = useState(null);
   const [busy, setBusy] = useState(null); // null | "send" | "resolve" | "escalate"
-  const [error, setError] = useState(initialSession?.ai_error || "");
+  const [error, setError] = useState(
+    initialSession?.ai_error && initialSession.messages?.at(-1)?.role !== "ai" ? initialSession.ai_error : "");
   const [confirmingTicket, setConfirmingTicket] = useState(false);
   const scrollRef = useRef(null);
   const inputId = useId();
@@ -82,7 +83,8 @@ export default function ChatSession({ initialSession, sessionId, onChanged, onOp
     try {
       const next = await call();
       setSession(next);
-      if (next.ai_error) setError(next.ai_error);
+      // The bot's own reply offers a ticket on an outage; the banner only if it couldn't be stored.
+      if (next.ai_error && next.messages.at(-1)?.role !== "ai") setError(next.ai_error);
       onChanged?.(next);
       return next;
     } catch (err) {

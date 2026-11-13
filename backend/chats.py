@@ -55,6 +55,10 @@ AI_UNAVAILABLE = (
     "Our AI assistant is unavailable right now. Your messages are saved — "
     "try again in a moment, or raise a ticket and our support team will pick it up."
 )
+# Shown in the chat when the model can't be reached: an offer of a ticket,
+# never a bare error. "yes" accepts it (handoff_signals.offers_human_handoff).
+OUTAGE_REPLY = ("I can't answer right now: the assistant is having a problem on our side. Would you like me "
+                "to raise a ticket so our support team picks this up? Reply yes, or use Raise a ticket below.")
 _RESOLVED_REPLY = "Glad that's sorted. I've closed this chat — start a new one any time."
 # No model call for these (docs/CHAT_CONTRACT.md rules 2 and 7).
 ACK_REPLY = ("Glad to help. If a step isn't clear, tell me which one. When it's solved, the "
@@ -477,6 +481,9 @@ def _finish_turn(turn: _Turn, message_text: str, background_tasks: BackgroundTas
                 conn.rollback()
                 ai_failures.note_exception(exc, failures, operation="store_turn")
                 ai_error = AI_UNAVAILABLE
+        if ai_error and _reload(conn, session_id)["status"] == "active":
+            _insert_chat_message(conn, session_id, "ai", OUTAGE_REPLY)
+            conn.commit()
         if failures:
             ai_failures.record(conn, "chat", session_id, failures)
             conn.commit()
@@ -615,7 +622,7 @@ def resolve_chat(session_id: str, customer_id: str = Depends(auth.get_current_cu
         session = _session_or_error(conn, session_id, customer_id)
         _require_active(session)
         last_ai = _last_ai(conn, session_id)
-        if last_ai is None:
+        if last_ai is None or last_ai == OUTAGE_REPLY:
             raise HTTPException(status_code=400, detail="The assistant hasn't answered yet")
         transcript = _transcript_text(conn, session_id)
     finally:

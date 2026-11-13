@@ -76,7 +76,7 @@ def run(client, case: Case) -> dict:
                               "ai_error": f"HTTP {res.status_code}"})
                 break
             view = res.json()
-            session_id = view["session_id"]
+            session_id = result["session_id"] = view["session_id"]
             result["issue"] = view.get("issue")
             turns.append({"customer": message, "bot": _bot_reply(view), "status": view["status"],
                           "ticket_id": view.get("ticket_id"), "ai_error": view.get("ai_error")})

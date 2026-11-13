@@ -23,7 +23,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import conversation, db, graph, main, runtime, seed_data
+from backend import chats, conversation, db, graph, main, runtime, seed_data
 from backend.ai_service import AIError, provider, suggest_steps
 from backend.ai_service import summarize_conversation as summaries
 from backend.ai_service.schemas import ChatResolutionSummary, HandoffSummary, SuggestedSteps
@@ -232,7 +232,8 @@ def test_ai_failure_on_first_message_keeps_chat_active_and_message_saved(client)
     chat = _start(client, headers, RuntimeError("LLM down"))
     assert chat["status"] == "active"
     assert chat["ai_error"]
-    assert [m["role"] for m in chat["messages"]] == ["customer"]
+    assert [m["role"] for m in chat["messages"]] == ["customer", "ai"]   # the ticket offer (OUTAGE_REPLY)
+    assert chat["messages"][-1]["content"] == chats.OUTAGE_REPLY
     assert _query("SELECT COUNT(*) AS n FROM tickets")[0]["n"] == 0
     assert _query("SELECT COUNT(*) AS n FROM chat_reviews")[0]["n"] == 0
 
@@ -246,7 +247,8 @@ def test_ai_failure_mid_chat_never_resolves_or_escalates(client, monkeypatch):
     after = _send(client, headers, chat["session_id"], "that didn't help, what next?")
     assert after["status"] == "active"
     assert after["ai_error"]
-    assert after["messages"][-1]["content"] == "that didn't help, what next?"
+    assert after["messages"][-2]["content"] == "that didn't help, what next?"
+    assert after["messages"][-1]["content"] == chats.OUTAGE_REPLY
     assert after["ticket_id"] is None
 
 
@@ -414,3 +416,13 @@ def test_model_cannot_set_the_summary_source(monkeypatch):
     monkeypatch.setattr(provider, "complete", _fake)
     assert summaries.summarize_escalation("t", "r").source == "ai"
     assert '"source"' not in captured[0][0]["content"]
+
+
+def test_an_outage_offers_a_ticket_and_yes_raises_it(client, ai_summaries):
+    # docs/CHAT_CONTRACT.md rule 14: never a bare "AI unavailable".
+    headers = _customer(client)
+    chat = _start(client, headers, RuntimeError("LLM down"))
+    assert chat["ai_error"] and chat["messages"][-1]["content"] == chats.OUTAGE_REPLY
+    assert client.post(f"/api/chats/{chat['session_id']}/resolve", headers=headers).status_code == 400
+    after = _send(client, headers, chat["session_id"], "yes")
+    assert after["status"] == "escalated" and after["ticket_id"]

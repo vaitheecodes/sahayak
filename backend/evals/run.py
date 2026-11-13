@@ -61,7 +61,8 @@ def _passed(verdicts: dict) -> bool:
 def report(run_dir: Path, rows: list[dict], packs: dict, calls: dict, bot_model: str) -> str:
     done = [r for r in rows if not r["result"].get("error")]
     lines = [f"# Chat eval {run_dir.name}", "", f"Bot answer model: {bot_model}. Conversations: {len(done)}"
-             f" ({len(rows) - len(done)} stopped at the call cap). Calls: {calls['total_calls']}"
+             f" ({len(rows) - len(done)} left out: {sum(r['result'].get('error') == 'infra_error' for r in rows)} provider "
+             f"outage (infra_error), the rest call cap or simulator/judge failure). Calls: {calls['total_calls']}"
              f" {calls['calls']}, cost ${calls['cost_usd']:.2f}.", "",
              "| # | Rule | Pass | Fail | Disputed | Pass rate |", "|---|---|---|---|---|---|"]
     for n, name in RULES.items():
@@ -122,6 +123,10 @@ def _run_cases(cases_by_kb, packs, rows, workers, counted, run_dir):
         try:
             with ThreadPoolExecutor(workers) as pool:
                 results = list(pool.map(lambda c: simulate.run(client, c), kb_cases))
+            for result in results:   # provider outages: left out of the score, counted apart
+                if not result.get("error") and any(t["ai_error"] for t in result["turns"]) \
+                        and harness.infra_error(result.get("session_id")):
+                    result["error"] = "infra_error"
 
             def score(result):
                 try:

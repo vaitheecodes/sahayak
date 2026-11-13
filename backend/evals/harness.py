@@ -153,3 +153,26 @@ def record(run_id: str, summary: dict) -> dict:
     OUT.mkdir(parents=True, exist_ok=True)
     LEDGER.write_text(json.dumps(data, indent=2))
     return data
+
+
+# Failure kinds that are the provider's (backend/ai_failures.py), not the bot's.
+INFRA_KINDS = {"throttling", "timeout", "network", "access_denied", "config"}
+
+
+def infra_error(session_id: str | None) -> bool:
+    """True when a turn of this chat failed because the model provider did
+    (recorded as chat.ai_failure, outcome failed): an outage, left out of the
+    score. A failure of our own code (kind unknown, parse...) still counts."""
+    if not session_id:
+        return False
+    from backend import db
+
+    conn = db.get_connection()
+    try:
+        rows = conn.execute("SELECT detail FROM audit_events WHERE action = 'chat.ai_failure' AND entity_id = ?",
+                            (session_id,)).fetchall()
+    finally:
+        conn.close()
+    details = [json.loads(r["detail"]) for r in rows]
+    return any(d.get("outcome") == "failed" and d.get("kind") in INFRA_KINDS for d in details)
+
