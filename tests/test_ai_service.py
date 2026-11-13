@@ -162,7 +162,8 @@ def test_summarize_incident_validates(monkeypatch):
 
 def test_text_replies_must_be_non_empty(monkeypatch):
     """complete_text rejects empty replies (parse/schema failure); a chat
-    answer then falls back to a useful question instead of failing."""
+    answer then falls back to the ticket offer (never a generic template)
+    instead of failing."""
     _replies(monkeypatch, "   ", "")
     with pytest.raises(AIError) as exc:
         provider.complete_text("instructions", {"ticket": "hi"})
@@ -170,7 +171,7 @@ def test_text_replies_must_be_non_empty(monkeypatch):
     _replies(monkeypatch, "   ", "")
     log = provider.start_failure_log()
     reply = chat_response.answer(AnswerInput(ticket_text="Customer: my agent stopped reporting"))
-    assert reply.text == chat_response.DETAIL_QUESTION
+    assert reply.text == chat_response.OFFER_TICKET_CHAT
     assert [(f.kind, f.outcome) for f in log] == [("parse_schema", "fallback")]
 
 
