@@ -22,7 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from backend import db, incidents, main, runtime
+from backend import chats, db, incidents, main, runtime
 from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider, schemas
 from backend.ai_service.backends import AppSailCredentials, QuickMLAppSailBackend
 from backend.ai_service.schemas import AnswerInput, CategorizeInput
@@ -342,7 +342,9 @@ def test_backend_failure_in_a_chat_changes_nothing(quickml_env, real_complete, t
     conn = db.get_connection()
     try:
         assert conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM chat_messages WHERE role = 'ai'").fetchone()[0] == 0
+        # Only the ticket offer (chats.OUTAGE_REPLY), never an answer.
+        assert [r[0] for r in conn.execute("SELECT content FROM chat_messages WHERE role = 'ai'")] == [
+            chats.OUTAGE_REPLY]
         assert conn.execute("SELECT COUNT(*) FROM chat_reviews").fetchone()[0] == 0
     finally:
         conn.close()

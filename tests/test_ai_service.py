@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import db, graph, main, runtime, seed_data
+from backend import chats, db, graph, main, runtime, seed_data
 from backend.ai_service import (
     backends,
     AIError,
@@ -196,7 +196,7 @@ def test_provider_failure_in_chat_keeps_message_and_resolves_nothing(client):
     chat = client.post("/api/chats", json={"issue": "my agent stopped reporting"}, headers=headers).json()
     assert chat["status"] == "active"
     assert chat["ai_error"]
-    assert [m["content"] for m in chat["messages"]] == ["my agent stopped reporting"]
+    assert [m["content"] for m in chat["messages"]] == ["my agent stopped reporting", chats.OUTAGE_REPLY]
 
 
 def test_provider_failure_on_new_ticket_still_creates_it_for_a_human(client):

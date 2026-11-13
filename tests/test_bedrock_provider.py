@@ -20,7 +20,7 @@ from botocore.exceptions import (ClientError, EndpointConnectionError, NoCredent
                                  ReadTimeoutError)
 from fastapi.testclient import TestClient
 
-from backend import categories, db, main, runtime
+from backend import categories, chats, db, main, runtime
 from backend.ai_service import AIError, backends, categorize_ticket, chat_response, provider, schemas
 from backend.ai_service.backends import BedrockBackend
 from backend.ai_service.schemas import AnswerInput, CategorizeInput
@@ -356,7 +356,9 @@ def test_bedrock_failure_in_a_chat_changes_nothing(real_complete, tmp_path, monk
     conn = db.get_connection()
     try:
         assert conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM chat_messages WHERE role = 'ai'").fetchone()[0] == 0
+        # Only the ticket offer (chats.OUTAGE_REPLY), never an answer.
+        assert [r[0] for r in conn.execute("SELECT content FROM chat_messages WHERE role = 'ai'")] == [
+            chats.OUTAGE_REPLY]
         assert conn.execute("SELECT COUNT(*) FROM chat_reviews").fetchone()[0] == 0
     finally:
         conn.close()
