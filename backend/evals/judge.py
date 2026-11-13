@@ -35,6 +35,7 @@ def _entries_text(pack: dict) -> str:
 
     return "\n\n".join(_entry_text(e) + (f"\nSnippets: {e.get('snippets')}" if e.get("snippets") else "")
                        + (f"\nSource page: {e['source_url']}" if e.get("source_url") else "")
+                       + (f"\nWhat the customer is asked to add to a ticket: {e['collect']}" if e.get("collect") else "")
                        for e in pack["entries"])
 
 
