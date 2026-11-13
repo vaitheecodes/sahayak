@@ -309,7 +309,21 @@ def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
     return valued
 
 
+# The model copying a data block of its own prompt into the reply (chat eval:
+# "<kb_guidance> [ACCOUNT / Unable to sign in] (match score 0.50) ...").
+_PROMPT_ECHO = re.compile(r"</?(?:kb_guidance|ticket|transcript|customer_latest_message|customer_details|guide"
+                          r"|unconfirmed_topics|your_previous_replies|history)>|\(match score \d", re.IGNORECASE)
+
+
+def echoes_prompt(text: str) -> bool:
+    return bool(_PROMPT_ECHO.search(text or ""))
+
+
 def _frame(text: str, data: AnswerInput | ClarifyInput, operation: str = "") -> ChatReply:
+    if echoes_prompt(text):
+        raise provider.AIError("AI reply copied a block of its prompt",
+                               provider.AIFailure(kind="filter_rejected", operation=operation or "answer",
+                                                  code="echoed_prompt"))
     # The marker alone, or with more text after it (which never reaches the customer).
     if isinstance(data, AnswerInput) and data.kb_candidates and text.strip().upper().startswith(NOT_COVERED):
         return ChatReply(text=NOT_COVERED, not_covered=True)
@@ -778,6 +792,12 @@ def info_request(data: AnswerInput) -> ChatReply:
                 operation="info_request",
             )
         cleaned = raw if data.reply_format == "email" else clean_chat_reply(raw)
+        # Same guarantees as an answer: no prompt echo, every instruction from the entry.
+        unbacked = grounding.ground_instructions(cleaned, grounding.kb_text([entry]))[1]
+        if echoes_prompt(cleaned) or unbacked:
+            for sentence in unbacked:
+                logger.warning("Info request rewrite dropped: an instruction the KB entry doesn't give: %r", sentence)
+            cleaned = ""
         steps = numbered_steps(cleaned)
         if steps is None:
             provider.note_failure(provider.AIFailure(

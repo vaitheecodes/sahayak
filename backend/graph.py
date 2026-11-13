@@ -885,6 +885,8 @@ def generate_response(state: TicketState) -> dict:
         except AIError:
             covered = True   # the check failed: answer as before
         if not covered:
+            if chat_response.FOLLOWUP_NOT_COVERED in data.recent_ai_replies[-1:]:
+                return _no_guide(data)   # offered once already: never the same question twice
             return {"ai_response": chat_response.followup_not_covered(data).text, "needs_info": None}
     reply = steps or chat_response.answer(data)
     if reply.not_covered:

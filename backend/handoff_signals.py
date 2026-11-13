@@ -168,7 +168,8 @@ _ASKS_FOR_HUMAN = re.compile(
     r"(?:a |an |the |some |your )?(?:human|person|real person|live agent|agent|someone|somebody|representative"
     r"|support (?:team|engineer|person|staff)|engineer|executive)\b"
     r"|\b(?:i want|i need|get me|give me)\W+(?:a |an )?(?:human|real person|live agent|representative)\b"
-    r"|^\W*(?:human|agent|real person|representative)(?:\W+please)?\W*$",
+    r"|^\W*(?:human|agent|real person|representative)(?:\W+please)?\W*$"
+    r"|\b(?:raise|create|open|log|file|submit)\s+(?:a\s+|the\s+)?(?:support\s+)?ticket\b",
     re.IGNORECASE)
 
 

@@ -175,7 +175,9 @@ def check(result: dict, pack: dict, kb: str) -> dict[int, tuple[str, str]]:
 
     # 9. Not covered: "no guide" and a ticket within two replies.
     first_two = turns[:2]
-    handled = any(NO_GUIDE in t["bot"] or t["status"] == "escalated" or t["ticket_id"] for t in first_two)
+    # The contract: "I don't have a guide" and a ticket, or the offer of one (chat_response.FOLLOWUP_NOT_COVERED).
+    handled = any(NO_GUIDE in t["bot"] or "guide I have doesn't cover" in t["bot"] or t["status"] == "escalated"
+                  or t["ticket_id"] for t in first_two)
     verdict(9, None if handled else "no 'no guide' / ticket within two replies", expected == "not_covered")
 
     # 10. The snippet never contradicts the text.

@@ -40,7 +40,8 @@ against the real model: rules marked **code** are checked by
 9. **Not covered means a plain answer and a ticket** (code). A question
    no approved entry covers gets "I don't have a guide for that" and a
    ticket (or the offer of one) within two bot replies, not a loop of
-   questions.
+   questions. For a follow-up, "The guide I have doesn't cover that" with
+   the offer of a ticket counts; the offer is made once, then the ticket.
 10. **The right variant, and a consistent snippet** (code). A question
     about a region, platform or edition gets that variant's guidance,
     and a snippet shown under the answer never contradicts the answer

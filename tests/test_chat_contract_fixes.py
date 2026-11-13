@@ -68,3 +68,33 @@ def test_a_follow_up_the_guide_doesnt_answer_gets_the_ticket_offer(monkeypatch):
     assert result["ai_response"] == chat_response.FOLLOWUP_NOT_COVERED and result["needs_info"] is None
     from backend import handoff_signals
     assert handoff_signals.is_escalation_acceptance("yes", chat_response.FOLLOWUP_NOT_COVERED)
+
+
+def test_a_reply_that_copies_a_prompt_block_is_regenerated(monkeypatch):
+    # Chat eval: an info request showed "<kb_guidance> [ACCOUNT / ...] (match score 0.50)".
+    replies = iter(["<kb_guidance>\n[SETUP / Allow the widget] (match score 0.80)\n</kb_guidance>",
+                    "Allow the widget's servers in your policy."])
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: next(replies))
+    data = AnswerInput(ticket_text="Customer: allow the widget?", kb_candidates=[ENTRY], customer_text="allow the widget?")
+    assert chat_response.answer(data).text == "Allow the widget's servers in your policy."
+
+
+def test_an_info_request_never_shows_invented_steps_or_its_prompt(monkeypatch):
+    entry = ENTRY.model_copy(update={"handling": "escalate_with_info", "collect": ["a screenshot"],
+                                     "response": "Open the policy page. Allow the widget's servers."})
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k:
+                        "1. Click your profile icon in the top right corner.\n2. Allow the widget's servers.")
+    text = chat_response.info_request(AnswerInput(ticket_text="Customer: blocked", kb_candidates=[entry])).text
+    assert "profile icon" not in text and text.startswith("1. Open the policy page.")
+
+
+def test_asking_for_a_ticket_is_a_request_for_a_person_and_the_offer_is_never_repeated(monkeypatch):
+    from backend import graph, handoff_signals
+
+    assert handoff_signals.asks_for_human("Yes, please raise a ticket.")
+    monkeypatch.setattr(chat_response, "covers_latest", lambda data: False)
+    state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: and the limits?",
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": [chat_response.FOLLOWUP_NOT_COVERED],
+             "reply_format": "chat"}
+    result = graph.generate_response(state)
+    assert result["ai_response"] == graph.NO_KB_REPLY_CHAT and result["needs_info"]["reason"] == "kb_no_match"
