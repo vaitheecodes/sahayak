@@ -253,7 +253,9 @@ def test_how_to_solve_it_gets_the_steps_and_snippet_again(client, monkeypatch, c
 
     chat = _say(client, headers, chat["session_id"], "what are the sources?")
     sources = chat["messages"][-1]["content"]
-    assert sources.startswith(f"The sources are {COM}") and f"```\n{CONFIG}\n```" in sources
+    # Fixed text, no model call: the guide, its page, and the snippet with the domains.
+    assert sources.startswith(chat_response.SOURCES_INTRO.format(title=POLICY_ENTRY["title"]))
+    assert POLICY_ENTRY["source_url"] in sources and f"```\n{CONFIG}\n```" in sources
     assert chat["status"] == "active"
 
 

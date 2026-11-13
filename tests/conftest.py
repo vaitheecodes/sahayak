@@ -186,3 +186,12 @@ def _no_query_rewrite(monkeypatch):
     from backend.ai_service import rewrite_query
 
     monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "")
+
+
+@pytest.fixture(autouse=True)
+def _followups_covered(monkeypatch):
+    # The follow-up coverage check (chat_response.covers_latest) is one more model
+    # call scripted models don't know: "covered" unless a test turns it on.
+    from backend.ai_service import chat_response
+
+    monkeypatch.setattr(chat_response, "covers_latest", lambda data: True)

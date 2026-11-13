@@ -42,3 +42,29 @@ def test_an_answer_turn_that_is_only_a_question_becomes_the_guides_answer(monkey
     assert chat_response.answer(data).text == ENTRY.response
     assert chat_response.only_a_question("Is it the Leave page or Payroll?")
     assert not chat_response.only_a_question("Allow the servers. 1. Open the policy. Done?")
+
+
+def test_what_are_the_sources_names_the_guide_and_its_page_without_a_model(monkeypatch):
+    from backend import graph
+
+    entry = ENTRY.model_copy(update={"source_url": "https://help.example.com/widget"})
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no model")))
+    state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\nCustomer: what are the sources?",
+             "kb_candidates": [entry.model_dump() | {"kb_entry_id": "KB-1"}], "recent_ai_replies": ["Allow the servers."],
+             "reply_format": "chat"}
+    reply = graph.generate_response(state)["ai_response"]
+    assert reply == 'This comes from our guide "Allow the widget": https://help.example.com/widget.'
+
+
+def test_a_follow_up_the_guide_doesnt_answer_gets_the_ticket_offer(monkeypatch):
+    from backend import graph
+
+    monkeypatch.setattr(chat_response, "covers_latest", lambda data: False)
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no answer")))
+    state = {"ticket_text": "Customer: allow the widget?\nAgent (AI): Allow the servers.\n"
+                            "Customer: will my manager get a notification?",
+             "kb_candidates": [ENTRY.model_dump()], "recent_ai_replies": ["Allow the servers."], "reply_format": "chat"}
+    result = graph.generate_response(state)
+    assert result["ai_response"] == chat_response.FOLLOWUP_NOT_COVERED and result["needs_info"] is None
+    from backend import handoff_signals
+    assert handoff_signals.is_escalation_acceptance("yes", chat_response.FOLLOWUP_NOT_COVERED)

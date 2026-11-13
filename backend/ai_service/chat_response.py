@@ -35,6 +35,7 @@ from backend.ai_service.schemas import (
     ClarifyInput,
     ContinuationInput,
     ContinuationVerdict,
+    CoverageVerdict,
     KBCandidate,
 )
 
@@ -793,6 +794,47 @@ def info_request(data: AnswerInput) -> ChatReply:
     if data.reply_format == "email":
         return ChatReply(text=email_utils.format_email_reply(data.customer_name, body))
     return ChatReply(text=body)
+
+
+FOLLOWUP_NOT_COVERED = ("The guide I have doesn't cover that. Would you like me to raise a ticket so our "
+                        "support team can answer it? Reply yes, or use Raise a ticket below.")
+SOURCES_INTRO = "This comes from our guide \"{title}\""
+
+
+def covers_latest(data: AnswerInput) -> bool:
+    """A follow-up's coverage, decided before any answer is written: a
+    follow-up the guide doesn't answer gets FOLLOWUP_NOT_COVERED, never a
+    claim from general knowledge (chat eval: date formats, leave limits and
+    manager notifications were invented for a two-step guide)."""
+    verdict = provider.complete_json(
+        "A customer is chatting with a help desk about the guide below. Decide whether the guide answers "
+        "the customer's LATEST message. covered=false when the guide doesn't say what they ask (a format, "
+        "a limit, a notification, a special case, a different task or setting); covered=true when the guide "
+        "gives the answer, or the message only asks to repeat or explain what the guide says.",
+        {"guide": grounding.kb_text(data.kb_candidates[:1]), "customer_latest_message": data.latest_message},
+        CoverageVerdict, operation="covers_latest")
+    return verdict.covered
+
+
+def followup_not_covered(data: AnswerInput) -> ChatReply:
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, OFFER_TICKET_EMAIL))
+    return ChatReply(text=FOLLOWUP_NOT_COVERED)
+
+
+def sources(data: AnswerInput) -> ChatReply | None:
+    """"What are the sources?": the grounding guide's title and source page,
+    and its snippets, composed by code (no model call). None without a guide."""
+    entry = data.kb_candidates[0] if data.kb_candidates else None
+    if entry is None:
+        return None
+    text = SOURCES_INTRO.format(title=entry.intent) + (f": {entry.source_url}" if entry.source_url else ".")
+    if entry.source_url:
+        text += "."
+    text += snippet_block(entry)
+    if data.reply_format == "email":
+        return ChatReply(text=email_utils.format_email_reply(data.customer_name, text))
+    return ChatReply(text=text)
 
 
 def is_continuation(data: ContinuationInput) -> ContinuationVerdict:

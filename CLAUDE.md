@@ -511,7 +511,15 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   whole message) is a continuation without the model check, and
   `generate_response` re-presents the top entry's numbered steps and
   snippets by code (`chat_response.steps_again`, no model call); an entry
-  with neither gets a normal continuation answer. Covered by
+  with neither gets a normal continuation answer. "What are the sources?"
+  (`request_kind.asks_for_sources`) after an answer gets the guide's
+  title, source page and snippets by code (`chat_response.sources`). Any
+  other follow-up first gets one yes/no call, does the guide answer the
+  latest message (`chat_response.covers_latest`); if not,
+  `FOLLOWUP_NOT_COVERED` (the guide doesn't cover it; a ticket offer, "yes"
+  raises it), never an answer. The check is off in tests unless a test
+  turns it on (`tests/conftest._followups_covered`).
+  Covered by
   `tests/test_continuation_check.py`
   (stubbed-client prompt/parsing tests) and
   `tests/test_chat_followup_gates.py` (endpoint-level).

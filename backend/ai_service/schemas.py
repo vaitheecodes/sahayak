@@ -164,6 +164,11 @@ class ContinuationVerdict(BaseModel):
     is_continuation: bool = False
 
 
+class CoverageVerdict(BaseModel):
+    """covers_latest: does the guide answer the customer's latest message?"""
+    covered: bool = True
+
+
 class RewrittenQuery(BaseModel):
     """rewrite_query: the customer's message in the KB's own words, or ""."""
     query: str = Field(default="", max_length=200)

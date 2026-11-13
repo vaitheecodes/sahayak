@@ -874,8 +874,19 @@ def generate_response(state: TicketState) -> dict:
         reply = chat_response.info_request(data)
         return {"ai_response": reply.text,
                 "needs_info": {"kb_entry_id": top.kb_entry_id, "collect": list(top.collect)}}
-    reply = (data.continuation and request_kind.asks_for_steps(data.latest_message)
-             and chat_response.steps_again(data)) or chat_response.answer(data)
+    follow_up = bool(data.recent_ai_replies and data.latest_message and top is not None)
+    if follow_up and request_kind.asks_for_sources(data.latest_message):
+        return {"ai_response": chat_response.sources(data).text, "needs_info": None}
+    steps = data.continuation and request_kind.asks_for_steps(data.latest_message) and chat_response.steps_again(data)
+    if follow_up and not steps and not request_kind.asks_for_steps(data.latest_message):
+        # A follow-up the guide doesn't answer: say so and offer a ticket, never a claim.
+        try:
+            covered = chat_response.covers_latest(data)
+        except AIError:
+            covered = True   # the check failed: answer as before
+        if not covered:
+            return {"ai_response": chat_response.followup_not_covered(data).text, "needs_info": None}
+    reply = steps or chat_response.answer(data)
     if reply.not_covered:
         return _no_guide(data)
     return {"ai_response": reply.text, "needs_info": None}

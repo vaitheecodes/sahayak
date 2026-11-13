@@ -72,6 +72,18 @@ def is_small_talk(text: str) -> bool:
     return bool(_SMALL_TALK.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
 
 
+# "what are the sources?" after an answer: the guide and its page, by code.
+_SOURCES_REQUEST = re.compile(
+    r"(?:(?:ok|okay|so|and|also|then)\s+)*(?:(?:what|which|where)\s+(?:are|is|s)\s+(?:the|your|its|this)\s+"
+    r"sources?|whats\s+the\s+sources?|(?:the\s+)?sources?(?:\s+(?:page|link|url|please|pls))?|(?:where|what)\s+(?:is|does|did)\s+"
+    r"(?:this|that|it)\s+come\s+from|(?:give|show|send)\s+me\s+the\s+sources?(?:\s+(?:page|link))?)"
+    r"(?:\s+(?:please|pls))?")
+
+
+def asks_for_sources(text: str) -> bool:
+    return bool(_SOURCES_REQUEST.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
+
+
 def asks_for_steps(text: str) -> bool:
     return bool(_STEPS_REQUEST.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
 
