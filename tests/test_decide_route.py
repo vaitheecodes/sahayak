@@ -221,3 +221,23 @@ def test_after_the_one_question_an_unnamed_module_no_longer_holds_an_entry_back(
     usable, unconfirmed = graph.grounding_candidates({**state, "clarification_attempts": 1})
     assert [c["kb_entry_id"] for c in usable] == ["KB-1"]           # a module: used after the question
     assert [c["kb_entry_id"] for c, _ in unconfirmed] == ["KB-2"]   # a platform still has to be named
+
+
+def test_a_vague_high_risk_task_gets_one_fixed_question_then_a_person():
+    # Chat eval rule 16: "I need to change something with our account" was handed off unasked.
+    from backend import graph, kb_retrieval, topic_terms
+    from tests import kb_fixture
+
+    data = kb_fixture.pack()
+    kb_retrieval.use(data["entries"])
+    topic_terms.use(data["terms"])
+    state = {"ticket_text": "I need to change something with our account.", "category": "ACCOUNT",
+             "confidence": 0.6, "clarification_attempts": 0, "language_tags": []}
+    state.update(graph.retrieve_kb_candidates(state))
+    routed = decide_route(state)
+    assert routed["route"] == "clarify"
+    question = graph.ask_clarifying_question({**state, **routed})["ai_response"]
+    assert question.startswith("What exactly do you want to change?") and "subscription plan" in question
+    assert decide_route({**state, **routed})["route"] == "human"      # still unclear: a person
+    assert decide_route({**state, "ticket_text": "I need to change our plan", "clarification_attempts": 0}
+                        )["route"] == "human"                         # a clear task: straight to a person

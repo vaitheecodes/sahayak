@@ -676,7 +676,7 @@ def decide_route(state: TicketState) -> dict:
             "entry is escalate_with_info: its steps and collect list, then a ticket"
         )
         clarification_attempts_out = clarification_attempts
-    elif high_risk_below_bar and clarification_attempts == 0 and not how_to \
+    elif high_risk_below_bar and clarification_attempts == 0 and (not how_to or vague_task(ticket_text)) \
             and not error_reported(ticket_text) and ticket_text and not is_vague(ticket_text):
         # A vague first report ("unable to login after changing the plan"):
         # ONE question to pin down what the customer means (which login,
@@ -891,6 +891,26 @@ def _no_guide(data: AnswerInput) -> dict:
     return {"ai_response": text, "needs_info": {"kb_entry_id": None, "collect": [], "reason": "kb_no_match"}}
 
 
+# "I need to change something with our account": a task with no object.
+_VAGUE_OBJECT = re.compile(r"\b(?:something|anything|stuff|things?|some (?:settings?|details?|info))\b", re.IGNORECASE)
+HIGH_RISK_TASK_QUESTION = "What exactly do you want to {verb}?"
+
+
+def vague_task(ticket_text: str) -> bool:
+    latest = (_customer_messages(ticket_text) or [""])[-1]
+    return is_how_to(latest) and bool(_VAGUE_OBJECT.search(latest))
+
+
+def high_risk_task_question(state: TicketState) -> str:
+    """The one question for a vague account/billing/data task, fixed text:
+    what exactly, with the matching guide's title as an example."""
+    latest = (_customer_messages(state["ticket_text"]) or [""])[-1]
+    verbs = [w for w in re.findall(r"[a-z]+", latest.lower()) if grounding._verb(w) in _TASK_VERB]
+    question = HIGH_RISK_TASK_QUESTION.format(verb=verbs[0] if verbs else "do")
+    top = (state.get("kb_candidates") or [None])[0]
+    return f"{question} For example: {top['intent']}?" if top else question
+
+
 OFF_TOPIC_REPLY = ("Sorry, that's outside what I can help with: I'm the support assistant for {product}. "
                    "Is there something in {product} I can help you with?")
 OFF_TOPIC_AGAIN = "I'll leave that one, sorry. Whenever you have a question about {product}, I'm here."
@@ -933,6 +953,11 @@ def ask_clarifying_question(state: TicketState) -> dict:
     high_risk = (state.get("category") in policy.high_risk_categories
                  and state.get("confidence", 0.0) < policy.high_risk_confidence_threshold)
     context = _reply_context(state)
+    if high_risk and vague_task(state["ticket_text"]):
+        question = high_risk_task_question(state)   # fixed text, no model call
+        if state.get("reply_format") == "email":
+            question = email_utils.format_email_reply(state.get("customer_name"), question)
+        return {"ai_response": question}
     if high_risk:
         # Account/billing/data: no KB topics to choose between and no
         # product area to ask about; one question about what the customer means.
