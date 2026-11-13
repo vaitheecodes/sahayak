@@ -139,7 +139,7 @@ def test_chat_reply_of_only_placeholders_is_regenerated_then_falls_back(monkeypa
 
     monkeypatch.setattr(provider, "complete_text", fake_complete_text)
     log = provider.start_failure_log()
-    assert _answer("chat").text == chat_response.DETAIL_QUESTION
+    assert _answer("chat").text == chat_response.OFFER_TICKET_CHAT   # never a generic template
     assert len(calls) == 2 and "empty once greetings, sign-offs and placeholder" in calls[1]
     assert [(f.kind, f.code, f.outcome) for f in log] == [
         ("filter_rejected", "only_placeholders", "regenerated"),

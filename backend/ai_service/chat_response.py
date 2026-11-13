@@ -407,7 +407,8 @@ def steps_again(data: AnswerInput) -> ChatReply | None:
 def _asking_rules(data: AnswerInput | ClarifyInput, answering: bool) -> str:
     # With KB topics to choose between, the one question names them; "which
     # part of the product?" only when there is nothing more specific to ask.
-    ask_subject_first = not data.subject_known and not data.kb_candidates and not data.unconfirmed_topics
+    ask_subject_first = (not data.subject_known and not data.kb_candidates and not data.unconfirmed_topics
+                         and bool(topic_terms.subject_labels()))   # only with parts to name
     labels = topic_terms.subject_labels()
     subject = f"which part of the product it is about ({options_text(labels[:6])}), " if labels else ""
     rules = _ASKING_RULES.format(subject=subject,
@@ -484,13 +485,14 @@ def open_question(subject: str | None) -> str:
 
 
 def _fallback_reply(data: AnswerInput | ClarifyInput) -> ChatReply:
-    """A useful question that doesn't repeat a recent reply, else an offer
-    of a ticket (chat) or a note that the team will look into it (email)."""
-    # A how-to never gets troubleshooting questions (docs/CHAT_CONTRACT.md rule 4).
-    troubleshooting = [] if data.how_to else [DETAIL_QUESTION if data.error_reported else STEP_QUESTION,
-                                              TRIED_QUESTION]
+    """A specific question that doesn't repeat a recent reply (the open
+    question for a customer who hasn't described anything yet, or which
+    part of the product, when there are parts to list), else an offer of a
+    ticket (chat) or a note that the team will look into it (email). Never
+    a generic template ("At which screen or step...", "What have you
+    tried?": docs/CHAT_CONTRACT.md rule 5)."""
     options = ([open_question(data.subject)] if data.vague else []) + (
-        [subject_question()] if not data.subject_known else []) + troubleshooting
+        [subject_question()] if not data.subject_known and topic_terms.subject_labels() else [])
     for question in options:
         reply = ChatReply(text=email_utils.format_email_reply(data.customer_name, question)
                           if data.reply_format == "email" else clean_chat_reply(question))

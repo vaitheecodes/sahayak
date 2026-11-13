@@ -172,25 +172,25 @@ def test_a_second_repeat_falls_back_to_a_different_question(monkeypatch):
     _scripted(monkeypatch, PREVIOUS, PREVIOUS)
     log = provider.start_failure_log()
     reply = _answer(recent_ai_replies=[PREVIOUS], subject_known=True)
-    assert reply.text == chat_response.DETAIL_QUESTION
+    # Never a generic template (CHAT_CONTRACT rule 5): with the subject known, the ticket offer.
+    assert reply.text == chat_response.OFFER_TICKET_CHAT
     assert not chat_response.repeats(reply.text, [PREVIOUS])
     assert [f.outcome for f in log] == ["regenerated", "fallback"]
 
 
 def test_fallback_skips_questions_that_were_already_asked(monkeypatch):
     _scripted(monkeypatch, PREVIOUS, PREVIOUS)
-    recent = [chat_response.DETAIL_QUESTION, PREVIOUS]
-    assert _answer(recent_ai_replies=recent).text == chat_response.TRIED_QUESTION
+    subject = chat_response.subject_question()
+    assert _answer(recent_ai_replies=[PREVIOUS], subject_known=False).text == subject   # lists the modules
     _scripted(monkeypatch, PREVIOUS, PREVIOUS)
-    recent = [chat_response.TRIED_QUESTION, PREVIOUS, chat_response.DETAIL_QUESTION]
-    assert _answer(recent_ai_replies=recent).text == chat_response.OFFER_TICKET_CHAT
+    assert _answer(recent_ai_replies=[subject, PREVIOUS], subject_known=False).text == chat_response.OFFER_TICKET_CHAT
 
 
 def test_a_vague_open_question_is_not_repeated(monkeypatch):
     data = ClarifyInput(ticket_text="Customer: hi", vague=True, subject="Payroll",
                         recent_ai_replies=[OPEN_PAYROLL])
     reply = chat_response.clarify(data)
-    assert reply.text != OPEN_PAYROLL and reply.text == chat_response.DETAIL_QUESTION
+    assert reply.text != OPEN_PAYROLL and reply.text == chat_response.OFFER_TICKET_CHAT
 
 
 def test_no_repeat_check_without_previous_replies(monkeypatch):
