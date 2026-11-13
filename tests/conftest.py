@@ -177,3 +177,12 @@ def _no_live_ai(monkeypatch):
         raise provider.AIError("AI provider disabled in tests")
 
     monkeypatch.setattr(provider, "complete", _disabled)
+
+
+@pytest.fixture(autouse=True)
+def _no_query_rewrite(monkeypatch):
+    # The KB-search rewrite (ai_service/rewrite_query) is one more model call that
+    # scripted models don't know: "no topic" unless a test turns it on.
+    from backend.ai_service import rewrite_query
+
+    monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "")

@@ -190,3 +190,25 @@ def test_the_app_searches_the_databases_approved_entries(tmp_path, monkeypatch):
     assert kb_retrieval.entry_count() == 10  # approved only: the draft is never searched
     (top,) = kb_retrieval.retrieve_candidates("how do I cancel my leave request", top_k=1)
     assert top.entry.kb_entry_id == "KB-0001"
+
+
+def test_a_weak_match_is_searched_again_in_the_kbs_own_words(monkeypatch):
+    # Chat eval: "update my browser's stored pages" never reached the clear-cache guide.
+    from backend import graph
+    from backend.ai_service import rewrite_query
+
+    kb_retrieval.use([{"kb_entry_id": "KB-1", "title": "Clear cached pages", "category": "USAGE", "kind": "how-to",
+                       "questions": ["How do I clear cached data?", "empty the cache to load the latest version"],
+                       "answer": "Clearing the cache loads the latest version.", "steps": []}])
+    seen = []
+    monkeypatch.setattr(rewrite_query, "rewrite_query",
+                        lambda message, topics: seen.append((message, topics)) or "clear cached data")
+    state = {"ticket_text": "How can I update my browser's stored pages?"}
+    result = graph.retrieve_kb_candidates(state)
+    assert [c["kb_entry_id"] for c in result["kb_candidates"]] == ["KB-1"]
+    assert seen[0][1] == ["Clear cached pages"] and result["query_rewrite"] == "clear cached data"
+    usable, _ = graph.grounding_candidates({**state, **result})
+    assert [c["kb_entry_id"] for c in usable] == ["KB-1"]        # the rewrite counts for the subject check
+
+    monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: "")   # no topic: still nothing
+    assert graph.retrieve_kb_candidates(state)["kb_candidates"] == []

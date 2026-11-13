@@ -47,7 +47,7 @@ from typing_extensions import NotRequired
 
 from backend import app_settings, categories, db, email_utils, kb_retrieval, product, request_kind, topic_terms
 from backend.ai_service import categorize_ticket as categorize_op
-from backend.ai_service import chat_response
+from backend.ai_service import chat_response, rewrite_query
 from backend.ai_service.schemas import (
     AnswerInput,
     CategorizeInput,
@@ -100,6 +100,9 @@ class TicketState(TypedDict):
     customer_history: NotRequired[list[dict]]
 
     kb_candidates: NotRequired[list[dict]]
+    # retrieve_kb_candidates: the query in the KB's words when the customer's
+    # own found nothing; it counts as the customer's words for the subject checks.
+    query_rewrite: NotRequired[str | None]
 
     category: NotRequired[str]
     confidence: NotRequired[float]
@@ -335,8 +338,19 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     backend/kb_retrieval.py. A how-to request is never matched to a
     troubleshooting entry."""
     query = retrieval_query(state["ticket_text"])
-    candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=is_how_to(state["ticket_text"]))
-    return {"kb_candidates": _kb_candidates_to_dicts(candidates)}
+    how_to = is_how_to(state["ticket_text"])
+    candidates = kb_retrieval.retrieve_candidates(query, top_k=3, skip_faults=how_to)
+    rewrite = None
+    if not candidates and not is_vague(state["ticket_text"]) and kb_retrieval.entry_count():
+        # Nothing close in the customer's words: once more in the KB's own words.
+        try:
+            rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics()) or None
+        except AIError:
+            rewrite = None
+        if rewrite:
+            candidates = kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to)
+    found = {"kb_candidates": _kb_candidates_to_dicts(candidates)}
+    return {**found, "query_rewrite": rewrite} if rewrite and candidates else found
 
 
 def kb_candidates_for(text: str, top_k: int = 3, category: str | None = None,
@@ -724,7 +738,7 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     picked category counts as confirmed (the customer chose that topic).
     An entry about another variant than the one named (the Android guide
     for an iPad app) is neither."""
-    customer_text = _customer_authored_text(state["ticket_text"])
+    customer_text = f"{_customer_authored_text(state['ticket_text'])}\n{state.get('query_rewrite') or ''}".strip()
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
     how_to = is_how_to(state["ticket_text"])

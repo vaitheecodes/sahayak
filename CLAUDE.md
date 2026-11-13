@@ -297,7 +297,12 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   and the query plus the other names of each confirmed term it names,
   `topic_terms.with_names`: "Content Security Policy" finds "CSP"), with a stopword filter (formally phrased
   KB questions make filler words anomalously high-IDF). A best match
-  below `KB_MIN_SCORE` (default 0.35) is no match. The top 2-3
+  below `KB_MIN_SCORE` (default 0.35) is no match; then (not for a vague
+  message) one model call rewrites the query in the KB's own words from
+  the entries' titles (`ai_service/rewrite_query.py`, "" when no topic
+  fits) and the same search runs again; the rewrite (`query_rewrite`)
+  counts as the customer's words for the how-to subject check. Off in
+  tests unless a test turns it on (`tests/conftest._no_query_rewrite`). The top 2-3
   candidates ground `classify_ticket`'s prompt (few-shot category
   evidence; a strong match, `kb_retrieval.STRONG_MATCH_SCORE`, raises a
   conservative raw LLM confidence), `ask_clarifying_question`'s prompt

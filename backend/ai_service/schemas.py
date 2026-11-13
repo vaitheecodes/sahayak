@@ -164,6 +164,11 @@ class ContinuationVerdict(BaseModel):
     is_continuation: bool = False
 
 
+class RewrittenQuery(BaseModel):
+    """rewrite_query: the customer's message in the KB's own words, or ""."""
+    query: str = Field(default="", max_length=200)
+
+
 # ---------------------------------------------------------------------------
 # summarize_conversation / summarize_ticket / suggest_steps
 # ---------------------------------------------------------------------------

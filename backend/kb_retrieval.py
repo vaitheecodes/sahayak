@@ -224,6 +224,11 @@ def reload() -> None:
     _load_index.cache_clear()
 
 
+def topics() -> list[str]:
+    """The approved entries' titles, for rewriting a query (rewrite_query)."""
+    return list(dict.fromkeys(e.intent for e in _load_index().entries))
+
+
 def entry_count() -> int:
     """Approved KB entries the search uses; 0 for an empty or unreadable
     KB. Logged at startup and shown on /api/meta."""
