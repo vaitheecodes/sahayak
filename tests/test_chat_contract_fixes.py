@@ -31,3 +31,14 @@ def test_a_how_to_fallback_never_asks_troubleshooting_questions(monkeypatch):
                                                confidence=0.5, how_to=True, subject_known=True))
     assert reply.text not in (chat_response.STEP_QUESTION, chat_response.TRIED_QUESTION,
                               chat_response.DETAIL_QUESTION)
+
+
+def test_an_answer_turn_that_is_only_a_question_becomes_the_guides_answer(monkeypatch):
+    # Chat eval rule 5: on answer turns the model asked one question after another.
+    monkeypatch.setattr(provider, "complete_text",
+                        lambda *a, **k: "Have you checked if the widget's servers are in your policy?")
+    data = AnswerInput(ticket_text="Customer: my widget is blocked", kb_candidates=[ENTRY],
+                       customer_text="my widget is blocked")
+    assert chat_response.answer(data).text == ENTRY.response
+    assert chat_response.only_a_question("Is it the Leave page or Payroll?")
+    assert not chat_response.only_a_question("Allow the servers. 1. Open the policy. Done?")

@@ -585,7 +585,26 @@ def answer(data: AnswerInput) -> ChatReply:
     # The customer-facing chat answer may use its own model
     # (BEDROCK_MODEL_ID_CHAT); every other call keeps BEDROCK_MODEL_ID.
     with backends.model_task("chat") if data.reply_format == "chat" else nullcontext():
-        return _answer_reply(data, role, no_match_note + how_to_note)
+        reply = _answer_reply(data, role, no_match_note + how_to_note)
+    # An answer turn with a guide answers: a reply that is only a question
+    # becomes the guide's own answer (docs/CHAT_CONTRACT.md rule 5).
+    if data.kb_candidates and not reply.not_covered and only_a_question(reply.text):
+        composed = kb_answer(data)
+        if composed is not None and not repeats(composed.text, data.recent_ai_replies):
+            logger.warning("Answer was only a question; the guide's own answer instead: %r", reply.text)
+            return composed
+    return reply
+
+
+def only_a_question(text: str) -> bool:
+    """At most two sentences, the last a question, no steps (snippets and
+    the source line under them aside)."""
+    body = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    body = "\n".join(line for line in body.splitlines() if not line.startswith("Source: "))
+    if grounding.STEP_NUMBER.search(body) or grounding._STEP_LINE.search(body):
+        return False
+    sentences = [u for u in grounding._SENTENCE_BREAK.split(" ".join(body.split())) if u.strip()]
+    return bool(sentences) and len(sentences) <= 2 and sentences[-1].rstrip().endswith("?")
 
 
 _NOT_COVERED_RULE = (
