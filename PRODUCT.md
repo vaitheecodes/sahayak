@@ -46,11 +46,12 @@ FastAPI backend, SQLite locally and Postgres on AWS. Routes per role:
   (display labels set by the admin).
 - Priorities low / medium / high / urgent; SLA first-response and
   resolution targets per priority.
-- The chat bot is labelled "Support Bot" in the UI.
+- The chat bot is a friendly named helper, "Pip", always shown with an "AI assistant" badge (one constant: `frontend/src/lib/people.js` `BOT_NAME`).
 - Routing policy is public and read-only at /docs.
 
 ## Brand Commitments
-- Product name in the UI: "Help Desk"; the chat bot is "Support Bot". No
+- Product name in the UI: "Help Desk"; the chat bot is "Pip" ("Pip answers from
+  our approved help articles"). The backend's own sender name is unchanged. No
   third-party brand name appears in the UI, and no invented brand name
   replaces it.
 - Not a copy of any brand's look.

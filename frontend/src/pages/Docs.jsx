@@ -1,6 +1,7 @@
 import { ArrowRight, GitBranch, ListChecks, Radar } from "lucide-react";
 import { Link } from "react-router-dom";
 import PublicShell from "@/layout/PublicShell";
+import { BOT_NAME } from "@/lib/people";
 
 /* /docs: the policy pages anyone can read, no sign-in. */
 const PAGES = [
@@ -8,7 +9,7 @@ const PAGES = [
     to: "/docs/routing-policy",
     icon: GitBranch,
     title: "Routing policy",
-    body: "When the Support Bot answers, asks one question, or hands a ticket to the support team: confidence bars, high-risk categories and escalation signals, read live from the backend.",
+    body: `When ${BOT_NAME} answers, asks one question, or hands a ticket to the support team: confidence bars, high-risk categories and escalation signals, read live from the backend.`,
   },
   {
     to: "/docs/routing-policy#statuses",

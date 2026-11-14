@@ -7,6 +7,7 @@ import { Alert } from "@/ui/alert";
 import { Skeleton } from "@/ui/skeleton";
 import { StatusBadge } from "@/ui/status";
 import { categoryLabel } from "@/utils/categories";
+import { BOT_NAME } from "@/lib/people";
 
 /* The routing policy, public and read-only (GET /api/public/routing-policy,
  * the admin's saved values applied). Nobody signs in to read it. */
@@ -15,7 +16,7 @@ const STATUS_MEANING = [
   ["open", "With the support team, waiting for a support engineer (or the owner's next step)."],
   ["in_progress", "A support engineer has claimed it and is working on it."],
   ["pending_customer", "Waiting for the customer's reply. The SLA resolution clock is paused."],
-  ["resolved", "Answered by the Support Bot or a support engineer. A customer reply reopens it."],
+  ["resolved", `Answered by ${BOT_NAME} or a support engineer. A customer reply reopens it.`],
   ["closed", "Finished. A closed ticket takes no further replies."],
 ];
 
@@ -59,7 +60,7 @@ export default function RoutingPolicyDoc() {
         </Link>
         <h1 className="mt-3 text-xl font-semibold text-fg">Routing policy</h1>
         <p className="mt-2 max-w-[65ch] text-md text-muted-fg">
-          Every customer message is classified, then routed: the Support Bot answers it, asks one clarifying question, or
+          Every customer message is classified, then routed: {BOT_NAME} answers it, asks one clarifying question, or
           hands it to the support team. The values below are read live from the backend; the admin sets them in Settings.
         </p>
 
