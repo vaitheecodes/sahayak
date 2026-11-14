@@ -10,6 +10,8 @@ import { Skeleton } from "@/ui/skeleton";
 import { MANAGER_TYPES } from "@/lib/managerTypes";
 import { categoryLabel } from "@/utils/categories";
 import { setProduct } from "@/utils/product";
+import { SunriseBanner } from "@/components/illustrations";
+import { BOT_NAME } from "@/lib/people";
 
 /* First-run setup for the admin, at /admin/settings: the product profile
  * (what Settings -> Product stores), a look at the categories and which
@@ -31,12 +33,12 @@ function StepList({ current }) {
           <li
             key={label}
             aria-current={now ? "step" : undefined}
-            className={cn("flex items-center gap-2.5 py-1.5 text-sm", now ? "font-medium text-fg" : "text-muted-fg")}
+            className={cn("flex items-center gap-2.5 py-1.5 text-sm", now ? "font-bold text-fg" : "text-muted-fg")}
           >
             <span
               aria-hidden="true"
               className={cn(
-                "inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums",
+                "inline-flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-bold tabular-nums",
                 now && "border-primary bg-primary text-primary-fg",
                 done && "border-transparent",
                 !now && !done && "border-border-strong",
@@ -90,9 +92,9 @@ function ProductStep({ initial, onSaved }) {
   return (
     <form onSubmit={save} className="flex max-w-[34rem] flex-col gap-4">
       <div>
-        <h2 className="m-0 text-lg font-semibold">The product you support</h2>
+        <h2 className="m-0 text-xl">The product you support</h2>
         <p className="m-0 mt-1 text-muted-fg">
-          The Support Bot names it in replies and uses the description to understand questions.
+          {BOT_NAME} names it in replies and uses the description to understand questions.
         </p>
       </div>
       <Field id={ids.name} label="Product name" hint="Leave it empty until it is known: replies then say “the product”.">
@@ -132,7 +134,7 @@ function CategoriesStep({ departments, categories, onNext, onBack }) {
   return (
     <div className="flex max-w-[40rem] flex-col gap-4">
       <div>
-        <h2 className="m-0 text-lg font-semibold">Categories and who handles them</h2>
+        <h2 className="m-0 text-xl">Categories and who handles them</h2>
         <p className="m-0 mt-1 text-muted-fg">
           Every ticket gets one of these categories, and the department that owns it sees the ticket. Managers add or
           rename categories under Knowledge base; you move them between departments under{" "}
@@ -198,7 +200,7 @@ function TechniciansStep({ departments, onNext, onBack }) {
   return (
     <div className="flex max-w-[40rem] flex-col gap-4">
       <div>
-        <h2 className="m-0 text-lg font-semibold">Give each support engineer a department</h2>
+        <h2 className="m-0 text-xl">Give each support engineer a department</h2>
         <p className="m-0 mt-1 text-muted-fg">A manager can only hand tickets to support engineers in their department.</p>
       </div>
       {technicians && (
@@ -284,7 +286,7 @@ function ManagersStep({ departments, onNext, onBack }) {
   return (
     <div className="flex max-w-[44rem] flex-col gap-4">
       <div>
-        <h2 className="m-0 text-lg font-semibold">Managers: department and type</h2>
+        <h2 className="m-0 text-xl">Managers: department and type</h2>
         <p className="m-0 mt-1 text-muted-fg">
           Tech Leads, Product Managers and Incident Managers see their own department. A Platform Lead sees every
           department and doesn't need one.
@@ -379,9 +381,10 @@ export default function SetupWizard({ onClose }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <SunriseBanner className="h-24 w-full rounded-card" />
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="m-0 text-xl font-semibold">Set up the help desk</h1>
+          <h1 className="m-0 text-2xl">Let’s set up your help desk</h1>
           <p className="m-0 mt-1 text-muted-fg">About five minutes. Everything here can be changed later in Settings.</p>
         </div>
         {step < 4 && (
@@ -390,7 +393,7 @@ export default function SetupWizard({ onClose }) {
           </Button>
         )}
       </div>
-      <div className="grid gap-8 md:grid-cols-[14rem_minmax(0,1fr)]">
+      <div className="grid gap-8 rounded-card border border-border bg-sheet p-6 shadow-card md:grid-cols-[15rem_minmax(0,1fr)] md:p-8">
         <StepList current={step} />
         <section aria-live="polite">
           {step === 0 && (
@@ -418,10 +421,10 @@ export default function SetupWizard({ onClose }) {
           )}
           {step === 4 && (
             <div className="flex max-w-[34rem] flex-col gap-4">
-              <h2 className="m-0 text-lg font-semibold">The help desk is set up</h2>
+              <h2 className="m-0 text-xl">The help desk is set up</h2>
               <p className="m-0 text-muted-fg">
                 {product.name ? `Customers now see “${product.name} support”.` : "The product is still unnamed; replies say “the product”."}{" "}
-                Next: add the knowledge base so the Support Bot has guides to answer from (managers do that under
+                Next: add the knowledge base so {BOT_NAME} has guides to answer from (managers do that under
                 Knowledge base), and check the SLA targets in Settings.
               </p>
               <div>

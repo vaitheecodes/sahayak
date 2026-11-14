@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { CircleAlert, Clock, Eye, EyeOff } from "lucide-react";
 import { api, HOME_FOR_ROLE, saveSession } from "../api";
+import { Hero } from "@/components/illustrations";
 import ProductMark from "@/layout/ProductMark";
+import { BOT_NAME } from "@/lib/people";
 import ThemeMenu from "@/layout/ThemeMenu";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -25,7 +27,7 @@ function clock(seconds) {
 function Field({ id, label, error, children }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-fg">
+      <label htmlFor={id} className="text-sm font-bold text-fg">
         {label}
       </label>
       {children}
@@ -88,64 +90,66 @@ export default function Login({ mode = "login" }) {
   }
 
   const credentialsError = error && !isSignup ? error : "";
+  const brand = product ? `${product} support` : "Help Desk";
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="grid min-h-dvh bg-sheet text-fg md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <aside className="hidden flex-col justify-between border-r border-border bg-frame p-10 md:flex">
-          <Link to="/" className="flex items-center gap-2.5 text-fg no-underline">
-            <ProductMark />
-            <span className="font-semibold">{product ? `${product} support` : "Help desk"}</span>
-          </Link>
-          <div className="max-w-[40ch]">
-            <p className="m-0 text-xl leading-snug font-medium">
-              {isSignup ? "An account keeps your chats and tickets in one place." : "One sign-in for customers and the support team."}
+      <div className="flex min-h-dvh flex-wrap bg-frame text-fg">
+        <aside className="hidden min-w-0 flex-1 basis-[28rem] flex-col justify-between gap-8 bg-hero p-12 text-hero-fg md:flex">
+          <div className="flex flex-col gap-7">
+            <Link to="/" className="flex items-center gap-3 text-hero-fg no-underline">
+              <ProductMark className="size-10" />
+              <span className="font-display text-[22px] font-bold">{brand}</span>
+            </Link>
+            <h2 className="m-0 max-w-[520px] font-display text-[42px] leading-[1.1] font-bold">
+              {isSignup ? "One account for your chats and tickets." : "Questions answered. People when you need them."}
+            </h2>
+            <p className="m-0 max-w-[30rem] text-lg leading-relaxed text-[#D5E6DB]">
+              Ask {BOT_NAME}, our AI assistant. {BOT_NAME} answers from our approved help articles and brings in a real
+              person when it can't.
             </p>
-            <p className="m-0 mt-2 text-muted-fg">
-              {isSignup
-                ? "Use the email you want replies sent to. Support staff get their accounts from the administrator."
-                : "You land on your own page: your tickets and chats, your queue, or the admin console."}
-            </p>
+            <ul className="m-0 flex list-none flex-wrap gap-2.5 p-0">
+              {["Answers from approved articles", "A person can take over any time", "Your tickets in one place"].map((t) => (
+                <li key={t} className="rounded-full bg-hero-soft px-3.5 py-2 text-sm font-bold">
+                  {t}
+                </li>
+              ))}
+            </ul>
           </div>
-          <span className="text-sm text-muted-fg">Runs on Sahayak</span>
+          <Hero className="block h-auto w-full max-w-[28rem] self-center" />
         </aside>
 
-        <main className="flex flex-col">
+        <main className="flex min-w-0 flex-1 basis-[26rem] flex-col">
           <div className="flex h-14 items-center justify-between px-4 md:justify-end md:px-6">
             <Link to="/" className="flex items-center gap-2 text-fg no-underline md:hidden">
               <ProductMark />
-              <span className="font-semibold">{product ? `${product} support` : "Help desk"}</span>
+              <span className="font-display font-bold">{brand}</span>
             </Link>
             <ThemeMenu />
           </div>
-          <div className="flex flex-1 items-center justify-center px-4 pb-16">
-            <form className="flex w-full max-w-[24rem] flex-col gap-4" onSubmit={handleSubmit} noValidate={false}>
-              <div>
-                <h1 className="m-0 text-2xl font-semibold tracking-tight">{isSignup ? "Create an account" : "Sign in"}</h1>
-                <p className="m-0 mt-1.5 text-muted-fg">
-                  {isSignup ? (
-                    <>
-                      Already have one? <Link to="/login">Sign in</Link>
-                    </>
-                  ) : signupOpen() ? (
-                    <>
-                      New here? <Link to="/signup">Create an account</Link>
-                    </>
-                  ) : (
-                    "No account yet? Ask your support team for one."
-                  )}
+          <div className="flex flex-1 items-center justify-center px-4 pb-12">
+            <form
+              className="flex w-full max-w-[27.5rem] flex-col gap-5 rounded-[28px] border border-border bg-sheet p-7 shadow-card sm:p-10"
+              onSubmit={handleSubmit}
+            >
+              <div className="flex flex-col gap-1.5">
+                <h1 className="m-0 text-[30px] leading-tight">{isSignup ? "Create your account" : "Welcome back"}</h1>
+                <p className="m-0 text-md text-muted-fg">
+                  {isSignup
+                    ? `Use the email you want replies sent to. You can chat with ${BOT_NAME} right after.`
+                    : `Sign in to see your tickets and chat with ${BOT_NAME}.`}
                 </p>
               </div>
 
               {wait > 0 && (
-                <div role="status" className="flex items-start gap-2 rounded-lg bg-pill-warning px-3 py-2.5 text-sm text-pill-warning-fg">
+                <div role="status" className="flex items-start gap-2 rounded-2xl bg-pill-warning px-4 py-3 text-sm text-pill-warning-fg">
                   <Clock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                   <span>
-                    Too many attempts. Try again in <span className="font-semibold tabular-nums">{clock(wait)}</span>.
+                    Too many attempts. Try again in <span className="font-bold tabular-nums">{clock(wait)}</span>.
                   </span>
                 </div>
               )}
               {error && isSignup && (
-                <div role="alert" className="flex items-start gap-2 rounded-lg bg-pill-negative px-3 py-2.5 text-sm text-pill-negative-fg">
+                <div role="alert" className="flex items-start gap-2 rounded-2xl bg-pill-negative px-4 py-3 text-sm text-pill-negative-fg">
                   <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -160,7 +164,7 @@ export default function Login({ mode = "login" }) {
                     onChange={(e) => setName(e.target.value)}
                     maxLength={120}
                     required
-                    className="h-10"
+                    className="h-12 rounded-[14px] text-md"
                   />
                 </Field>
               )}
@@ -169,12 +173,13 @@ export default function Login({ mode = "login" }) {
                   id={ids.email}
                   type="email"
                   autoComplete="email"
+                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   maxLength={254}
                   required
                   aria-invalid={credentialsError ? true : undefined}
-                  className="h-10"
+                  className="h-12 rounded-[14px] text-md"
                 />
               </Field>
               <Field id={ids.password} label="Password" error={credentialsError}>
@@ -184,19 +189,20 @@ export default function Login({ mode = "login" }) {
                     type={showPassword ? "text" : "password"}
                     autoComplete={isSignup ? "new-password" : "current-password"}
                     minLength={isSignup ? 8 : undefined}
+                    placeholder="Your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     aria-invalid={credentialsError ? true : undefined}
                     aria-describedby={credentialsError ? `${ids.password}-error` : undefined}
-                    className={cn("h-10 pr-20", credentialsError && "border-negative")}
+                    className={cn("h-12 rounded-[14px] pr-24 text-md", credentialsError && "border-negative")}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-pressed={showPassword}
                     aria-controls={ids.password}
-                    className="absolute inset-y-1 right-1 inline-flex cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 text-sm text-fg shadow-none hover:bg-active focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    className="absolute inset-y-1.5 right-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-xl border-0 bg-transparent px-3 text-sm font-bold text-fg shadow-none hover:bg-active focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   >
                     {showPassword ? <EyeOff aria-hidden="true" className="size-4" /> : <Eye aria-hidden="true" className="size-4" />}
                     {showPassword ? "Hide" : "Show"}
@@ -205,12 +211,34 @@ export default function Login({ mode = "login" }) {
                 {isSignup && <p className="m-0 text-sm text-muted-fg">At least 8 characters.</p>}
               </Field>
 
-              <Button type="submit" size="lg" className="mt-1 w-full" disabled={submitting || wait > 0}>
+              <Button type="submit" size="lg" className="w-full text-[17px]" disabled={submitting || wait > 0}>
                 {submitting ? (isSignup ? "Creating your account…" : "Signing in…") : isSignup ? "Create account" : "Sign in"}
               </Button>
+
+              {isSignup ? (
+                <p className="m-0 text-center text-sm text-muted-fg">
+                  Already have an account? <Link to="/login">Sign in</Link>
+                </p>
+              ) : signupOpen() ? (
+                <>
+                  <div className="flex items-center gap-3 text-sm text-muted-fg" aria-hidden="true">
+                    <span className="h-px flex-1 bg-border" />
+                    New here?
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                  <Link
+                    to="/signup"
+                    className="block rounded-[14px] bg-pill-accent px-5 py-3.5 text-center text-md font-bold text-pill-accent-fg no-underline hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    Create an account
+                  </Link>
+                </>
+              ) : (
+                <p className="m-0 text-center text-sm text-muted-fg">No account yet? Ask your support team for one.</p>
+              )}
               {!isSignup && (
-                <p className="m-0 text-sm text-muted-fg">
-                  Staff accounts are created by your administrator. <Link to="/incidents">Incident history</Link>
+                <p className="m-0 text-sm leading-normal text-muted-fg">
+                  Support staff sign in here too. Your role decides what you see. <Link to="/incidents">Incident history</Link>
                 </p>
               )}
             </form>
