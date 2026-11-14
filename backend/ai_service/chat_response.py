@@ -295,7 +295,9 @@ def _ground(text: str, data: AnswerInput | ClarifyInput, operation: str) -> str:
         provider.note_failure(provider.AIFailure(
             kind="filter_rejected", operation=operation, code="ungrounded_steps", outcome="filtered"))
     grounded = instructed
-    valued, dropped = grounding.ground_values(grounded, f"{kb}\n{data.customer_text}")
+    # URLs and domains only from the entry being answered (none when asking) or the customer.
+    hosts = f"{grounding.kb_text(data.kb_candidates[:1]) if answering else ''}\n{data.customer_text}"
+    valued, dropped = grounding.ground_values(grounded, f"{kb}\n{data.customer_text}", hosts)
     for sentence, value in dropped:
         logger.warning("Reply sentence dropped (%s): value %r is not in the KB entry or the customer's "
                        "messages: %r", operation, value, sentence)

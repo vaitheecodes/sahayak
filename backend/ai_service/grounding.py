@@ -137,12 +137,15 @@ def _directives(text: str) -> dict[str, list[frozenset]]:
     return found
 
 
-def value_problem(sentence: str, allowed: str) -> str | None:
+def value_problem(sentence: str, allowed: str, hosts_allowed: str | None = None) -> str | None:
     """The first specific value in `sentence` that `allowed` (the KB text
     plus the customer's own messages) doesn't contain, else None. A
     directive with sources must match one in `allowed` source for source:
-    "script-src 'self'" is not "script-src 'self' https://cdn.example.com"."""
+    "script-src 'self'" is not "script-src 'self' https://cdn.example.com".
+    URLs and domains (host and path) are checked against `hosts_allowed`
+    when given: the answering entry and the customer, never another entry."""
     norm = _normal(allowed)
+    host_norm = _normal(hosts_allowed) if hosts_allowed is not None else norm
     known = _directives(allowed)
     for name, sources in _directives(sentence).items():
         for source_set in sources:
@@ -151,23 +154,26 @@ def value_problem(sentence: str, allowed: str) -> str | None:
             if not source_set and name not in norm:
                 return name
     rest = _DIRECTIVE.sub(" ", sentence)
-    values = [u.rstrip(".,;:/") for u in _URL.findall(rest)]
+    hosts = [u.rstrip(".,;:/") for u in _URL.findall(rest)]
     rest = _URL.sub(" ", rest)
-    values += _DOMAIN.findall(rest)
+    hosts += _DOMAIN.findall(rest)
+    if bad := next((v for v in hosts if _normal(v) not in host_norm), None):
+        return bad
+    values = []
     values += [next(g for g in groups if g) for groups in _QUOTED.findall(rest)]
     values += _PATH.findall(rest) + _VERSION.findall(rest)
     values += [a or b for a, b in _PORT.findall(rest)] + _LIMIT.findall(rest)
     return next((v for v in values if _normal(v) not in norm), None)
 
 
-def ground_values(text: str, allowed: str) -> tuple[str, list[tuple[str, str]]]:
+def ground_values(text: str, allowed: str, hosts_allowed: str | None = None) -> tuple[str, list[tuple[str, str]]]:
     """`text` without the sentences (and step lines) carrying a specific
     value `allowed` doesn't contain (value_problem). Returns the text and
     each dropped sentence with the value that dropped it."""
     out, dropped = [], []
     for line in text.splitlines():
         if _STEP_LINE.match(line):
-            problem = value_problem(line, allowed)
+            problem = value_problem(line, allowed, hosts_allowed)
             if problem:
                 dropped.append((line.strip(), problem))
                 continue
@@ -175,7 +181,7 @@ def ground_values(text: str, allowed: str) -> tuple[str, list[tuple[str, str]]]:
             continue
         kept = []
         for sentence in _SENTENCE_END.split(line.strip()):
-            problem = value_problem(sentence, allowed) if sentence else None
+            problem = value_problem(sentence, allowed, hosts_allowed) if sentence else None
             if problem:
                 dropped.append((sentence, problem))
             else:
