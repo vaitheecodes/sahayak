@@ -262,7 +262,7 @@ VAGUE_WORDS = frozenset("""
     issue issues problem problems facing face faced having trouble troubles query question
     questions support something anything everything app application product software tool
     wrong working work works worked hi hello hey regarding concern concerns assistance assist
-    kindly urgent asap team
+    kindly urgent asap team trying attempting
 """.split())
 # A latest message with fewer informative words than this is short: earlier
 # customer messages are added to the KB search for context.

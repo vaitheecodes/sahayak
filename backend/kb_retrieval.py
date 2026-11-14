@@ -80,7 +80,7 @@ _STOPWORDS = frozenset(
     before after above below to from up down in out on off over under
     again further then once here there when where why how all any
     both each few more most other some such no nor not only own same
-    so than too very s t can will just should now please want wanted
+    so than too very s t m ve ll re d can will just should now please want wanted
     wants needing need needs needed help helping helped would could
     like get got go going add adding set setup setting yes ok okay thanks thank
     """.split()
