@@ -148,7 +148,7 @@ def main(argv=None) -> int:
     parser.add_argument("--kb", nargs="+", default=["demo", "brightdesk"], choices=["demo", "brightdesk"])
     parser.add_argument("--bot-model", default="lite", choices=["lite", "pro"])
     parser.add_argument("--max-calls", type=int, default=3500)
-    parser.add_argument("--budget", type=int, default=19000, help="total calls across runs (the ledger)")
+    parser.add_argument("--budget", type=int, default=22000, help="total calls across runs (the ledger)")
     parser.add_argument("--rerun-failed", metavar="RUN", help="only the cases that failed in that run")
     parser.add_argument("--cases", nargs="+", metavar="CASE_ID", help="only these cases")
     parser.add_argument("--estimate", action="store_true")

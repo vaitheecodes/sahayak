@@ -197,7 +197,7 @@ rule 3 failure the judge says isn't covered, is "disputed" (listed with
 the KB entry side by side in the report). Every Bedrock call is counted
 by a wrapped client (`harness.CountedClient`, throttling retried and
 counted), hard cap `--max-calls` (3500), the estimate printed first, and a
-ledger of all runs against `--budget` (19000) in `.local/chat-eval/`. Every case
+ledger of all runs against `--budget` (22000) in `.local/chat-eval/`. Every case
 also runs after a "Hi" (`cases.variants`, `-hi` ids), and each entry gets a
 negation wording ("It's not loading.", kind `negation`); rule 8 fails a turn
 that announces the ticket twice.
