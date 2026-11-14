@@ -137,6 +137,11 @@ def subject_labels() -> list[str]:
     return sorted(label for label, (kind, _) in _terms().items() if kind in SUBJECT_KINDS)
 
 
+def labels_of_kind(kind: str) -> list[str]:
+    """Every confirmed term of one kind (the platforms: Android, iOS)."""
+    return sorted(label for label, (k, _) in _terms().items() if k == kind)
+
+
 def subjects_mentioned(customer_text: str) -> list[str]:
     """The modules and variants the customer has named."""
     return sorted(label for label in mentioned(customer_text) if kind_of(label) in SUBJECT_KINDS)

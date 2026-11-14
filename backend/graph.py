@@ -516,21 +516,33 @@ def how_to_question(state: TicketState) -> str | None:
     Android / iOS app guides): which one. Never asked twice, never about a
     record or an account."""
     ticket_text = state.get("ticket_text", "")
-    if not ticket_text or not is_how_to(ticket_text) or asked_how_to_question(ticket_text):
+    if not ticket_text or asked_how_to_question(ticket_text):
         return None
-    if not how_to_subject(state):
+    how_to = is_how_to(ticket_text)
+    if how_to and not how_to_subject(state):
         verb = "set up" if _SET_UP.search(retrieval_query(ticket_text)) else "do"
         labels = topic_terms.subject_labels()
         if labels:
             return HOW_TO_SUBJECT_QUESTION.format(verb=verb, product=product.name(),
                                                   options=_options(labels[:6]))
         return HOW_TO_GENERIC_QUESTION.format(verb=verb, product=product.name())
+    if is_vague(ticket_text):
+        return None
     usable, unconfirmed = grounding_candidates(state)
+    if not how_to:
+        # A report: only guides on the customer's own subject (not a match on "app" alone: Slack is no
+        # reason to ask Android or iOS) that stay gated after any clarifying question (a platform, an
+        # edition: not a module, which the first question unlocks).
+        customer = _customer_authored_text(ticket_text)
+        unconfirmed = [(c, m) for c, m in unconfirmed
+                       if all(topic_terms.kind_of(t) != "module" for t in m) and shares_customer_words(c, customer)]
     if usable or not unconfirmed:
         return None
     labels: list[str] = []
     for _, missing in unconfirmed:
         labels += [label for label in sorted(missing) if label not in labels]
+    if len(labels) == 1 and topic_terms.kind_of(labels[0]) != "module":
+        labels = topic_terms.labels_of_kind(topic_terms.kind_of(labels[0])) or labels   # the choice, not a leading yes/no
     labels = labels[:4]
     if len(labels) == 1:
         return HOW_TO_ONE_VARIANT_QUESTION.format(option=labels[0])
@@ -707,6 +719,14 @@ def decide_route(state: TicketState) -> dict:
             "escalating, no further clarification for account/billing/data risk"
         )
         clarification_attempts_out = clarification_attempts
+    elif not how_to and how_to_question(state):
+        # A report the KB's guides cover only for something not named yet (the Android / iOS
+        # app): the same ONE fixed question as for a how-to, not a model-written one.
+        route, reason = "clarify", (
+            "the KB's guides on this apply to something the customer hasn't named: one fixed question, "
+            "then the KB or a ticket"
+        )
+        clarification_attempts_out = clarification_attempts + 1
     elif below_base_bar and how_to:
         # "How do I add X?" is clear (or its one question was answered):
         # answer it from the KB, or say there's no guide and hand off
@@ -765,6 +785,17 @@ def route_after_decide(state: TicketState) -> str:
     }.get(state["route"], "human_queue")
 
 
+_ONE_VARIANT = re.compile(HOW_TO_ONE_VARIANT_QUESTION.format(option="(.+)").replace("?", r"\?"))
+
+
+def _confirmed_variant(ticket_text: str) -> str:
+    """"I have a guide for Android. Is that the one you're using?" answered "yes": the option
+    ("\nAndroid"), else nothing."""
+    asked = (_ai_messages(ticket_text) or [""])[-1].strip()
+    match = _ONE_VARIANT.fullmatch(asked)
+    return f"\n{match.group(1)}" if match and request_kind.is_affirmative((_customer_messages(ticket_text) or [""])[-1]) else ""
+
+
 def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dict, set[str]]]]:
     """The KB candidates an answer or clarifying question may rely on, and
     the ones it may not: (usable, [(candidate, terms the customer hasn't
@@ -775,6 +806,7 @@ def grounding_candidates(state: TicketState) -> tuple[list[dict], list[tuple[dic
     for an iPad app) is neither."""
     # The rewrite first: in the KB's words it names the task (does_the_task reads the first one).
     customer_text = f"{state.get('query_rewrite') or ''}\n{_customer_authored_text(state['ticket_text'])}".strip()
+    customer_text += _confirmed_variant(state["ticket_text"])
     candidates = state.get("kb_candidates", [])
     requested = state.get("requested_category")
     how_to = is_how_to(state["ticket_text"])

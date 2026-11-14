@@ -369,7 +369,14 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   it") what exactly and in which part of the product
   (`HOW_TO_SUBJECT_QUESTION` with the confirmed modules, or
   `HOW_TO_GENERIC_QUESTION`), or, when the only guides on its subject
-  apply to terms not named (the Android / iOS app guides), which one.
+  apply to terms not named (the Android / iOS app guides), which one. A
+  report gets the same fixed question (`how_to_question`, route clarify)
+  when the guides on the customer's own words (`shares_customer_words`:
+  "app" alone doesn't count) stay gated by a non-module term; a short yes
+  to the one-option form names that option (`_confirmed_variant`). The
+  contraction fragments ("I'm" -> "m") and lead-ins ("trying") are not
+  subject words (`informative_words`): "I'm trying to connect my Slack
+  account" once lost the Slack guide, 'no guide'.
   Once asked (`asked_how_to_question`, found in the transcript) it is
   never asked again, and the answer ("an expense claim", "not sure") is
   still the how-to.

@@ -80,6 +80,16 @@ _SOURCES_REQUEST = re.compile(
     r"(?:\s+(?:please|pls))?")
 
 
+_YES = re.compile(r"(?:yes|yeah|yep|yup|yea|correct|exactly|that'?s (?:right|it|correct))\b", re.IGNORECASE)
+_NO = re.compile(r"\b(?:no|not|nope|never)\b|n't", re.IGNORECASE)
+
+
+def is_affirmative(text: str) -> bool:
+    """A short "yes" to a question just asked ("Yes, the mobile app"); never one that also says no."""
+    text = (text or "").strip()
+    return bool(_YES.match(text)) and not _NO.search(text) and len(text.split()) <= 8
+
+
 def asks_for_sources(text: str) -> bool:
     return bool(_SOURCES_REQUEST.fullmatch(" ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())))
 
