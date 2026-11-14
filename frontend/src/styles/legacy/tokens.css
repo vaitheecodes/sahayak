@@ -117,7 +117,7 @@
 
   /* accent: cobalt. 500-700 are fills, 400 is accent text and icons. */
   --accent-300: var(--primary-hover);
-  --accent-400: var(--primary);
+  --accent-400: var(--link);
   --accent-500: var(--primary);
   --accent-550: var(--primary-hover);
   --accent-600: var(--primary);

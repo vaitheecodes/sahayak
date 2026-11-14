@@ -197,8 +197,8 @@ function Charts({ data }) {
             title={`Created and resolved per day, ${period}`}
             points={data.over_time}
             series={[
-              { key: "created", label: "Created", color: statusColor("open") },
-              { key: "resolved", label: "Resolved", color: statusColor("resolved") },
+              { key: "created", label: "Created", color: "var(--chart-1)" },
+              { key: "resolved", label: "Resolved", color: "var(--chart-2)" },
             ]}
             labelFor={dayLabel}
           />
