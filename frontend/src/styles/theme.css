@@ -1,18 +1,13 @@
 /* ===========================================================================
-   Design tokens: the framed-sheet system (docs/DESIGN_SYSTEM.md).
+   Design tokens: "warm and friendly" (docs/DESIGN_SYSTEM.md, docs/design-tokens.json).
 
-   Warm graphite neutrals and ONE accent, cobalt: primary buttons, links,
-   the active tab underline and chart bars. Status colours are for status
-   only: blue = open / being worked, amber = waiting or at risk, red =
-   breached or high, green = resolved or on track. No purple, no teal, no
-   gradients. Light is derived from the same accent family.
-
-   Light is the default; dark follows the OS; [data-theme="light"|"dark"]
-   on <html> forces either (utils/theme.js). Every text colour clears 4.5:1
-   on the frame, the sheet, the table header and the active fill in both
-   themes (lowest: 5.1 light, 5.6 dark); --input and every chart colour
-   clear 3:1 on the sheet. The legacy pages' tokens
-   (styles/legacy/tokens.css) are aliases of these.
+   Cream page, white cards, brand green (the one primary action), deep green
+   hero panels, sunrise orange as the accent. Status colours are for status
+   only; amber is reserved for SLA at risk. Light is the default; dark follows
+   the OS; [data-theme="light"|"dark"] on <html> forces either (utils/theme.js).
+   The values live in the three blocks below (generated from one table:
+   keep them identical to docs/design-tokens.json). Every text colour clears
+   4.5:1 on the surfaces it sits on; --input and chart colours clear 3:1.
    ========================================================================= */
 
 @custom-variant dark {
@@ -27,247 +22,262 @@
 }
 
 :root {
-  --frame: #f3f2ee;
-  --sheet: #ffffff;
-  --raised: #f5f4f0;
-  --active: #ebe9e3;
-  --float: #ffffff;
-  --table-header: #f7f6f2;
-  --border: #e3e1da;
-  --border-strong: #cfccc3;
-  --rule: #eeece6;
-  --input: #8a877d;
-  --fg: #1a1915;
-  --muted-fg: #5c5950;
-  --primary: #2d5bc2;
-  --primary-hover: #244ca6;
-  --primary-fg: #ffffff;
-  --ring: #2d5bc2;
-  --positive: #1d6b3d;
-  --negative: #b02b22;
-  --negative-hover: #95241c;
-  --warning: #835410;
-  --info: #2a54a6;
-
-  /* Pale pills: status and priority marks (ink on tint >= 6.8:1). */
-  --pill-neutral-bg: #eceae4;
-  --pill-neutral-fg: #3a3832;
-  --pill-positive-bg: #e1f1e6;
-  --pill-positive-fg: #175a33;
-  --pill-negative-bg: #fbe6e3;
-  --pill-negative-fg: #8c221b;
-  --pill-warning-bg: #faeed9;
-  --pill-warning-fg: #744708;
-  --pill-info-bg: #e5ecfa;
-  --pill-info-fg: #1e4590;
-  --pill-accent-bg: #e3eafa;
-  --pill-accent-fg: #224aa0;
-  /* Ticket statuses: one colour each, everywhere (chip, rail, chart). fg = text
-     and icons (>= 5.2:1 on chip and page), bg = chip tint, solid = bars and
-     dots (>= 3.5:1 on the sheet). New = open with nobody assigned. */
-  --status-new: #8a877d;
-  --status-new-fg: #4f4d46;
-  --status-new-bg: #eeede8;
-  --status-open: #2d5bc2;
-  --status-open-fg: #1e4fb8;
-  --status-open-bg: #e6edfb;
-  --status-progress: #14857e;
-  --status-progress-fg: #0b6b66;
-  --status-progress-bg: #ddf2ef;
-  --status-pending: #7c52c8;
-  --status-pending-fg: #6a3fb5;
-  --status-pending-bg: #efe8fb;
-  --status-resolved: #2f8f55;
-  --status-resolved-fg: #1d6b3d;
-  --status-resolved-bg: #e1f1e6;
-  --status-closed: #66768c;
-  --status-closed-fg: #3d4a5c;
-  --status-closed-bg: #e7eaef;
-  /* Support Bot replies: a restrained tint and a left rule (text on it >= 6.3:1). */
-  --bot-bg: #f1f4fb;
-  --bot-rule: #9db4e6;
-
-  /* Data. chart-1 (cobalt) and chart-2 (amber) are the two series and
-     differ in lightness too (OKLab L .46 vs .62); 3-5 only where a chart
-     compares categories. */
-  --chart-1: #2a52ad;
-  --chart-2: #c07020;
-  --chart-3: #2e8a52;
-  --chart-4: #c8473d;
-  --chart-5: #8a877d;
-  --chart-grid: #eeece6;
-  --chart-axis: #5c5950;
-
-  --selection: #d6e2f8;
-  --scrim: rgb(26 25 21 / 0.4);
-  --shadow-pop: 0 8px 24px -6px rgb(26 25 21 / 0.16), 0 2px 6px -2px rgb(26 25 21 / 0.08);
-
+  --frame: #FBF7F0;
+  --sheet: #FFFFFF;
+  --raised: #F6F0E4;
+  --active: #EDE5D3;
+  --float: #FFFFFF;
+  --table-header: #F6F0E4;
+  --border: #E7E0D2;
+  --border-strong: #D3C9B4;
+  --rule: #EFE9DC;
+  --input: #8A8374;
+  --fg: #1E2A24;
+  --muted-fg: #4F5F57;
+  --primary: #1B7F5A;
+  --primary-hover: #146B4A;
+  --primary-fg: #FFFFFF;
+  --link: #17704F;
+  --ring: #1B7F5A;
+  --positive: #14663F;
+  --negative: #A92A1F;
+  --negative-hover: #8E2118;
+  --warning: #6B4A00;
+  --info: #123A7A;
+  --hero: #0F4D37;
+  --hero-fg: #FFF6E8;
+  --hero-soft: #14573F;
+  --accent: #F7A23B;
+  --green-tint: #E3F3EA;
+  --green-tint-fg: #0F4D37;
+  --pill-neutral-bg: #ECEAE4;
+  --pill-neutral-fg: #2B2B27;
+  --pill-positive-bg: #DDF3E4;
+  --pill-positive-fg: #14663F;
+  --pill-negative-bg: #FDE4E1;
+  --pill-negative-fg: #7A1A12;
+  --pill-warning-bg: #FFF0C2;
+  --pill-warning-fg: #6B4A00;
+  --pill-info-bg: #DCEBFB;
+  --pill-info-fg: #123A7A;
+  --pill-accent-bg: #FFEBD6;
+  --pill-accent-fg: #7A3A06;
+  --status-new: #6B6B63;
+  --status-new-fg: #2B2B27;
+  --status-new-bg: #ECEAE4;
+  --status-open: #2563C9;
+  --status-open-fg: #123A7A;
+  --status-open-bg: #DCEBFB;
+  --status-progress: #0E8F83;
+  --status-progress-fg: #0B5D55;
+  --status-progress-bg: #D6F1EE;
+  --status-pending: #6D45C9;
+  --status-pending-fg: #3F2486;
+  --status-pending-bg: #E9E1FA;
+  --status-resolved: #1B7F5A;
+  --status-resolved-fg: #14663F;
+  --status-resolved-bg: #DDF3E4;
+  --status-closed: #5B6B7B;
+  --status-closed-fg: #2C3A47;
+  --status-closed-bg: #E3E7EC;
+  --bot-bg: #E3F3EA;
+  --bot-rule: #1B7F5A;
+  --chart-1: #E8590C;
+  --chart-2: #1B7F5A;
+  --chart-3: #2563C9;
+  --chart-4: #6D45C9;
+  --chart-5: #6B6B63;
+  --chart-grid: #EFE9DC;
+  --chart-axis: #4F5F57;
+  --selection: #CFEFDD;
+  --scrim: rgb(15 30 22 / 0.45);
+  --shadow-pop: 0 12px 40px rgb(15 77 55 / 0.14), 0 2px 6px rgb(15 77 55 / 0.06);
+  --shadow-card: 0 12px 40px rgb(15 77 55 / 0.10);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --frame: #111110;
-    --sheet: #191917;
-    --raised: #262622;
-    --active: #262622;
-    --float: #1f1f1c;
-    --table-header: #1f1f1c;
-    --border: #2b2a26;
-    --border-strong: #383731;
-    --rule: #232320;
-    --input: #6f6c63;
-    --fg: #ecebe6;
-    --muted-fg: #a29f95;
-    --primary: #6f9cf0;
-    --primary-hover: #8aaff3;
-    --primary-fg: #0c1730;
-    --ring: #6f9cf0;
-    --positive: #8fd3a5;
-    --negative: #ef8a80;
-    --negative-hover: #f3a39b;
-    --warning: #eab36e;
-    --info: #a9c3f2;
-    --pill-neutral-bg: #2c2b27;
-    --pill-neutral-fg: #d6d4cc;
-    --pill-positive-bg: #1c2e22;
-    --pill-positive-fg: #8fd3a5;
-    --pill-negative-bg: #3a211e;
-    --pill-negative-fg: #ef8a80;
-    --pill-warning-bg: #35291a;
-    --pill-warning-fg: #eab36e;
-    --pill-info-bg: #1f2a3d;
-    --pill-info-fg: #a9c3f2;
-    --pill-accent-bg: #1b2642;
-    --pill-accent-fg: #9dbbf4;
-    --status-new: #8c897f;
-    --status-new-fg: #c9c6bc;
-    --status-new-bg: #2a2925;
-    --status-open: #6f9cf0;
-    --status-open-fg: #a9c3f2;
-    --status-open-bg: #1f2a3d;
-    --status-progress: #3fb8ab;
-    --status-progress-fg: #7fd6cc;
-    --status-progress-bg: #16302d;
-    --status-pending: #a283e8;
-    --status-pending-fg: #c6aef5;
-    --status-pending-bg: #2a2340;
-    --status-resolved: #5dbb7d;
-    --status-resolved-fg: #8fd3a5;
-    --status-resolved-bg: #1c2e22;
-    --status-closed: #7f8da3;
-    --status-closed-fg: #b5c0d0;
-    --status-closed-bg: #252a31;
-    --bot-bg: #1c2130;
-    --bot-rule: #4d6ba8;
-    --chart-1: #6f9cf0;
-    --chart-2: #eaae6a;
-    --chart-3: #8fd3a5;
-    --chart-4: #ef8a80;
-    --chart-5: #a29f95;
-    --chart-grid: #262622;
-    --chart-axis: #a29f95;
-    --selection: #253456;
+    --frame: #0E1914;
+    --sheet: #16231C;
+    --raised: #1F3A2D;
+    --active: #26453A;
+    --float: #1B2C23;
+    --table-header: #1B2C23;
+    --border: #26382E;
+    --border-strong: #36503F;
+    --rule: #1E2E25;
+    --input: #6F8579;
+    --fg: #F2EDE3;
+    --muted-fg: #A9B8AF;
+    --primary: #1B7F5A;
+    --primary-hover: #166A4A;
+    --primary-fg: #FFFFFF;
+    --link: #6FD3A4;
+    --ring: #6FD3A4;
+    --positive: #9BDDB5;
+    --negative: #FF9A8E;
+    --negative-hover: #FFB3A9;
+    --warning: #FFE08A;
+    --info: #A9CCF5;
+    --hero: #0A3A29;
+    --hero-fg: #FFF6E8;
+    --hero-soft: #14573F;
+    --accent: #F7A23B;
+    --green-tint: #123A27;
+    --green-tint-fg: #9BDDB5;
+    --pill-neutral-bg: #2B2D29;
+    --pill-neutral-fg: #D9D9D2;
+    --pill-positive-bg: #123A27;
+    --pill-positive-fg: #9BDDB5;
+    --pill-negative-bg: #4A1D18;
+    --pill-negative-fg: #FFC2BA;
+    --pill-warning-bg: #4A3A0A;
+    --pill-warning-fg: #FFE08A;
+    --pill-info-bg: #17304F;
+    --pill-info-fg: #A9CCF5;
+    --pill-accent-bg: #4A2A10;
+    --pill-accent-fg: #FFD2A8;
+    --status-new: #9A9A90;
+    --status-new-fg: #D9D9D2;
+    --status-new-bg: #2B2D29;
+    --status-open: #5B9BEF;
+    --status-open-fg: #A9CCF5;
+    --status-open-bg: #17304F;
+    --status-progress: #2FC3B3;
+    --status-progress-fg: #8FE0D6;
+    --status-progress-bg: #0F3A38;
+    --status-pending: #9B7CE8;
+    --status-pending-fg: #CBB9F5;
+    --status-pending-bg: #2E2552;
+    --status-resolved: #3FBF86;
+    --status-resolved-fg: #9BDDB5;
+    --status-resolved-bg: #123A27;
+    --status-closed: #8497AA;
+    --status-closed-fg: #CBD5DE;
+    --status-closed-bg: #26303A;
+    --bot-bg: #1B3A2B;
+    --bot-rule: #3FBF86;
+    --chart-1: #E8651F;
+    --chart-2: #2FA06C;
+    --chart-3: #5B9BEF;
+    --chart-4: #9B7CE8;
+    --chart-5: #9A9A90;
+    --chart-grid: #26382E;
+    --chart-axis: #A9B8AF;
+    --selection: #1F5A40;
     --scrim: rgb(0 0 0 / 0.6);
-    --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
+    --shadow-card: 0 12px 40px rgb(0 0 0 / 0.35);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --frame: #111110;
-  --sheet: #191917;
-  --raised: #262622;
-  --active: #262622;
-  --float: #1f1f1c;
-  --table-header: #1f1f1c;
-  --border: #2b2a26;
-  --border-strong: #383731;
-  --rule: #232320;
-  --input: #6f6c63;
-  --fg: #ecebe6;
-  --muted-fg: #a29f95;
-  --primary: #6f9cf0;
-  --primary-hover: #8aaff3;
-  --primary-fg: #0c1730;
-  --ring: #6f9cf0;
-  --positive: #8fd3a5;
-  --negative: #ef8a80;
-  --negative-hover: #f3a39b;
-  --warning: #eab36e;
-  --info: #a9c3f2;
-  --pill-neutral-bg: #2c2b27;
-  --pill-neutral-fg: #d6d4cc;
-  --pill-positive-bg: #1c2e22;
-  --pill-positive-fg: #8fd3a5;
-  --pill-negative-bg: #3a211e;
-  --pill-negative-fg: #ef8a80;
-  --pill-warning-bg: #35291a;
-  --pill-warning-fg: #eab36e;
-  --pill-info-bg: #1f2a3d;
-  --pill-info-fg: #a9c3f2;
-  --pill-accent-bg: #1b2642;
-  --pill-accent-fg: #9dbbf4;
-  --status-new: #8c897f;
-  --status-new-fg: #c9c6bc;
-  --status-new-bg: #2a2925;
-  --status-open: #6f9cf0;
-  --status-open-fg: #a9c3f2;
-  --status-open-bg: #1f2a3d;
-  --status-progress: #3fb8ab;
-  --status-progress-fg: #7fd6cc;
-  --status-progress-bg: #16302d;
-  --status-pending: #a283e8;
-  --status-pending-fg: #c6aef5;
-  --status-pending-bg: #2a2340;
-  --status-resolved: #5dbb7d;
-  --status-resolved-fg: #8fd3a5;
-  --status-resolved-bg: #1c2e22;
-  --status-closed: #7f8da3;
-  --status-closed-fg: #b5c0d0;
-  --status-closed-bg: #252a31;
-  --bot-bg: #1c2130;
-  --bot-rule: #4d6ba8;
-  --chart-1: #6f9cf0;
-  --chart-2: #eaae6a;
-  --chart-3: #8fd3a5;
-  --chart-4: #ef8a80;
-  --chart-5: #a29f95;
-  --chart-grid: #262622;
-  --chart-axis: #a29f95;
-  --selection: #253456;
+  --frame: #0E1914;
+  --sheet: #16231C;
+  --raised: #1F3A2D;
+  --active: #26453A;
+  --float: #1B2C23;
+  --table-header: #1B2C23;
+  --border: #26382E;
+  --border-strong: #36503F;
+  --rule: #1E2E25;
+  --input: #6F8579;
+  --fg: #F2EDE3;
+  --muted-fg: #A9B8AF;
+  --primary: #1B7F5A;
+  --primary-hover: #166A4A;
+  --primary-fg: #FFFFFF;
+  --link: #6FD3A4;
+  --ring: #6FD3A4;
+  --positive: #9BDDB5;
+  --negative: #FF9A8E;
+  --negative-hover: #FFB3A9;
+  --warning: #FFE08A;
+  --info: #A9CCF5;
+  --hero: #0A3A29;
+  --hero-fg: #FFF6E8;
+  --hero-soft: #14573F;
+  --accent: #F7A23B;
+  --green-tint: #123A27;
+  --green-tint-fg: #9BDDB5;
+  --pill-neutral-bg: #2B2D29;
+  --pill-neutral-fg: #D9D9D2;
+  --pill-positive-bg: #123A27;
+  --pill-positive-fg: #9BDDB5;
+  --pill-negative-bg: #4A1D18;
+  --pill-negative-fg: #FFC2BA;
+  --pill-warning-bg: #4A3A0A;
+  --pill-warning-fg: #FFE08A;
+  --pill-info-bg: #17304F;
+  --pill-info-fg: #A9CCF5;
+  --pill-accent-bg: #4A2A10;
+  --pill-accent-fg: #FFD2A8;
+  --status-new: #9A9A90;
+  --status-new-fg: #D9D9D2;
+  --status-new-bg: #2B2D29;
+  --status-open: #5B9BEF;
+  --status-open-fg: #A9CCF5;
+  --status-open-bg: #17304F;
+  --status-progress: #2FC3B3;
+  --status-progress-fg: #8FE0D6;
+  --status-progress-bg: #0F3A38;
+  --status-pending: #9B7CE8;
+  --status-pending-fg: #CBB9F5;
+  --status-pending-bg: #2E2552;
+  --status-resolved: #3FBF86;
+  --status-resolved-fg: #9BDDB5;
+  --status-resolved-bg: #123A27;
+  --status-closed: #8497AA;
+  --status-closed-fg: #CBD5DE;
+  --status-closed-bg: #26303A;
+  --bot-bg: #1B3A2B;
+  --bot-rule: #3FBF86;
+  --chart-1: #E8651F;
+  --chart-2: #2FA06C;
+  --chart-3: #5B9BEF;
+  --chart-4: #9B7CE8;
+  --chart-5: #9A9A90;
+  --chart-grid: #26382E;
+  --chart-axis: #A9B8AF;
+  --selection: #1F5A40;
   --scrim: rgb(0 0 0 / 0.6);
-  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 12px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
+  --shadow-card: 0 12px 40px rgb(0 0 0 / 0.35);
   color-scheme: dark;
 }
 
 @theme inline {
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque", "Nunito Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Type scale (px): 12 small · 13 meta · 14 body · 16 section · 22 title · 28 KPI */
   --text-xs: 0.75rem;
-  --text-xs--line-height: 1rem;
+  --text-xs--line-height: 1.0625rem;
   --text-sm: 0.8125rem;
   --text-sm--line-height: 1.125rem;
-  --text-base: 0.875rem;
-  --text-base--line-height: 1.375rem;
-  --text-md: 1rem;
-  --text-md--line-height: 1.5rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.45rem;
+  --text-md: 1.0625rem;
+  --text-md--line-height: 1.55rem;
   --text-lg: 1.125rem;
   --text-lg--line-height: 1.5rem;
-  --text-xl: 1.375rem;
-  --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.75rem;
-  --text-2xl--line-height: 2.125rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.85rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.3rem;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-sheet: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-card: 24px;
+  --radius-sheet: 28px;
 
   --shadow-pop: var(--shadow-pop);
+  --shadow-card: var(--shadow-card);
 
   --color-frame: var(--frame);
   --color-sheet: var(--sheet);
@@ -284,6 +294,13 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-fg: var(--primary-fg);
+  --color-link: var(--link);
+  --color-hero: var(--hero);
+  --color-hero-fg: var(--hero-fg);
+  --color-hero-soft: var(--hero-soft);
+  --color-accent: var(--accent);
+  --color-green-tint: var(--green-tint);
+  --color-green-tint-fg: var(--green-tint-fg);
   --color-ring: var(--ring);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
@@ -351,6 +368,18 @@
     line-height: var(--text-base--line-height);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  a:where(:not([class])) {
+    color: var(--link);
   }
 
   ::selection {

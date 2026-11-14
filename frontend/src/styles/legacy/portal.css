@@ -919,24 +919,31 @@
   gap: var(--space-3);
   max-width: 28rem;
   padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  border-radius: var(--l-radius-md);
-  background: var(--surface-float);
-  border: 1px solid var(--border-default);
+  border-radius: 20px;
+  background: var(--float);
+  color: var(--fg);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-overlay);
   font-size: var(--l-text-base);
   pointer-events: auto;
 }
 
 .toast-ok {
-  border-left: 3px solid var(--status-ok);
+  background: var(--pill-positive-bg);
+  color: var(--pill-positive-fg);
+  border-color: transparent;
 }
 
 .toast-error {
-  border-left: 3px solid var(--status-danger);
+  background: var(--pill-negative-bg);
+  color: var(--pill-negative-fg);
+  border-color: transparent;
 }
 
 .toast-info {
-  border-left: 3px solid var(--status-info);
+  background: var(--pill-info-bg);
+  color: var(--pill-info-fg);
+  border-color: transparent;
 }
 
 .toast-close {

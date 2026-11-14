@@ -8,6 +8,32 @@ toggle and an `index.html` boot script. No new npm dependencies.
 > are the original spec, kept for the reasoning behind the type scale,
 > spacing and focus rules; their colours and the sidebar are superseded.
 
+## 00. Warm and friendly re-skin (Nov 2026, the live look)
+
+Supersedes the colours, fonts and shapes in section 0 and below; the layout
+rules (hamburger menu, status language, honesty rules) stay.
+
+- **Tokens**: `frontend/src/styles/theme.css` (one table, light + dark +
+  forced `data-theme`), exported to `docs/design-tokens.json` for the mobile
+  app. Same variable names as before (`--frame` is the cream page, `--sheet`
+  the white card), plus `--link`, `--hero`, `--accent`, `--green-tint`.
+  Brand green `#1B7F5A` carries white text in both themes; link text in dark
+  is `--link` (#6FD3A4), never `--primary`.
+- **Type**: Bricolage Grotesque 600/700 for headings (h1-h3 in the base layer,
+  `font-display`), Nunito Sans 400/600/700 for body, both self-hosted through
+  `@fontsource`; IBM Plex Mono stays for ids and code. Body 15px.
+- **Shape**: cards 24px with a soft green shadow (light) or a border (dark);
+  buttons, inputs, menu items 12px; chips, tabs, status and priority marks
+  fully rounded. Toasts are tinted pills (no left-border accents).
+- **Status colours** (`--status-*`) are the six in the spec; amber
+  (`--pill-warning-*`) is for SLA at risk only. Charts: `--chart-1` orange =
+  created, `--chart-2` green = resolved.
+- **Theme switch**: Appearance (System / Light / Dark) in the user menu;
+  public pages keep the icon menu. Saved in localStorage, applied by the
+  `index.html` script before first paint (the `data-theme` attribute).
+- Screens are re-skinned stage by stage (A shared components, B auth,
+  C customer, D staff, E manager/admin); `/ui` shows the shared pieces.
+
 ## 0. Current system
 
 **Direction.** A help desk is a work queue, so the interface is built
