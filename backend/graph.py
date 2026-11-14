@@ -353,10 +353,8 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
     if weak and not is_vague(state["ticket_text"]) and kb_retrieval.entry_count():
         # Nothing close in the customer's words (or only a weak match, which can be the
         # wrong entry): once more in the KB's own words, kept only if it matches better.
-        try:
-            rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics())
-        except AIError:
-            rewrite = ""
+        # A failed call is an AI failure (outage reply + audit), never "no guide" + a ticket.
+        rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics())
         again = (kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to, titles=True)
                  if rewrite else [])
         if again and (not candidates or again[0].score > candidates[0].score):
