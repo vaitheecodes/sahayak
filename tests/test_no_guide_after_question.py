@@ -108,3 +108,27 @@ def test_a_rewrite_in_a_topic_title_finds_that_entry_and_a_raw_search_ignores_ti
     result = graph.retrieve_kb_candidates({"ticket_text": "Customer: kya yahan kuch dikh raha hai? kaha dekhun?"})
     assert result["kb_candidates"][0]["kb_entry_id"] == "KB-1" and result["query_rewrite"] == title
     assert result["kb_candidates"][0]["score"] >= kb_retrieval.kb_min_score()
+
+
+def test_a_throttled_rewrite_is_an_ai_failure_not_no_guide_and_a_ticket(client, monkeypatch):
+    """Chat eval: a throttled rewrite call was swallowed, so a covered question got "no guide" + a ticket."""
+    import json
+
+    from backend import chats, db
+    from backend.ai_service import AIError, provider
+
+    def throttled(message, topics):
+        raise AIError("slow down", provider.AIFailure(kind="throttling", operation="rewrite_query",
+                                                      code="ThrottlingException"))
+
+    monkeypatch.setattr(rewrite_query, "rewrite_query", throttled)
+    chat = _chat(client, _customer(client), "kya yahan kuch dikh raha hai? kaha dekhun?")
+    assert chat["ai_error"] and _ai_lines(chat) == [chats.OUTAGE_REPLY] and chat["ticket_id"] is None
+    conn = db.get_connection()
+    try:
+        rows = [json.loads(r["detail"]) for r in conn.execute(
+            "SELECT detail FROM audit_events WHERE action = 'chat.ai_failure' AND entity_id = ?", (chat["session_id"],))]
+    finally:
+        conn.close()
+    assert [(r["kind"], r["operation"], r["code"], r["outcome"]) for r in rows] == [
+        ("throttling", "rewrite_query", "ThrottlingException", "failed")]

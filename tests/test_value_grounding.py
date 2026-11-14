@@ -20,7 +20,7 @@ import pytest
 from backend import graph
 from backend.ai_service import chat_response, provider
 from backend.ai_service.grounding import ground_values, value_problem
-from backend.ai_service.schemas import AnswerInput, KBCandidate
+from backend.ai_service.schemas import AnswerInput, ClarifyInput, KBCandidate
 
 KB_TEXT = ("How do I allow the widget under my content policy?\n"
            "Allow the widget's servers in your policy: "
@@ -137,3 +137,33 @@ def test_a_confident_report_without_a_kb_entry_is_clarified_then_handed_off():
     assert last["route"] == "ai" and "no guide" in last["route_reason"]
     with_entry = graph.decide_route({**state, "clarification_attempts": 0, "kb_candidates": [KB.model_dump()]})
     assert with_entry["route"] == "ai"
+
+
+# A URL lives in ONE entry: another candidate's URL (or an invented path on a grounded host) never passes.
+RUM_URL = "https://col.site24x7rum.com/rum/connect"
+RUM_ENTRY = KBCandidate(kb_entry_id="KB-0004", category="ISSUE", intent="connectivity", score=0.5,
+                        instruction="How do I verify my browser can reach the servers?",
+                        response=f"1. Navigate to {RUM_URL} to verify connectivity.")
+
+
+def _ask(monkeypatch, text, candidates):
+    monkeypatch.setattr(provider, "complete_text", lambda *a, **k: text)
+    return chat_response.clarify(ClarifyInput(ticket_text="Customer: it is not loading", kb_candidates=candidates,
+                                              customer_text="it is not loading", latest_message="it is not loading"))
+
+
+def test_a_url_from_another_candidate_is_dropped_from_a_question(monkeypatch):
+    reply = _ask(monkeypatch, f"Is the page completely blank, or does only part of it fail to load for you? Visit {RUM_URL} to check.", [KB, RUM_ENTRY])
+    assert "rum/connect" not in reply.text and "Is the page completely blank" in reply.text
+
+
+def test_an_invented_path_on_a_grounded_host_is_dropped_from_an_answer(monkeypatch):
+    entry = RUM_ENTRY.model_copy(update={"response": "1. Navigate to https://col.site24x7rum.com/rum/beacon to verify connectivity."})
+    reply = _answer(monkeypatch, "Your page is blank. Navigate to https://col.site24x7rum.com/rum/beacon to verify connectivity. "
+                                 f"Navigate to {RUM_URL} to verify connectivity.", kb=(entry,))
+    assert "rum/connect" not in reply.text and "rum/beacon" in reply.text
+
+
+def test_the_answering_entrys_own_url_still_passes(monkeypatch):
+    reply = _answer(monkeypatch, f"Navigate to {RUM_URL} to verify connectivity.", kb=(RUM_ENTRY,))
+    assert RUM_URL in reply.text

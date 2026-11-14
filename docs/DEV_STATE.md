@@ -37,6 +37,15 @@ Seed (b) fails only the judge's helpfulness on a correct ticket.
 15,068 Bedrock calls of the approved 16,000; $4.66 in total
 (`.local/chat-eval/ledger.json`). Pilot chat model: Nova Lite.
 
+## Latest fixes (after the eval: invented URL, rewrite outage, Hinglish coverage)
+- URLs/domains in a reply must be in the answering entry or the customer's
+  messages (the clarify path used to allow any of 3 candidates).
+- A failed rewrite call is an AI failure (outage reply + audit), not "no guide".
+- `covers_latest` gets the previous customer message and the top two guides.
+- Known limit: live probe, 4 attempts each: pair 1 agrees (covered, both
+  languages); pair 2 differs (English "not covered" 4/4, Hinglish covered 4/4).
+- Suites on the final code: SQLite 1490 passed / 3 skipped, Postgres 1477 / 16.
+
 ## Open items
 - No full eval run on `d1162ac` yet. The NameError and EU-snippet fixes were
   checked only by unit tests and the affected cases.
