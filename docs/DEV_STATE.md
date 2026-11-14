@@ -44,7 +44,14 @@ Seed (b) fails only the judge's helpfulness on a correct ticket.
 - `covers_latest` gets the previous customer message and the top two guides.
 - Known limit: live probe, 4 attempts each: pair 1 agrees (covered, both
   languages); pair 2 differs (English "not covered" 4/4, Hinglish covered 4/4).
-- Suites on the final code: SQLite 1490 passed / 3 skipped, Postgres 1477 / 16.
+- Known patch: `kb_retrieval._query_tokens` drops "working/work/works" from a query
+  when two other content words remain ("...on my website? It's not working" had
+  pulled "Why is my RUM not working?"). A patch, not a fix: tell/verify and
+  website/webpage still don't match (paraphrase retrieval is the root issue).
+- Negation tag after an answer is dropped for a new topic (best entry differs,
+  score >= 0.40, message doesn't point back: `graph._negation_is_new_topic`).
+- Suites on the final code: SQLite 1494 passed / 3 skipped, Postgres 1481 / 16.
+- (earlier run) SQLite 1490 passed / 3 skipped, Postgres 1477 / 16.
 
 ## Open items
 - No full eval run on `d1162ac` yet. The NameError and EU-snippet fixes were
