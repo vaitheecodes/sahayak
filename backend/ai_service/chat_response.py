@@ -857,8 +857,11 @@ def covers_latest(data: AnswerInput) -> bool:
         "A customer is chatting with a help desk about the guide below. Decide whether the guide answers "
         "the customer's LATEST message. covered=false when the guide doesn't say what they ask (a format, "
         "a limit, a notification, a special case, a different task or setting); covered=true when the guide "
-        "gives the answer, or the message only asks to repeat or explain what the guide says.",
-        {"guide": grounding.kb_text(data.kb_candidates[:1]), "customer_latest_message": data.latest_message},
+        "gives the answer, or the message only asks to repeat or explain what the guide says. The customer may "
+        "write Hinglish, Tanglish or another mix of languages with typos: judge the meaning, not the wording, "
+        "and use their previous message to see what 'it' or 'that' means. Either guide may cover it.",
+        {"guides": grounding.kb_text(data.kb_candidates[:2]), "customer_previous_message": data.previous_message,
+         "customer_latest_message": data.latest_message},
         CoverageVerdict, operation="covers_latest")
     return verdict.covered
 

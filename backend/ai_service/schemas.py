@@ -104,6 +104,8 @@ class AnswerInput(BaseModel):
     # customer's latest message (answered first when it asks a question).
     recent_ai_replies: list[str] = []
     latest_message: str = ""
+    # The customer's message before it: what 'it' / 'woh' / 'adhu' refers to (covers_latest).
+    previous_message: str = ""
     # A how-to request (backend/request_kind.py): no troubleshooting
     # boilerplate. error_reported: the customer mentioned an error, so a
     # reply may ask for the exact error text (never otherwise).

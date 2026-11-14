@@ -872,6 +872,7 @@ def _reply_context(state: TicketState) -> dict:
         "vague": vague,
         "recent_ai_replies": list(state.get("recent_ai_replies") or [])[-2:],
         "latest_message": messages[-1] if messages else "",
+        "previous_message": messages[-2] if len(messages) > 1 else "",
         "customer_text": customer_text,
         "how_to": how_to,
         "error_reported": error_reported(state["ticket_text"]),
