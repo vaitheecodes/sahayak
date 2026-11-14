@@ -96,6 +96,18 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS]
 
 
+# "It's not working" tags along with a message about another topic ("how can I tell if the RUM script is
+# on my site? It's not working") and matched "Why is my RUM not working?" (a two-word question) over the
+# guide on the subject: with two other content words left, these words are not searched.
+_SYMPTOM_FILLER = frozenset("working work works".split())
+
+
+def _query_tokens(text: str) -> list[str]:
+    tokens = _tokenize(text)
+    rest = [t for t in tokens if t not in _SYMPTOM_FILLER]
+    return rest if len(rest) >= 2 else tokens
+
+
 tokenize = _tokenize  # public: also used for incident lexical similarity
 
 
@@ -173,7 +185,7 @@ class _KBIndex:
         entry's title is a second document, at TITLE_WEIGHT (a rewritten query)."""
         queries = []
         for query in dict.fromkeys((text, topic_terms.with_names(text))):
-            query_vec = self._vectorize(_tokenize(query))
+            query_vec = self._vectorize(_query_tokens(query))
             query_norm = math.sqrt(sum(v * v for v in query_vec.values()))
             if query_norm:
                 queries.append((query_vec, query_norm))
