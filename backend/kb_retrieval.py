@@ -45,6 +45,11 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # raw LLM confidence for a short/common phrasing it under-scored.
 STRONG_MATCH_SCORE = 0.40
 
+# A rewritten query (rewrite_query) is in the entries' TITLES' words and is also searched against
+# the titles; the model's pick of a topic is weaker evidence than the customer's own words, so a
+# title match counts at this share of its cosine score.
+TITLE_WEIGHT = 0.7
+
 # Below this a candidate is not a match at all (KB_MIN_SCORE overrides):
 # a lone shared word such as "device" or "error" scores around 0.3.
 DEFAULT_MIN_SCORE = 0.35
@@ -149,19 +154,23 @@ class _KBIndex:
         self._doc_norms = [
             math.sqrt(sum(v * v for v in vec.values())) for vec in self._doc_vectors
         ]
+        # Titles: IDF from the questions only, so no search without `titles` moves.
+        self._title_vectors = [self._vectorize(_tokenize(e.intent)) for e in entries]
+        self._title_norms = [math.sqrt(sum(v * v for v in vec.values())) for vec in self._title_vectors]
 
     def _vectorize(self, tokens: list[str]) -> Counter:
         tf = Counter(tokens)
         return Counter({t: c * self._idf.get(t, 1.0) for t, c in tf.items()})
 
     def search(self, text: str, top_k: int = 3, min_score: float = 0.0,
-               category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
+               category: str | None = None, skip_faults: bool = False, titles: bool = False) -> list[KBCandidate]:
         """Up to top_k distinct topics scoring at least min_score, each as
         its best-matching entry; only entries of `category` when given;
         no entry whose question reports a fault with skip_faults. Each
         entry's score is the better of the query as written and the query
         with the names of the confirmed terms it names added
-        (topic_terms.with_names: "Content Security Policy" finds "CSP")."""
+        (topic_terms.with_names: "Content Security Policy" finds "CSP"). With `titles` the
+        entry's title is a second document, at TITLE_WEIGHT (a rewritten query)."""
         queries = []
         for query in dict.fromkeys((text, topic_terms.with_names(text))):
             query_vec = self._vectorize(_tokenize(query))
@@ -170,13 +179,15 @@ class _KBIndex:
                 queries.append((query_vec, query_norm))
 
         best: dict[str, KBCandidate] = {}
-        for entry, topic, doc_vec, doc_norm, fault in zip(
-            self.entries, self.topics, self._doc_vectors, self._doc_norms, self._faults
+        for entry, topic, doc_vec, doc_norm, title_vec, title_norm, fault in zip(
+            self.entries, self.topics, self._doc_vectors, self._doc_norms, self._title_vectors, self._title_norms,
+            self._faults
         ):
-            if doc_norm == 0 or (category is not None and entry.category != category) or (skip_faults and fault):
+            if (category is not None and entry.category != category) or (skip_faults and fault):
                 continue
-            score = max(sum(w * doc_vec.get(t, 0.0) for t, w in query_vec.items()) / (query_norm * doc_norm)
-                        for query_vec, query_norm in queries) if queries else 0.0
+            docs = [(doc_vec, doc_norm, 1.0)] + ([(title_vec, title_norm, TITLE_WEIGHT)] if titles else [])
+            score = max((weight * sum(w * vec.get(t, 0.0) for t, w in query_vec.items()) / (query_norm * norm)
+                         for query_vec, query_norm in queries for vec, norm, weight in docs if norm), default=0.0)
             if score > 0 and score >= min_score and (topic not in best or score > best[topic].score):
                 best[topic] = KBCandidate(entry=entry, score=score)
 
@@ -241,14 +252,16 @@ def entry_count() -> int:
 
 
 def retrieve_candidates(ticket_text: str, top_k: int = 3, min_score: float | None = None,
-                        category: str | None = None, skip_faults: bool = False) -> list[KBCandidate]:
+                        category: str | None = None, skip_faults: bool = False,
+                        titles: bool = False) -> list[KBCandidate]:
     """Top-k distinct KB topics (by TF-IDF cosine similarity) for
     `ticket_text`, none scoring below `min_score` (default KB_MIN_SCORE).
     Returns [] for an empty KB or when nothing matches closely enough —
     callers must treat an empty list as "no close KB match": no
     grounding, not an error. `category` limits the search to that
     category's entries; `skip_faults` (a how-to request) leaves out
-    troubleshooting entries."""
+    troubleshooting entries; `titles` also searches the entries' titles
+    (only for a query rewritten in the titles' words)."""
     floor = kb_min_score() if min_score is None else min_score
     return _load_index().search(ticket_text, top_k=top_k, min_score=floor, category=category,
-                                skip_faults=skip_faults)
+                                skip_faults=skip_faults, titles=titles)

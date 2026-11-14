@@ -88,3 +88,23 @@ def test_a_yes_to_the_one_option_question_names_that_option():
     assert graph.grounding_candidates(other)[0] == []
 
 
+WIDGET = [
+    {"kb_entry_id": "KB-1", "title": "Check for the presence of the widget", "category": "USAGE", "kind": "how-to",
+     "questions": ["I can't see the widget, what should I do?"], "answer": "Look for the widget tag.", "steps": []},
+    {"kb_entry_id": "KB-2", "title": "Ensure the page gets traffic", "category": "USAGE", "kind": "how-to",
+     "questions": ["Do I need traffic to check the page?"], "answer": "The page needs traffic.", "steps": []},
+]
+
+
+def test_a_rewrite_in_a_topic_title_finds_that_entry_and_a_raw_search_ignores_titles(monkeypatch):
+    kb_retrieval.use(WIDGET)
+    title = "Check for the presence of the widget"
+    # The customer's own words never match a title alone (no change to any existing score).
+    assert "KB-1" not in [c.entry.kb_entry_id for c in kb_retrieval.retrieve_candidates("Check presence")]
+    (top, *_) = kb_retrieval.retrieve_candidates(title, titles=True)
+    assert top.entry.kb_entry_id == "KB-1" and top.score == pytest.approx(kb_retrieval.TITLE_WEIGHT, abs=0.01)
+    # ... and through the pipeline: a weak message, the model's rewrite is the topic's title.
+    monkeypatch.setattr(rewrite_query, "rewrite_query", lambda message, topics: title)
+    result = graph.retrieve_kb_candidates({"ticket_text": "Customer: kya yahan kuch dikh raha hai? kaha dekhun?"})
+    assert result["kb_candidates"][0]["kb_entry_id"] == "KB-1" and result["query_rewrite"] == title
+    assert result["kb_candidates"][0]["score"] >= kb_retrieval.kb_min_score()

@@ -303,7 +303,9 @@ SQLite (backend/ticketapp.db, auto-created, gitignored)
   below `KB_MIN_SCORE` (default 0.35) is no match; then (not for a vague
   message) one model call rewrites the query in the KB's own words from
   the entries' titles (`ai_service/rewrite_query.py`, "" when no topic
-  fits) and the same search runs again; the rewrite (`query_rewrite`)
+  fits) and the same search runs again, now also against the titles (at
+  `kb_retrieval.TITLE_WEIGHT` 0.7; the customer's own words never match a
+  title: before, a title never found its own entry); the rewrite (`query_rewrite`)
   counts as the customer's words for the how-to subject check. Off in
   tests unless a test turns it on (`tests/conftest._no_query_rewrite`). The top 2-3
   candidates ground `classify_ticket`'s prompt (few-shot category

@@ -357,7 +357,8 @@ def retrieve_kb_candidates(state: TicketState) -> dict:
             rewrite = rewrite_query.rewrite_query(query, kb_retrieval.topics())
         except AIError:
             rewrite = ""
-        again = kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to) if rewrite else []
+        again = (kb_retrieval.retrieve_candidates(rewrite, top_k=3, skip_faults=how_to, titles=True)
+                 if rewrite else [])
         if again and (not candidates or again[0].score > candidates[0].score):
             candidates, used = again, rewrite
     found = {"kb_candidates": _kb_candidates_to_dicts(candidates)}
