@@ -192,6 +192,29 @@ def _tags(message: str, after_answer: bool) -> list[str]:
     return tags
 
 
+# The message points back at the last answer ("that didn't work", "I tried that", "same problem").
+_REFERS_BACK = re.compile(
+    r"\b(?:that|this|those|them)\s+(?:didn'?t|did not|doesn'?t|does not|isn'?t|is not|not|never|still)\b"
+    r"|\bit\s+(?:didn'?t|did not|doesn'?t|does not)\b|\bi\s+(?:already\s+)?tried\b|\bno luck\b"
+    r"|\bsame (?:problem|issue|error|thing)\b|\bstill\b|\bagain\b", re.IGNORECASE)
+
+
+def _negation_is_new_topic(state: TicketState) -> bool:
+    """After an answer, a message that doesn't point back at it and whose best KB entry is a different
+    entry with a good score is a NEW topic ("not loading" in a CSP question), not a failed answer."""
+    messages = _customer_messages(state["ticket_text"])
+    latest = (messages or [""])[-1]
+    top = (state.get("kb_candidates") or [None])[0]
+    if _REFERS_BACK.search(latest) or not top or top["score"] < kb_retrieval.STRONG_MATCH_SCORE:
+        return False
+    last_reply = (state.get("recent_ai_replies") or [""])[-1]
+    entry_words = grounding.content_words(top["response"])
+    same_entry = bool(entry_words) and len(entry_words & grounding.content_words(last_reply)) / len(entry_words) >= 0.5
+    # Or the customer's previous message was about this very entry (the reply may be worded freely).
+    earlier = kb_candidates_for(messages[-2], top_k=1) if len(messages) > 1 else []
+    return not (same_entry or (earlier and earlier[0]["kb_entry_id"] == top["kb_entry_id"]))
+
+
 def has_escalation_language(text: str) -> bool:
     """True if a follow-up to an AI answer (`text`, the customer's message)
     trips one of decide_route's hard-override language tags. Used by the
@@ -637,7 +660,8 @@ def classify_ticket(state: TicketState) -> dict:
     return {
         "category": category,
         "confidence": confidence,
-        "language_tags": _detect_language_tags(state["ticket_text"], bool(state.get("answered"))),
+        "language_tags": [t for t in _detect_language_tags(state["ticket_text"], bool(state.get("answered")))
+                          if not (t == "negation" and _negation_is_new_topic(state))],
     }
 
 
