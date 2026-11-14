@@ -12,12 +12,12 @@ export function DialogContent({ className, title, description, children, hideClo
       <D.Overlay className="fixed inset-0 z-40 bg-scrim" />
       <D.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-float p-6 shadow-pop outline-none",
+          "fixed top-1/2 left-1/2 z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-float p-7 shadow-pop outline-none",
           className,
         )}
         {...props}
       >
-        <D.Title className="text-lg font-semibold text-fg">{title}</D.Title>
+        <D.Title className="text-lg font-bold text-fg">{title}</D.Title>
         {description ? (
           <D.Description className="mt-1 text-base text-muted-fg">{description}</D.Description>
         ) : (
@@ -26,7 +26,7 @@ export function DialogContent({ className, title, description, children, hideClo
         <div className="mt-4">{children}</div>
         {!hideClose && (
           <D.Close
-            className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-md text-muted-fg hover:bg-active hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="absolute top-4 right-4 inline-flex size-9 items-center justify-center rounded-xl text-muted-fg hover:bg-active hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             aria-label="Close"
           >
             <X className="size-4" aria-hidden="true" />

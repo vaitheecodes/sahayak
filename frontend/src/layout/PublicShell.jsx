@@ -24,10 +24,10 @@ export default function PublicShell({ title, children }) {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-dvh flex-col bg-frame text-fg">
-        <header className="flex h-12 items-center gap-4 px-3 md:px-4">
+        <header className="flex h-14 items-center gap-4 border-b border-border bg-sheet px-3 md:px-4">
           <Link to="/docs" className="flex items-center gap-2.5 text-fg no-underline">
             <ProductMark />
-            <span className="hidden text-base font-semibold sm:inline">Help Desk</span>
+            <span className="hidden font-display text-base font-bold sm:inline">Help Desk</span>
           </Link>
           <nav aria-label="Public" className="flex items-center gap-1">
             {LINKS.map(([to, label]) => (
@@ -54,7 +54,7 @@ export default function PublicShell({ title, children }) {
             </Button>
           </div>
         </header>
-        <main id="main" className="flex-1 bg-sheet md:mx-2 md:mb-2 md:rounded-sheet md:border md:border-border">
+        <main id="main" className="flex-1 bg-frame">
           {children}
         </main>
       </div>

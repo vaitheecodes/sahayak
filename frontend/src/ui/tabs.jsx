@@ -7,7 +7,7 @@ export const Tabs = T.Root;
 export function TabsList({ className, ...props }) {
   return (
     <T.List
-      className={cn("flex gap-5 overflow-x-auto border-b border-border [scrollbar-width:none]", className)}
+      className={cn("flex gap-6 overflow-x-auto border-b border-border [scrollbar-width:none]", className)}
       {...props}
     />
   );
@@ -18,7 +18,7 @@ export function TabsTrigger({ className, children, count, ...props }) {
     <T.Trigger
       className={cn(
         "relative -mb-px inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-0.5 text-base text-muted-fg outline-none transition-colors",
-        "hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-sm data-[state=active]:border-fg data-[state=active]:font-medium data-[state=active]:text-fg",
+        "hover:text-fg focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-sm data-[state=active]:border-primary data-[state=active]:font-bold data-[state=active]:text-fg",
         className,
       )}
       {...props}

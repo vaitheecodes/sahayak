@@ -430,7 +430,7 @@ function SourceSection({ entry, steps }) {
           <CardDescription>{chunk?.heading_path || "—"}</CardDescription>
         </div>
         {entry.source_url && (
-          <a href={entry.source_url} target="_blank" rel="noreferrer noopener" className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline">
+          <a href={entry.source_url} target="_blank" rel="noreferrer noopener" className="inline-flex shrink-0 items-center gap-1 text-sm text-link hover:underline">
             Open page <ExternalLink className="size-3.5" aria-hidden="true" />
           </a>
         )}

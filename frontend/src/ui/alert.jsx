@@ -13,11 +13,11 @@ export function Alert({ tone = "info", title, children, className, action }) {
   return (
     <div
       role={tone === "negative" ? "alert" : "status"}
-      className={cn("flex items-start gap-3 rounded-lg px-4 py-3 text-base", classes, className)}
+      className={cn("flex items-start gap-3 rounded-2xl px-4 py-3 text-base", classes, className)}
     >
       <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1">
-        {title && <p className="font-medium">{title}</p>}
+        {title && <p className="font-bold">{title}</p>}
         {children && <div className={cn(title && "mt-0.5")}>{children}</div>}
       </div>
       {action}

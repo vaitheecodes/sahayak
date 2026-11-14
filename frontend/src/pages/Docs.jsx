@@ -39,7 +39,7 @@ export default function Docs() {
                 to={to}
                 className="group flex items-start gap-4 py-5 text-fg no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" strokeWidth={1.75} />
+                <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-link" strokeWidth={1.75} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-md font-medium group-hover:underline">{title}</span>
                   <span className="mt-1 block text-base text-muted-fg">{body}</span>

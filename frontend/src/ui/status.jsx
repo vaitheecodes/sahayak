@@ -39,7 +39,7 @@ export function StatusBadge({ status, label, className }) {
     <span
       data-slot="status"
       className={cn(
-        "inline-flex h-[22px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md pr-2 pl-1.5 text-sm font-medium",
+        "inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full pr-2.5 pl-2 text-sm font-bold",
         className,
       )}
       style={{ background: `var(--status-${meta.token}-bg)`, color: `var(--status-${meta.token}-fg)` }}

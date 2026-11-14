@@ -13,7 +13,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, align = "end", 
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          "z-50 min-w-48 overflow-hidden rounded-lg border border-border bg-float p-1 text-fg shadow-pop",
+          "z-50 min-w-48 overflow-hidden rounded-2xl border border-border bg-float p-1 text-fg shadow-pop",
           className,
         )}
         {...props}
@@ -23,7 +23,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, align = "end", 
 }
 
 const itemClass =
-  "relative flex h-8 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-base outline-none " +
+  "relative flex h-10 cursor-pointer select-none items-center gap-2 rounded-xl px-3 text-base outline-none " +
   "data-[highlighted]:bg-active data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:text-muted-fg";
 
 export function DropdownMenuItem({ className, ...props }) {
@@ -35,7 +35,7 @@ export function DropdownMenuRadioItem({ className, children, ...props }) {
     <M.RadioItem className={cn(itemClass, "pr-8", className)} {...props}>
       {children}
       <M.ItemIndicator className="absolute right-2 inline-flex">
-        <svg viewBox="0 0 16 16" className="size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <svg viewBox="0 0 16 16" className="size-4 text-link" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="m3.5 8.5 3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </M.ItemIndicator>

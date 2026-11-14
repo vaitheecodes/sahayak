@@ -273,7 +273,7 @@ function SourceCard({ source, isManager, onChange }) {
           <CardTitle>{source.name}</CardTitle>
           <CardDescription>
             {source.kind === "url" ? (
-              <a href={source.root_url} target="_blank" rel="noreferrer noopener" className="break-all text-primary underline-offset-4 hover:underline">
+              <a href={source.root_url} target="_blank" rel="noreferrer noopener" className="break-all text-link underline-offset-4 hover:underline">
                 {source.root_url}
               </a>
             ) : source.kind === "file" ? (

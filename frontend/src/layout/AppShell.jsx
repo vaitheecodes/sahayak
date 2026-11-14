@@ -7,13 +7,12 @@ import { Sheet, SheetContent, SheetTrigger } from "@/ui/sheet";
 import { TooltipProvider } from "@/ui/tooltip";
 import { NAV } from "./nav";
 import ProductMark from "./ProductMark";
-import ThemeMenu from "./ThemeMenu";
 import UserMenu from "./UserMenu";
 import { useMe } from "./useMe";
 import { managerTypeLabel } from "@/lib/managerTypes";
 
-/* The framed sheet: a 48px top bar on the tinted frame and the page on a
- * white sheet inset 8px from the window edges (16px corners, 1px edge).
+/* A 56px top bar on white and the page on the cream background; cards are
+ * the white shapes on it (warm-and-friendly re-skin, docs/DESIGN_SYSTEM.md).
  *
  * The full menu (every screen of the role, grouped) is hidden by default:
  * the menu button at the far left opens it as a slide-in panel with a scrim
@@ -31,7 +30,7 @@ function Brand({ scope }) {
     <div className="flex h-12 items-center gap-2.5 pr-12 pl-4">
       <ProductMark />
       <div className="min-w-0 leading-tight">
-        <div className="truncate text-base font-semibold text-fg">Help Desk</div>
+        <div className="truncate font-display text-base font-bold text-fg">Help Desk</div>
         <div className="truncate text-xs text-muted-fg">{scope}</div>
       </div>
     </div>
@@ -40,9 +39,9 @@ function Brand({ scope }) {
 
 const itemClass = ({ isActive }) =>
   cn(
-    "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-base text-muted-fg no-underline transition-colors outline-none",
+    "flex h-10 items-center gap-2.5 rounded-xl px-3 text-base text-muted-fg no-underline transition-colors outline-none",
     "hover:bg-active/70 hover:text-fg focus-visible:ring-2 focus-visible:ring-ring",
-    isActive && "bg-active font-medium text-fg",
+    isActive && "bg-green-tint font-bold text-green-tint-fg",
   );
 
 function MenuNav({ role, counts = {}, onNavigate }) {
@@ -88,9 +87,9 @@ function PrimaryNav({ role }) {
           end={end}
           className={({ isActive }) =>
             cn(
-              "inline-flex h-8 items-center rounded-md px-2.5 text-base font-medium text-muted-fg no-underline outline-none",
+              "inline-flex h-9 items-center rounded-full px-3.5 text-base font-bold text-muted-fg no-underline outline-none",
               "hover:text-fg focus-visible:ring-2 focus-visible:ring-ring",
-              isActive && "bg-sheet text-fg shadow-[inset_0_0_0_1px_var(--border)]",
+              isActive && "bg-green-tint text-green-tint-fg",
             )
           }
         >
@@ -122,7 +121,7 @@ export default function AppShell({ role, title, actions, counts, children, sheet
           Skip to content
         </a>
 
-        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 bg-frame px-2 md:static md:pr-4">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-sheet px-2 md:static md:px-4">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Open the full menu">
@@ -137,19 +136,18 @@ export default function AppShell({ role, title, actions, counts, children, sheet
             </SheetContent>
           </Sheet>
           <span className="mr-2 hidden md:inline-flex" title="Help Desk">
-            <ProductMark className="size-5" />
+            <ProductMark className="size-7" />
           </span>
           <PrimaryNav role={role} />
           <h1
             className={cn(
-              "min-w-0 flex-1 truncate text-md font-semibold md:ml-3 md:border-l md:border-border md:pl-4",
+              "min-w-0 flex-1 truncate text-md font-bold md:ml-3 md:border-l md:border-border md:pl-4",
               onPrimary && "md:invisible",
             )}
           >
             {title}
           </h1>
           {actions && <div className="hidden items-center gap-2 sm:flex">{actions}</div>}
-          <ThemeMenu />
           <UserMenu role={role} />
         </header>
 
@@ -157,7 +155,7 @@ export default function AppShell({ role, title, actions, counts, children, sheet
           id="main"
           tabIndex={-1}
           className={cn(
-            "min-h-[calc(100dvh-3rem)] flex-1 bg-sheet outline-none md:mx-2 md:mb-2 md:min-h-0 md:overflow-y-auto md:rounded-sheet md:border md:border-border",
+            "min-h-[calc(100dvh-3.5rem)] flex-1 bg-frame outline-none md:min-h-0 md:overflow-y-auto",
             sheetClassName,
           )}
         >

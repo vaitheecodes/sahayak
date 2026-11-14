@@ -43,7 +43,7 @@ export default function TicketRows({ tickets, onOpen, selectedId, action, action
                   <span className="inline-flex items-center gap-2">
                     <button
                       type="button"
-                      className="cursor-pointer border-0 bg-transparent p-0 font-mono text-sm text-primary hover:underline"
+                      className="cursor-pointer border-0 bg-transparent p-0 font-mono text-sm text-link hover:underline"
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpen(t);
@@ -100,7 +100,7 @@ export default function TicketRows({ tickets, onOpen, selectedId, action, action
               className="flex min-w-0 flex-1 cursor-pointer flex-col items-stretch rounded-none border-0 bg-transparent p-0 text-left text-fg shadow-none"
             >
               <span className="flex min-w-0 items-center gap-2">
-                <span className="font-mono text-sm text-primary">{t.ticket_id}</span>
+                <span className="font-mono text-sm text-link">{t.ticket_id}</span>
                 <StatusBadge status={statusFor(t)} />
                 {t.ticket_type === "chat" && <ChatBadge />}
               </span>

@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 
-/* A panel on the sheet: 1px edge, 8px corners, no shadow at rest. */
+/* A white card on the cream page: 24px corners, soft shadow (light) or a border (dark). */
 export function Card({ className, as: Comp = "section", ...props }) {
-  return <Comp data-slot="card" className={cn("rounded-lg border border-border bg-sheet", className)} {...props} />;
+  return <Comp data-slot="card" className={cn("rounded-card border border-border bg-sheet shadow-card", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }) {
@@ -12,7 +12,7 @@ export function CardHeader({ className, ...props }) {
 }
 
 export function CardTitle({ className, as: Comp = "h2", ...props }) {
-  return <Comp data-slot="card-title" className={cn("text-md font-semibold text-fg", className)} {...props} />;
+  return <Comp data-slot="card-title" className={cn("text-md font-bold text-fg", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }) {

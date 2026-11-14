@@ -32,7 +32,7 @@ function Example() {
       </div>
       <div className="my-3 rounded-r-lg border-l-[3px] border-bot-rule bg-bot px-3.5 py-3">
         <p className="m-0 flex flex-wrap items-center gap-2 text-sm">
-          <Bot aria-hidden="true" className="size-4 text-primary" strokeWidth={1.75} />
+          <Bot aria-hidden="true" className="size-4 text-link" strokeWidth={1.75} />
           <span className="font-semibold">Support Bot</span>
           <span className="rounded border border-border-strong px-1.5 text-xs text-muted-fg">From the help guides</span>
         </p>

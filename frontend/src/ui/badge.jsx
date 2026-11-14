@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
  * themes; the dot is optional and repeats the tone for colour-blind users
  * only together with the label, never alone. */
 const badgeVariants = cva(
-  "inline-flex h-5 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-xs font-medium [&_svg]:size-3",
+  "inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-bold [&_svg]:size-3",
   {
     variants: {
       tone: {

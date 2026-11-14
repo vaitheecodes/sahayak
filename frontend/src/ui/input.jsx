@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 
 export const fieldClass =
-  "h-8 w-full min-w-0 rounded-md border border-input bg-sheet px-2.5 text-base text-fg shadow-none outline-none transition-colors " +
-  "placeholder:text-muted-fg hover:border-fg/50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 " +
+  "h-10 w-full min-w-0 rounded-xl border-[1.5px] border-input bg-sheet px-3.5 text-base text-fg shadow-none outline-none transition-colors " +
+  "placeholder:text-muted-fg hover:border-fg/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 " +
   "disabled:cursor-not-allowed disabled:bg-raised disabled:text-muted-fg aria-invalid:border-negative";
 
 export function Input({ className, type = "text", ...props }) {

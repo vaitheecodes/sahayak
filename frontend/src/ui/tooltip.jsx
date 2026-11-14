@@ -13,7 +13,7 @@ export function Tooltip({ content, children, side = "top" }) {
         <T.Content
           side={side}
           sideOffset={6}
-          className={cn("z-50 rounded-md bg-fg px-2 py-1 text-xs font-medium text-sheet shadow-pop")}
+          className={cn("z-50 rounded-lg bg-fg px-2.5 py-1 text-xs font-bold text-sheet shadow-pop")}
         >
           {content}
         </T.Content>

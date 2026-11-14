@@ -198,7 +198,7 @@ export default function DepartmentTickets({ department, acrossDepartments = fals
               className="flex w-full cursor-pointer flex-col items-stretch rounded-none border-0 bg-transparent px-4 py-3 text-left text-fg shadow-none"
             >
               <span className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="font-mono text-sm text-primary">{t.ticket_id}</span>
+                <span className="font-mono text-sm text-link">{t.ticket_id}</span>
                 <StatusChip status={t.status} />
                 {t.ticket_type === "chat" && <ChatBadge />}
               </span>

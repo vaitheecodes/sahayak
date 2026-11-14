@@ -36,7 +36,7 @@ export function TableHead({ className, ...props }) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-9 whitespace-nowrap border-b border-border px-3 text-left align-middle text-sm font-medium text-muted-fg " +
+        "h-9 whitespace-nowrap border-b border-border px-3 text-left align-middle text-sm font-bold text-muted-fg " +
           "[&.num]:text-right first:pl-5 last:pr-5",
         className,
       )}
