@@ -191,7 +191,8 @@ def check(result: dict, pack: dict, kb: str) -> dict[int, tuple[str, str]]:
     # 11. Follow-ups after an answer get steps, snippet or sources.
     problem, applies = None, False
     for prev, t in zip(turns, turns[1:]):
-        if is_answer(prev["bot"]) and (request_kind.asks_for_steps(t["customer"]) or "source" in t["customer"].lower()):
+        if is_answer(prev["bot"]) and (request_kind.asks_for_steps(t["customer"])
+                                       or request_kind.asks_for_sources(t["customer"])):
             applies = True
             if t["status"] == "escalated" or NO_GUIDE in t["bot"] or _generic(t["bot"]) or not t["bot"].strip():
                 problem = problem or f"{t['customer']!r} got {t['bot'][:160]!r}"

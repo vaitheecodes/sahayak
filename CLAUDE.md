@@ -209,7 +209,10 @@ customer turns as permanent cases. Not in the image (`.dockerignore`).
 Every run can also be scored with the original rules
 (`rules_original.py`, a frozen copy of the baseline's rules; `python -m
 backend.evals.rescore RUN ...` prints both side by side, no model calls).
-Rule tests: `tests/test_chat_eval_rules.py`.
+Rule tests: `tests/test_chat_eval_rules.py`. Rule 11 counts a message as
+asking for sources only when it is that request (`asks_for_sources`), not
+when it mentions "the source of my webpage". Regression tests for "no guide
+though a guide exists": `tests/test_no_guide_after_question.py`.
 
 ## Knowledge base (`backend/kb_store.py`)
 

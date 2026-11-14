@@ -95,3 +95,12 @@ def test_every_case_runs_with_and_without_hi_and_each_entry_gets_a_negation_word
     assert out["t-KB-1-negation"].opener == f"Why is it blocked? {NEGATION_PHRASES[0]}"
     hi = out["t-KB-1-negation-hi"]
     assert hi.opener == "Hi" and hi.script == [out["t-KB-1-negation"].opener] and hi.turns == 3
+
+
+def test_rule_11_ignores_a_message_that_merely_mentions_a_source():
+    """demo-topic_switch failed every run: "the source of my webpage" is no request for sources."""
+    def verdict(customer):
+        return _check("topic_switch", [("allow the widget?", ANSWER, "active"),
+                                       (customer, "I've passed this to our support team as ticket TCK-1.", "escalated")])[11]
+    assert verdict("I've checked the source of my webpage, the script is there but I still see nothing") == "n/a"
+    assert verdict("what are the sources?") == "fail"
